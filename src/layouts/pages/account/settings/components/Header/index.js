@@ -1,19 +1,6 @@
-/**
-=========================================================
-* Material Dashboard 3 PRO React - v2.3.0
-=========================================================
-
-* Product Page: https://www.creative-tim.com/product/material-dashboard-pro-react
-* Copyright 2024 Creative Tim (https://www.creative-tim.com)
-
-Coded by www.creative-tim.com
-
- =========================================================
-
-* The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.
-*/
-
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { auth, db } from "config/firebase";
+import { doc, getDoc } from "firebase/firestore";
 
 // @mui material components
 import Card from "@mui/material/Card";
@@ -30,8 +17,29 @@ import burceMars from "assets/images/bruce-mars.jpg";
 
 function Header() {
   const [visible, setVisible] = useState(true);
+  const [userName, setUserName] = useState("Loading...");
+  const [role, setRole] = useState("");
 
   const handleSetVisible = () => setVisible(!visible);
+
+  useEffect(() => {
+    const fetchUser = async () => {
+      const user = auth.currentUser;
+      if (user) {
+        const ref = doc(db, "users", user.uid);
+        const snap = await getDoc(ref);
+        if (snap.exists()) {
+          const data = snap.data();
+          const firstName = data.firstName || "";
+          const lastName = data.lastName || "";
+          setUserName(`${firstName} ${lastName}`.trim());
+          setRole(data.role || ""); // 👈 Fetch the role
+        }
+      }
+    };
+    fetchUser();
+  }, []);
+
 
   return (
     <Card id="profile">
@@ -43,10 +51,10 @@ function Header() {
           <Grid item>
             <MDBox height="100%" mt={0.5} lineHeight={1}>
               <MDTypography variant="h5" fontWeight="medium">
-                Alex Thompson
+                {userName}
               </MDTypography>
               <MDTypography variant="button" color="text" fontWeight="medium">
-                CEO / Co-Founder
+                {role}
               </MDTypography>
             </MDBox>
           </Grid>

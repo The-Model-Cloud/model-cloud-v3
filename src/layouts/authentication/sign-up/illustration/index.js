@@ -28,7 +28,8 @@ import { doc, setDoc } from "firebase/firestore";
 function SignUpIllustration() {
     const navigate = useNavigate();
 
-    const [name, setName] = useState("");
+    const [firstName, setFirstName] = useState("");
+    const [lastName, setLastName] = useState("");
     const [email, setEmail] = useState("");
     const [password, setPassword] = useState("");
     const [role, setRole] = useState("model");
@@ -48,7 +49,7 @@ function SignUpIllustration() {
             const userCredential = await createUserWithEmailAndPassword(auth, email, password);
             const user = userCredential.user;
 
-            await updateProfile(user, { displayName: name });
+            await updateProfile(user, { displayName: firstName + " " + lastName });
 
             // ✅ Send verification email
             await sendEmailVerification(user);
@@ -59,7 +60,8 @@ function SignUpIllustration() {
             // Save to Firestore 'users' collection
             await setDoc(doc(db, "users", user.uid), {
                 uid: user.uid,
-                name,
+                firstName,
+                lastName,
                 email,
                 role, // model or client
                 createdAt: new Date().toISOString(),
@@ -82,12 +84,19 @@ function SignUpIllustration() {
                 <MDBox mb={2}>
                     <MDInput
                         type="text"
-                        label="Name"
-                        name="name"
-                        fullWidth
-                        value={name}
-                        onChange={(e) => setName(e.target.value)}
-                        autoComplete="name"
+                        label="First Name"
+                        name="firstName"
+                        value={firstName}
+                        onChange={(e) => setFirstName(e.target.value)}
+                        autoComplete="given-name"
+                    />
+                    <MDInput
+                        type="text"
+                        label="Last Name"
+                        name="lastName"
+                        value={lastName}
+                        onChange={(e) => setLastName(e.target.value)}
+                        autoComplete="family-name"
                     />
                 </MDBox>
                 <MDBox mb={2}>

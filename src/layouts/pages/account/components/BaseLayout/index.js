@@ -1,18 +1,3 @@
-/**
-=========================================================
-* Material Dashboard 3 PRO React - v2.3.0
-=========================================================
-
-* Product Page: https://www.creative-tim.com/product/material-dashboard-pro-react
-* Copyright 2024 Creative Tim (https://www.creative-tim.com)
-
-Coded by www.creative-tim.com
-
- =========================================================
-
-* The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.
-*/
-
 import { useState, useEffect } from "react";
 
 // prop-types is a library for typechecking of props
@@ -69,6 +54,7 @@ function BaseLayout({ stickyNavbar, children }) {
           <Grid item xs={12} sm={8} lg={4}>
             <AppBar position="static">
               <Tabs orientation={tabsOrientation} value={tabValue} onChange={handleSetTabValue}>
+                <Tab label="Basic Info" />
                 <Tab label="Messages" />
                 <Tab label="Social" />
                 <Tab label="Notifications" />

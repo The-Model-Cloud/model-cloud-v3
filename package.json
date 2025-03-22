@@ -49,6 +49,7 @@
     "react-router-dom": "6.27.0",
     "react-scripts": "5.0.1",
     "react-table": "7.8.0",
+    "react-user-onboarding": "^0.0.3",
     "stylis": "4.3.4",
     "stylis-plugin-rtl": "2.1.1",
     "uuid": "11.0.2",

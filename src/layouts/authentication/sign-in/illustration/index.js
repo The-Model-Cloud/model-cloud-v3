@@ -16,7 +16,8 @@ import bgImage from "assets/images/illustrations/illustration-reset.jpg";
 
 // Firebase
 import { signInWithEmailAndPassword } from "firebase/auth";
-import { auth } from "config/firebase";
+import { doc, getDoc, setDoc } from "firebase/firestore";
+import { auth, db } from "config/firebase";
 
 function Illustration() {
   const navigate = useNavigate();
@@ -26,19 +27,41 @@ function Illustration() {
   const [error, setError] = useState("");
 
   const handleSetRememberMe = () => setRememberMe(!rememberMe);
-
+ 
   const handleSignIn = async (e) => {
     e.preventDefault();
     setError("");
+  
     try {
-      await signInWithEmailAndPassword(auth, email, password);
-
-      navigate("/dashboard"); // Change if you have a custom dashboard route
+      const userCredential = await signInWithEmailAndPassword(auth, email, password);
+      const user = userCredential.user;
+  
+      const userRef = doc(db, "users", user.uid);
+      const userSnap = await getDoc(userRef);
+  
+      if (!userSnap.exists()) {
+        // First time login — create Firestore profile
+        await setDoc(userRef, {
+          uid: user.uid,
+          name: user.displayName || "",
+          email: user.email,
+          role: "model", // Default role — can adjust this
+          createdAt: new Date().toISOString(),
+        });
+  
+        // 🔁 Send to account setup
+        navigate("/pages/account/settings");
+      } else {
+        // 👤 Existing user — go to profile overview
+        navigate("/pages/profile/profile-overview");
+      }
+  
     } catch (err) {
       console.error("Login error:", err.message);
       setError("Invalid login credentials. Please try again.");
     }
   };
+  
 
   return (
     <IllustrationLayout

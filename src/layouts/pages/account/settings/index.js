@@ -1,18 +1,3 @@
-/**
-=========================================================
-* Material Dashboard 3 PRO React - v2.3.0
-=========================================================
-
-* Product Page: https://www.creative-tim.com/product/material-dashboard-pro-react
-* Copyright 2024 Creative Tim (https://www.creative-tim.com)
-
-Coded by www.creative-tim.com
-
- =========================================================
-
-* The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.
-*/
-
 // @mui material components
 import Grid from "@mui/material/Grid";
 
@@ -21,12 +6,12 @@ import MDBox from "components/MDBox";
 
 // Settings page components
 import BaseLayout from "layouts/pages/account/components/BaseLayout";
-import Sidenav from "layouts/pages/account/settings/components/Sidenav";
+// import Sidenav from "layouts/pages/account/settings/components/Sidenav";
 import Header from "layouts/pages/account/settings/components/Header";
 import BasicInfo from "layouts/pages/account/settings/components/BasicInfo";
 import ChangePassword from "layouts/pages/account/settings/components/ChangePassword";
-import Authentication from "layouts/pages/account/settings/components/Authentication";
-import Accounts from "layouts/pages/account/settings/components/Accounts";
+// import Authentication from "layouts/pages/account/settings/components/Authentication";
+// import Accounts from "layouts/pages/account/settings/components/Accounts";
 import Notifications from "layouts/pages/account/settings/components/Notifications";
 import Sessions from "layouts/pages/account/settings/components/Sessions";
 import DeleteAccount from "layouts/pages/account/settings/components/DeleteAccount";
@@ -36,27 +21,27 @@ function Settings() {
     <BaseLayout>
       <MDBox mt={4}>
         <Grid container spacing={3}>
-          <Grid item xs={12} lg={3}>
+          {/* <Grid item xs={12} lg={3}>
             <Sidenav />
-          </Grid>
-          <Grid item xs={12} lg={9}>
+          </Grid> */}
+          <Grid item xs={12} lg={12}>
             <MDBox mb={3}>
               <Grid container spacing={3}>
                 <Grid item xs={12}>
                   <Header />
                 </Grid>
                 <Grid item xs={12}>
-                  <BasicInfo />
+                    <BasicInfo />
                 </Grid>
                 <Grid item xs={12}>
                   <ChangePassword />
                 </Grid>
-                <Grid item xs={12}>
-                  <Authentication />
-                </Grid>
-                <Grid item xs={12}>
-                  <Accounts />
-                </Grid>
+                {/* <Grid item xs={12}> */}
+                  {/* <Authentication /> */}
+                {/* </Grid> */}
+                {/* <Grid item xs={12}> */}
+                  {/* <Accounts /> */}
+                {/* </Grid> */}
                 <Grid item xs={12}>
                   <Notifications />
                 </Grid>
