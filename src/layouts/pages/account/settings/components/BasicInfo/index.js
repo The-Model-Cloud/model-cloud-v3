@@ -17,6 +17,15 @@ import FormField from "layouts/pages/account/components/FormField";
 // Data
 import selectData from "layouts/pages/account/settings/components/BasicInfo/data/selectData";
 
+import IconButton from "@mui/material/IconButton";
+import PhotoCamera from "@mui/icons-material/PhotoCamera";
+import ProfileAvatar from "components/Profile/ProfileAvatar";
+
+
+const CLOUDINARY_URL = `https://api.cloudinary.com/v1_1/${process.env.REACT_APP_CLOUDINARY_CLOUD_NAME}/upload`;
+
+
+
 function BasicInfo() {
 
   const user = auth.currentUser;
@@ -28,7 +37,9 @@ function BasicInfo() {
     email: "",
     phone: "",
     language: "",
+    profileAvatar: "", 
   });
+  
 
   useEffect(() => {
     const fetchUser = async () => {
@@ -45,7 +56,9 @@ function BasicInfo() {
             email: data.email || user.email || "",
             phone: data.phone || "",
             language: data.language || "",
+            profileAvatar: data.profileAvatar || "",
           });
+          
         }
       }
     };
@@ -79,6 +92,62 @@ function BasicInfo() {
     <Card id="basic-info" sx={{ overflow: "visible" }}>
       <MDBox p={3}>
         <MDTypography variant="h5">Basic Info</MDTypography>
+      </MDBox>
+      <MDBox p={3}>
+        <Grid container spacing={3}>
+          <Grid item xs={12} sm={6}>
+            <MDBox mb={4}>
+              <MDTypography variant="h6" mb={1}>
+                Profile Picture
+              </MDTypography>
+
+              <MDBox display="flex" alignItems="center" gap={2}>
+                <ProfileAvatar src={profile.profileAvatar} size={100} />
+
+                <label htmlFor="avatar-upload">
+                  <input
+                    accept="image/*"
+                    id="avatar-upload"
+                    type="file"
+                    style={{ display: "none" }}
+                    onChange={async (e) => {
+                      const file = e.target.files[0];
+                      if (!file) return;
+
+                      const formData = new FormData();
+                      formData.append("file", file);
+                      formData.append("upload_preset", process.env.REACT_APP_CLOUDINARY_UPLOAD_PRESET);
+                      formData.append("cloud_name", process.env.REACT_APP_CLOUDINARY_CLOUD_NAME);
+
+                      const res = await fetch(`https://api.cloudinary.com/v1_1/${process.env.REACT_APP_CLOUDINARY_CLOUD_NAME}/upload`, {
+                        method: "POST",
+                        body: formData,
+                      });
+
+                      const data = await res.json();
+
+                      if (data.secure_url && auth.currentUser) {
+                        const uid = auth.currentUser.uid;
+                        const ref = doc(db, "users", uid);
+                        await updateDoc(ref, { profileAvatar: data.secure_url });
+
+                        setProfile((prev) => ({
+                          ...prev,
+                          profileAvatar: data.secure_url,
+                        }));
+                      }
+                    }}
+                  />
+                  <IconButton color="primary" component="span">
+                    <PhotoCamera />
+                  </IconButton>
+                </label>
+              </MDBox>
+            </MDBox>
+
+
+          </Grid>
+        </Grid>
       </MDBox>
       <MDBox component="form" pb={3} px={3}>
         <Grid container spacing={3}>

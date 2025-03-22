@@ -2,25 +2,35 @@ import { useEffect, useState } from "react";
 import { auth, db } from "config/firebase";
 import { doc, getDoc } from "firebase/firestore";
 
-// @mui material components
+import ProfileAvatar from "components/Profile/ProfileAvatar";
 import Card from "@mui/material/Card";
 import Grid from "@mui/material/Grid";
 import Switch from "@mui/material/Switch";
 
-// Material Dashboard 3 PRO React components
 import MDBox from "components/MDBox";
 import MDTypography from "components/MDTypography";
-import MDAvatar from "components/MDAvatar";
 
-// Images
 import burceMars from "assets/images/bruce-mars.jpg";
 
 function Header() {
   const [visible, setVisible] = useState(true);
   const [userName, setUserName] = useState("Loading...");
   const [role, setRole] = useState("");
+  const [avatarUrl, setAvatarUrl] = useState(""); // ✅ Must be up here
+  const [isOnline, setIsOnline] = useState(navigator.onLine);
 
   const handleSetVisible = () => setVisible(!visible);
+
+  useEffect(() => {
+    const handleStatus = () => setIsOnline(navigator.onLine);
+
+    window.addEventListener("online", handleStatus);
+    window.addEventListener("offline", handleStatus);
+    return () => {
+      window.removeEventListener("online", handleStatus);
+      window.removeEventListener("offline", handleStatus);
+    };
+  }, []);
 
   useEffect(() => {
     const fetchUser = async () => {
@@ -33,7 +43,8 @@ function Header() {
           const firstName = data.firstName || "";
           const lastName = data.lastName || "";
           setUserName(`${firstName} ${lastName}`.trim());
-          setRole(data.role || ""); // 👈 Fetch the role
+          setRole(data.role || "");
+          setAvatarUrl(data.profileAvatar || ""); // ✅ Here’s the correct place
         }
       }
     };
@@ -46,8 +57,14 @@ function Header() {
       <MDBox p={2}>
         <Grid container spacing={3} alignItems="center">
           <Grid item>
-            <MDAvatar src={burceMars} alt="profile-image" size="xl" shadow="sm" />
+            <ProfileAvatar
+              src={avatarUrl}
+              alt={userName}
+              size={100}
+              showStatusDot={true}
+            />
           </Grid>
+
           <Grid item>
             <MDBox height="100%" mt={0.5} lineHeight={1}>
               <MDTypography variant="h5" fontWeight="medium">
@@ -58,6 +75,7 @@ function Header() {
               </MDTypography>
             </MDBox>
           </Grid>
+
           <Grid item xs={12} md={6} lg={3} sx={{ ml: "auto" }}>
             <MDBox
               display="flex"

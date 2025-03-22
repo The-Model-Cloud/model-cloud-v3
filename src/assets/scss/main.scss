@@ -1,0 +1,9 @@
+@import "variables";
+@import "mixins";
+@import "lightbox";
+@import "portfolio";
+
+// Global utility styles
+body {
+  scroll-behavior: smooth;
+}

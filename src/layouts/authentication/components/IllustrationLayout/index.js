@@ -24,9 +24,9 @@ function IllustrationLayout({ header, title, description, illustration, children
 
   return (
     <PageLayout background="white">
-      <DefaultNavbar
+      {/* <DefaultNavbar
         routes={pageRoutes}
-      />
+      /> */}
       <Grid
         container
         sx={{

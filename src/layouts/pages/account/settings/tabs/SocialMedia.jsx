@@ -116,6 +116,8 @@ function SocialMedia() {
         <MDTypography variant="h5" gutterBottom>
           Social Media
         </MDTypography>
+      </MDBox>
+      <MDBox p={3}>
         <Grid container spacing={3}>
           {Object.keys(platformMeta).map((platform) => (
             <Grid item xs={12} md={6} key={platform}>
