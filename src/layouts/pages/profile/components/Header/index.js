@@ -1,19 +1,9 @@
-/**
-=========================================================
-* Material Dashboard 3 PRO React - v2.3.0
-=========================================================
-
-* Product Page: https://www.creative-tim.com/product/material-dashboard-pro-react
-* Copyright 2024 Creative Tim (https://www.creative-tim.com)
-
-Coded by www.creative-tim.com
-
- =========================================================
-
-* The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.
-*/
-
 import { useState, useEffect } from "react";
+import ProfileAvatar from "components/Profile/ProfileAvatar";
+import { auth, db } from "config/firebase";
+import { doc, getDoc } from "firebase/firestore";
+import { Link } from "react-router-dom";
+
 
 // prop-types is a library for typechecking of props.
 import PropTypes from "prop-types";
@@ -35,12 +25,15 @@ import MDAvatar from "components/MDAvatar";
 import breakpoints from "assets/theme/base/breakpoints";
 
 // Images
-import burceMars from "assets/images/bruce-mars.jpg";
+// import burceMars from "assets/images/bruce-mars.jpg";
 import backgroundImage from "assets/images/bg-profile.jpeg";
 
 function Header({ children }) {
   const [tabsOrientation, setTabsOrientation] = useState("horizontal");
   const [tabValue, setTabValue] = useState(0);
+  const [fullName, setFullName] = useState("Loading...");
+  const [role, setRole] = useState("");
+  const [avatarUrl, setAvatarUrl] = useState("");
 
   useEffect(() => {
     // A function that sets the orientation state of the tabs.
@@ -61,6 +54,26 @@ function Header({ children }) {
     // Remove event listener on cleanup
     return () => window.removeEventListener("resize", handleTabsOrientation);
   }, [tabsOrientation]);
+
+  useEffect(() => {
+    const fetchUser = async () => {
+      const user = auth.currentUser;
+      if (user) {
+        const ref = doc(db, "users", user.uid);
+        const snap = await getDoc(ref);
+        if (snap.exists()) {
+          const data = snap.data();
+          const firstName = data.firstName || "";
+          const lastName = data.lastName || "";
+          setFullName(`${firstName} ${lastName}`.trim());
+          setRole(data.role || "");
+          setAvatarUrl(data.profileAvatar || "");
+        }
+      }
+    };
+    fetchUser();
+  }, []);
+
 
   const handleSetTabValue = (event, newValue) => setTabValue(newValue);
 
@@ -97,20 +110,12 @@ function Header({ children }) {
       >
         <Grid container spacing={3} alignItems="center">
           <Grid item>
-            <MDAvatar
-              src={burceMars}
-              alt="profile-image"
-              size="xl"
-              shadow="sm"
-            />
+            <ProfileAvatar src={avatarUrl} alt={fullName} size={100} />
           </Grid>
           <Grid item>
             <MDBox height="100%" mt={0.5} lineHeight={1}>
               <MDTypography variant="h5" fontWeight="medium">
-                Richard Davis
-              </MDTypography>
-              <MDTypography variant="button" color="text" fontWeight="regular">
-                CEO / Co-Founder
+                {fullName}
               </MDTypography>
             </MDBox>
           </Grid>
@@ -144,6 +149,8 @@ function Header({ children }) {
                       settings
                     </Icon>
                   }
+                  component={Link}
+                  to="/pages/account/settings"
                 />
               </Tabs>
             </AppBar>
