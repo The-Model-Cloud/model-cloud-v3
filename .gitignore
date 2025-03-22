@@ -26,3 +26,4 @@ yarn.lock
 pnpm-lock.yaml
 
 commit.sh
+model-cloud-v3.code-workspace
