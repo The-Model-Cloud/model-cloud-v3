@@ -1,42 +1,44 @@
-/**
-=========================================================
-* Material Dashboard 3 PRO React - v2.3.0
-=========================================================
+import { useState, useEffect } from "react";
+import { useNavigate, Link } from "react-router-dom";
 
-* Product Page: https://www.creative-tim.com/product/material-dashboard-pro-react
-* Copyright 2024 Creative Tim (https://www.creative-tim.com)
-
-Coded by www.creative-tim.com
-
- =========================================================
-
-* The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.
-*/
-
-import { useState } from "react";
-
-// react-router-dom components
-import { Link } from "react-router-dom";
-
-// @mui material components
+// @mui components
 import Switch from "@mui/material/Switch";
 
-// Material Dashboard 3 PRO React components
+// Custom components
 import MDBox from "components/MDBox";
 import MDTypography from "components/MDTypography";
 import MDInput from "components/MDInput";
 import MDButton from "components/MDButton";
 
-// Authentication layout components
+// Layout wrapper
 import IllustrationLayout from "layouts/authentication/components/IllustrationLayout";
-
-// Image
 import bgImage from "assets/images/illustrations/illustration-reset.jpg";
 
+// Firebase
+import { signInWithEmailAndPassword } from "firebase/auth";
+import { auth } from "config/firebase";
+
 function Illustration() {
+  const navigate = useNavigate();
   const [rememberMe, setRememberMe] = useState(false);
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [error, setError] = useState("");
 
   const handleSetRememberMe = () => setRememberMe(!rememberMe);
+
+  const handleSignIn = async (e) => {
+    e.preventDefault();
+    setError("");
+    try {
+      await signInWithEmailAndPassword(auth, email, password);
+
+      navigate("/dashboard"); // Change if you have a custom dashboard route
+    } catch (err) {
+      console.error("Login error:", err.message);
+      setError("Invalid login credentials. Please try again.");
+    }
+  };
 
   return (
     <IllustrationLayout
@@ -44,12 +46,28 @@ function Illustration() {
       description="Enter your email and password to sign in"
       illustration={bgImage}
     >
-      <MDBox component="form" role="form">
+      <MDBox component="form" role="form" onSubmit={handleSignIn} autoComplete="on">
         <MDBox mb={2}>
-          <MDInput type="email" label="Email" fullWidth />
+          <MDInput
+            type="email"
+            name="email" // ✅ triggers browser autocomplete
+            autoComplete="email" // ✅ further encourages browser to offer suggestion
+            label="Email"
+            fullWidth
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+          />
         </MDBox>
         <MDBox mb={2}>
-          <MDInput type="password" label="Password" fullWidth />
+          <MDInput
+            type="password"
+            name="password" // ✅ triggers password manager
+            autoComplete="current-password"
+            label="Password"
+            fullWidth
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+          />
         </MDBox>
         <MDBox display="flex" alignItems="center" ml={-1}>
           <Switch checked={rememberMe} onChange={handleSetRememberMe} />
@@ -63,9 +81,14 @@ function Illustration() {
             &nbsp;&nbsp;Remember me
           </MDTypography>
         </MDBox>
+        {error && (
+          <MDTypography color="error" fontSize="small" mt={2}>
+            {error}
+          </MDTypography>
+        )}
         <MDBox mt={4} mb={1}>
-          <MDButton variant="gradient" color="info" size="large" fullWidth>
-            sign in
+          <MDButton type="submit" variant="gradient" color="info" size="large" fullWidth>
+            Sign in
           </MDButton>
         </MDBox>
         <MDBox mt={3} textAlign="center">
@@ -73,7 +96,7 @@ function Illustration() {
             Don&apos;t have an account?{" "}
             <MDTypography
               component={Link}
-              to="/authentication/sign-up/cover"
+              to="/authentication/sign-up/illustration"
               variant="button"
               color="info"
               fontWeight="medium"

@@ -155,6 +155,10 @@ const pageRoutes = [
             name: "cover",
             route: "/authentication/sign-up/cover",
           },
+          {
+            name: "illustration",
+            route: "/authentication/sign-up/illustration",
+          },
         ],
       },
       {

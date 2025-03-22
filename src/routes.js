@@ -63,6 +63,7 @@ import SignInBasic from "layouts/authentication/sign-in/basic";
 import SignInCover from "layouts/authentication/sign-in/cover";
 import SignInIllustration from "layouts/authentication/sign-in/illustration";
 import SignUpCover from "layouts/authentication/sign-up/cover";
+import SignUpIllustration from "layouts/authentication/sign-up/illustration";
 import ResetCover from "layouts/authentication/reset-password/cover";
 
 // Material Dashboard 3 PRO React components
@@ -341,6 +342,12 @@ const routes = [
             key: "cover",
             route: "/authentication/sign-up/cover",
             component: <SignUpCover />,
+          },
+          {
+            name: "Illustration",
+            key: "illustration",
+            route: "/authentication/sign-up/illustration",
+            component: <SignUpIllustration />,
           },
         ],
       },
