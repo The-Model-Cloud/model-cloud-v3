@@ -31,6 +31,9 @@ import createCache from "@emotion/cache";
 // Material Dashboard 3 PRO React routes
 import routes from "routes";
 
+// Model public profile page
+import PublicProfile from "layouts/pages/profile/public-profile";
+
 // Material Dashboard 3 PRO React contexts
 import {
   useMaterialUIController,
@@ -57,6 +60,19 @@ export default function App() {
   const [onMouseEnter, setOnMouseEnter] = useState(false);
   const [rtlCache, setRtlCache] = useState(null);
   const { pathname } = useLocation();
+
+  useEffect(() => {
+    const isPublicProfile = /^\/[a-z0-9_-]+$/i.test(pathname);
+    if (isPublicProfile) {
+      // Disable dashboard layout features
+      setMiniSidenav(dispatch, true); // collapse sidenav
+      setOpenConfigurator(dispatch, false);
+      controller.layout !== "page" && dispatch({ type: "LAYOUT", value: "page" });
+    } else {
+      controller.layout !== "dashboard" && dispatch({ type: "LAYOUT", value: "dashboard" });
+    }
+  }, [pathname, dispatch]);
+
 
   // Cache for the rtl
   useMemo(() => {
@@ -165,9 +181,14 @@ export default function App() {
             {configsButton}
           </>
         )}
+
         {layout === "vr" && <Configurator />}
         <Routes>
           {getRoutes(routes)}
+
+          {/* Public-facing profile route based on slug */}
+          <Route path="/:firstName.:lastNameFirstLetter" element={<PublicProfile />} />
+
           <Route path="*" element={<Navigate to="/dashboards/analytics" />} />
         </Routes>
       </ThemeProvider>
@@ -196,8 +217,13 @@ export default function App() {
       {layout === "vr" && <Configurator />}
       <Routes>
         {getRoutes(routes)}
+
+        {/* ✅ Add this */}
+        <Route path="/:slug" element={<PublicProfile />} />
+
         <Route path="*" element={<Navigate to="/dashboards/analytics" />} />
       </Routes>
+
     </ThemeProvider>
   );
 }

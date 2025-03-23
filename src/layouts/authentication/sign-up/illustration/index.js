@@ -1,6 +1,9 @@
 import { useState } from "react";
 import { useNavigate, Link } from "react-router-dom";
 
+import { collection, query, where, getDocs } from "firebase/firestore";
+import slugify from "slugify";
+
 // @mui components
 import Checkbox from "@mui/material/Checkbox";
 import Radio from "@mui/material/Radio";
@@ -36,6 +39,30 @@ function SignUpIllustration() {
     const [agree, setAgree] = useState(false);
     const [error, setError] = useState("");
 
+    const generateUniqueSlug = async (firstName, lastName) => {
+        const baseSlug = `${firstName.trim().toLowerCase()}.${lastName.trim().charAt(0).toLowerCase()}`;
+        let slug = baseSlug;
+        let count = 1;
+
+        const usersRef = collection(db, "users");
+
+        // Check if this slug already exists
+        while (true) {
+            const q = query(usersRef, where("publicSlug", "==", slug));
+            const snapshot = await getDocs(q);
+
+            if (snapshot.empty) break;
+
+            // If the slug exists, append a number
+            slug = `${baseSlug}${count}`;
+            count++;
+        }
+
+        return slug;
+    };
+
+
+
     const handleSignUp = async (e) => {
         e.preventDefault();
         setError("");
@@ -49,30 +76,29 @@ function SignUpIllustration() {
             const userCredential = await createUserWithEmailAndPassword(auth, email, password);
             const user = userCredential.user;
 
-            await updateProfile(user, { displayName: firstName + " " + lastName });
-
-            // ✅ Send verification email
+            await updateProfile(user, { displayName: `${firstName} ${lastName}` });
             await sendEmailVerification(user);
 
-            // ✅ Optionally show message and redirect
-            alert("Verification email sent. Please check your inbox.");
+            const publicSlug = await generateUniqueSlug(firstName, lastName); // 👈 Generate the slug
 
-            // Save to Firestore 'users' collection
             await setDoc(doc(db, "users", user.uid), {
                 uid: user.uid,
                 firstName,
                 lastName,
                 email,
-                role, // model or client
+                role,
+                publicSlug,
                 createdAt: new Date().toISOString(),
             });
 
+            alert("Verification email sent. Please check your inbox.");
             navigate("/dashboard");
         } catch (err) {
             console.error("Registration error:", err.message);
             setError("Failed to create account. Please check your details.");
         }
     };
+
 
     return (
         <IllustrationLayout

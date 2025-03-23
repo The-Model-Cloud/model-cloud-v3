@@ -16,7 +16,7 @@ function Header() {
   const [visible, setVisible] = useState(true);
   const [userName, setUserName] = useState("Loading...");
   const [role, setRole] = useState("");
-  const [avatarUrl, setAvatarUrl] = useState(""); // ✅ Must be up here
+  const [avatarUrl, setAvatarUrl] = useState("");
   const [isOnline, setIsOnline] = useState(navigator.onLine);
 
   const handleSetVisible = () => setVisible(!visible);
@@ -44,7 +44,7 @@ function Header() {
           const lastName = data.lastName || "";
           setUserName(`${firstName} ${lastName}`.trim());
           setRole(data.role || "");
-          setAvatarUrl(data.profileAvatar || ""); // ✅ Here’s the correct place
+          setAvatarUrl(data.profileAvatar || "");
         }
       }
     };

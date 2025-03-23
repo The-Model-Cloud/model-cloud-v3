@@ -1,35 +1,21 @@
 import { useEffect, useState } from "react";
 import { auth, db } from "config/firebase";
 import { doc, getDoc, updateDoc } from "firebase/firestore";
-
-// @material-ui core components
 import Card from "@mui/material/Card";
 import Grid from "@mui/material/Grid";
 import Autocomplete from "@mui/material/Autocomplete";
-
-// Material Dashboard 3 PRO React components
 import MDBox from "components/MDBox";
 import MDTypography from "components/MDTypography";
-
-// Settings page components
 import FormField from "layouts/pages/account/components/FormField";
-
 import MDInput from "components/MDInput";
-
-// Data
 import selectData from "layouts/pages/account/settings/components/BasicInfo/data/selectData";
-
 import IconButton from "@mui/material/IconButton";
 import PhotoCamera from "@mui/icons-material/PhotoCamera";
 import ProfileAvatar from "components/Profile/ProfileAvatar";
 
-
 const CLOUDINARY_URL = `https://api.cloudinary.com/v1_1/${process.env.REACT_APP_CLOUDINARY_CLOUD_NAME}/upload`;
 
-
-
 function BasicInfo() {
-
   const user = auth.currentUser;
   const [profile, setProfile] = useState({
     firstName: "",
@@ -41,8 +27,14 @@ function BasicInfo() {
     phone: "",
     language: "",
     profileAvatar: "",
+    companyName: "",
+    yearEstablished: "",
+    companyNumber: "",
+    registeredAddress: "",
+    vatNumber: "",
   });
 
+  const [userRole, setUserRole] = useState(null);
 
   useEffect(() => {
     const fetchUser = async () => {
@@ -61,8 +53,13 @@ function BasicInfo() {
             phone: data.phone || "",
             language: data.language || "",
             profileAvatar: data.profileAvatar || "",
+            companyName: data.companyName || "",
+            yearEstablished: data.yearEstablished || "",
+            companyNumber: data.companyNumber || "",
+            registeredAddress: data.registeredAddress || "",
+            vatNumber: data.vatNumber || "",
           });
-
+          setUserRole(data.role);
         }
       }
     };
@@ -71,9 +68,7 @@ function BasicInfo() {
 
   const handleChange = (field) => async (e) => {
     const value = e.target.value;
-
     setProfile((prev) => ({ ...prev, [field]: value }));
-
     if (user) {
       const ref = doc(db, "users", user.uid);
       await updateDoc(ref, { [field]: value });
@@ -82,15 +77,11 @@ function BasicInfo() {
 
   const handleAutocompleteChange = (field) => async (event, value) => {
     setProfile((prev) => ({ ...prev, [field]: value }));
-
     if (user) {
       const ref = doc(db, "users", user.uid);
       await updateDoc(ref, { [field]: value });
     }
   };
-
-
-
 
   return (
     <Card id="basic-info" sx={{ overflow: "visible" }}>
@@ -171,60 +162,61 @@ function BasicInfo() {
               onChange={handleChange("lastName")}
             />
           </Grid>
-          <Grid item xs={12}>
-            <Grid container spacing={3}>
-              <Grid item xs={12} sm={4}>
-                <Autocomplete
-                  value={profile.gender}
-                  options={selectData.gender}
-                  renderInput={(params) => (
-                    <FormField {...params} label="I am a" InputLabelProps={{ shrink: true }} />
-                  )}
-                  onChange={handleAutocompleteChange("gender")}
-                />
-
-              </Grid>
-              <Grid item xs={12} sm={8}>
-                <Grid container spacing={3}>
-                  <Grid item xs={12} sm={4}>
-                    <Autocomplete
-                      defaultValue="1"
-                      value={profile.dayOfBirth}
-                      options={selectData.days}
-                      renderInput={(params) => (
-                        <FormField {...params}
-                          label="Birth Date"
-                          InputLabelProps={{ shrink: true }} />
-                      )}
-                      onChange={handleAutocompleteChange("dayOfBirth")}
-                    />
-                  </Grid>
-                  <Grid item xs={12} sm={5}>
-                    <Autocomplete
-                      defaultValue="February"
-                      value={profile.monthOfBirth}
-                      options={selectData.birthDate}
-                      renderInput={(params) => (
-                        <FormField {...params} InputLabelProps={{ shrink: true }}
-                        />
-                      )}
-                      onChange={handleAutocompleteChange("monthOfBirth")}
-                    />
-                  </Grid>
-                  <Grid item xs={12} sm={3}>
-                    <Autocomplete
-                      value={profile.yearOfBirth || (new Date().getFullYear() - 21).toString()} // Default to 21 years ago
-                      options={selectData.years}
-                      renderInput={(params) => (
-                        <FormField {...params} label="Birth Year" InputLabelProps={{ shrink: true }} />
-                      )}
-                      onChange={handleAutocompleteChange("yearOfBirth")}
-                    />
+          {userRole === "model" && (
+            <Grid item xs={12}>
+              <Grid container spacing={3}>
+                <Grid item xs={12} sm={4}>
+                  <Autocomplete
+                    value={profile.gender}
+                    options={selectData.gender}
+                    renderInput={(params) => (
+                      <FormField {...params} label="I am a" InputLabelProps={{ shrink: true }} />
+                    )}
+                    onChange={handleAutocompleteChange("gender")}
+                  />
+                </Grid>
+                <Grid item xs={12} sm={8}>
+                  <Grid container spacing={3}>
+                    <Grid item xs={12} sm={4}>
+                      <Autocomplete
+                        defaultValue="1"
+                        value={profile.dayOfBirth}
+                        options={selectData.days}
+                        renderInput={(params) => (
+                          <FormField {...params}
+                            label="Birth Date"
+                            InputLabelProps={{ shrink: true }} />
+                        )}
+                        onChange={handleAutocompleteChange("dayOfBirth")}
+                      />
+                    </Grid>
+                    <Grid item xs={12} sm={5}>
+                      <Autocomplete
+                        defaultValue="February"
+                        value={profile.monthOfBirth}
+                        options={selectData.birthDate}
+                        renderInput={(params) => (
+                          <FormField {...params} InputLabelProps={{ shrink: true }}
+                          />
+                        )}
+                        onChange={handleAutocompleteChange("monthOfBirth")}
+                      />
+                    </Grid>
+                    <Grid item xs={12} sm={3}>
+                      <Autocomplete
+                        value={profile.yearOfBirth || (new Date().getFullYear() - 21).toString()} // Default to 21 years ago
+                        options={selectData.years}
+                        renderInput={(params) => (
+                          <FormField {...params} label="Birth Year" InputLabelProps={{ shrink: true }} />
+                        )}
+                        onChange={handleAutocompleteChange("yearOfBirth")}
+                      />
+                    </Grid>
                   </Grid>
                 </Grid>
               </Grid>
             </Grid>
-          </Grid>
+          )}
           <Grid item xs={12} sm={6}>
             <FormField
               label="Email"
@@ -257,26 +249,48 @@ function BasicInfo() {
               onChange={handleAutocompleteChange("languages")}
             />
           </Grid>
-          <Grid item xs={12} md={6}>
-            <Autocomplete
-              multiple
-              value={profile.categories}
-              options={selectData.skills}
-              renderInput={(params) => <FormField {...params} label="My categories" InputLabelProps={{ shrink: true }} />}
-              onChange={handleAutocompleteChange("categories")}
-            />
-          </Grid>
-          <Grid item xs={12} sm={12}>
-            <FormField
-              label="About Me"
-              placeholder="Tell us a little about yourself"
-              value={profile.aboutMe}
-              onChange={handleChange("aboutMe")}
-              multiline rows={5}
-            />
-          </Grid>
         </Grid>
-
+        {userRole === "client" || userRole === "super admin" || userRole === "admin" ? (
+          <Grid container mt={1} spacing={3}>
+            <Grid item xs={12} sm={6}>
+              <FormField label="Company Name" value={profile.companyName} onChange={handleChange("companyName")} />
+            </Grid>
+            <Grid item xs={12} sm={6}>
+              <FormField label="Year Established" value={profile.yearEstablished} onChange={handleChange("yearEstablished")} />
+            </Grid>
+            <Grid item xs={12} sm={6}>
+              <FormField label="Company Number" value={profile.companyNumber} onChange={handleChange("companyNumber")} />
+            </Grid>
+            <Grid item xs={12} sm={6}>
+              <FormField label="Registered Address" value={profile.registeredAddress} onChange={handleChange("registeredAddress")} />
+            </Grid>
+            <Grid item xs={12} sm={6}>
+              <FormField label="VAT Number (if applicable)" value={profile.vatNumber} onChange={handleChange("vatNumber")} />
+            </Grid>
+          </Grid>
+        ) : null}
+        {userRole === "model" && (
+          <Grid container mt={1} spacing={3}>
+            <Grid item xs={12} md={6}>
+              <Autocomplete
+                multiple
+                value={profile.categories}
+                options={selectData.skills}
+                renderInput={(params) => <FormField {...params} label="My categories" InputLabelProps={{ shrink: true }} />}
+                onChange={handleAutocompleteChange("categories")}
+              />
+            </Grid>
+            <Grid item xs={12} sm={12}>
+              <FormField
+                label="About Me"
+                placeholder="Tell us a little about yourself"
+                value={profile.aboutMe}
+                onChange={handleChange("aboutMe")}
+                multiline rows={5}
+              />
+            </Grid>
+          </Grid>
+        )}
       </MDBox>
     </Card>
   );

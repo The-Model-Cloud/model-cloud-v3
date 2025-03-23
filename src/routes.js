@@ -50,6 +50,7 @@ import SignInIllustration from "layouts/authentication/sign-in/illustration";
 import SignUpCover from "layouts/authentication/sign-up/cover";
 import SignUpIllustration from "layouts/authentication/sign-up/illustration";
 import ResetCover from "layouts/authentication/reset-password/cover";
+import NewJob from "layouts/jobs/new-job";
 
 // Material Dashboard 3 PRO React components
 import MDAvatar from "components/MDAvatar";
@@ -85,6 +86,40 @@ const routes = [
         route: "/authentication/sign-in/basic",
         component: <SignInBasic />,
       },
+    ],
+  },
+  { type: "divider", key: "divider-0" },
+  {
+    type: "collapse",
+    name: "Jobs",
+    key: "jobs",
+    icon: <Icon fontSize="small">work</Icon>,
+    collapse: [
+      {
+        name: "Create Job",
+        key: "new-job",
+        route: "/jobs/new-job",
+        component: <NewJob />,
+      },
+      // These will be connected later:
+      // {
+      //   name: "My Jobs",
+      //   key: "job-list",
+      //   route: "/jobs",
+      //   component: <JobList />,
+      // },
+      // {
+      //   name: "Edit Job",
+      //   key: "edit-job",
+      //   route: "/jobs/edit-job/:id",
+      //   component: <EditJob />,
+      // },
+      // {
+      //   name: "Job Details",
+      //   key: "job-detail",
+      //   route: "/jobs/job/:id",
+      //   component: <JobDetail />,
+      // },
     ],
   },
   { type: "divider", key: "divider-0" },

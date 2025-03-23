@@ -1,6 +1,7 @@
 import Avatar from "@mui/material/Avatar";
 import Badge from "@mui/material/Badge";
 import { styled } from "@mui/material/styles";
+import PropTypes from 'prop-types'; // Import PropTypes
 
 import burceMars from "assets/images/bruce-mars.jpg";
 
@@ -33,14 +34,20 @@ const transformCloudinary = (url, size = 56) => {
   return `${parts[0]}/upload/c_thumb,g_face,w_${size},h_${size}/${parts[1]}`;
 };
 
-export default function ProfileAvatar({ src, alt = "Avatar", size = 56, showStatusDot = false }) {
+export default function ProfileAvatar({
+  src,
+  alt = "Avatar",
+  size = 56,
+  showStatusDot = false,
+  borderRadius = "50%", // Add borderRadius prop with default value
+}) {
   const transformed = transformCloudinary(src, size);
 
   const avatar = (
     <Avatar
       alt={alt}
       src={transformed || burceMars}
-      sx={{ width: size, height: size }}
+      sx={{ width: size, height: size, borderRadius: borderRadius }} // Apply borderRadius
     />
   );
 
@@ -56,3 +63,12 @@ export default function ProfileAvatar({ src, alt = "Avatar", size = 56, showStat
     avatar
   );
 }
+
+// Add PropTypes for type checking
+ProfileAvatar.propTypes = {
+  src: PropTypes.string,
+  alt: PropTypes.string,
+  size: PropTypes.number,
+  showStatusDot: PropTypes.bool,
+  borderRadius: PropTypes.string, // Add borderRadius propType
+};

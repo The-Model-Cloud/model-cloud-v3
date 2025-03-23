@@ -4,7 +4,6 @@ import { auth, db } from "config/firebase";
 import { doc, getDoc } from "firebase/firestore";
 import { Link } from "react-router-dom";
 
-
 // prop-types is a library for typechecking of props.
 import PropTypes from "prop-types";
 
@@ -19,21 +18,20 @@ import Icon from "@mui/material/Icon";
 // Material Dashboard 3 PRO React components
 import MDBox from "components/MDBox";
 import MDTypography from "components/MDTypography";
-import MDAvatar from "components/MDAvatar";
 
 // Material Dashboard 3 PRO React base styles
 import breakpoints from "assets/theme/base/breakpoints";
 
 // Images
-// import burceMars from "assets/images/bruce-mars.jpg";
 import backgroundImage from "assets/images/bg-profile.jpeg";
 
 function Header({ children }) {
   const [tabsOrientation, setTabsOrientation] = useState("horizontal");
   const [tabValue, setTabValue] = useState(0);
   const [fullName, setFullName] = useState("Loading...");
-  const [role, setRole] = useState("");
+  const [publicSlug, setPublicSlug] = useState("");
   const [avatarUrl, setAvatarUrl] = useState("");
+  const [userRole, setUserRole] = useState(null); // Add userRole state
 
   useEffect(() => {
     // A function that sets the orientation state of the tabs.
@@ -66,14 +64,16 @@ function Header({ children }) {
           const firstName = data.firstName || "";
           const lastName = data.lastName || "";
           setFullName(`${firstName} ${lastName}`.trim());
-          setRole(data.role || "");
           setAvatarUrl(data.profileAvatar || "");
+          setUserRole(data.role || null); // Set the user role
+          // Generate public slug in the format firstname.lastnamefirstletter
+          const slug = `${firstName.toLowerCase()}.${lastName.charAt(0).toLowerCase()}`;
+          setPublicSlug(slug);
         }
       }
     };
     fetchUser();
   }, []);
-
 
   const handleSetTabValue = (event, newValue) => setTabValue(newValue);
 
@@ -117,15 +117,24 @@ function Header({ children }) {
               <MDTypography variant="h5" fontWeight="medium">
                 {fullName}
               </MDTypography>
+              {publicSlug && userRole === "model" && ( // Check if user is a model
+                <MDTypography
+                  component={Link}
+                  to={`/${publicSlug}`}
+                  variant="h6"
+                  fontWeight="normal"
+                  color="info"
+                  textGradient
+                  sx={{ textDecoration: "none" }}
+                >
+                  View Public Profile
+                </MDTypography>
+              )}
             </MDBox>
           </Grid>
           <Grid item xs={12} md={6} lg={4} sx={{ ml: "auto" }}>
             <AppBar position="static">
-              <Tabs
-                orientation={tabsOrientation}
-                value={tabValue}
-                onChange={handleSetTabValue}
-              >
+              <Tabs orientation={tabsOrientation} value={tabValue} onChange={handleSetTabValue}>
                 <Tab
                   label="App"
                   icon={
