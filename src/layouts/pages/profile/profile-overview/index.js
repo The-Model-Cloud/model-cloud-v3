@@ -1,3 +1,7 @@
+import { useEffect, useState } from "react";
+import { auth, db } from "config/firebase";
+import { doc, getDoc, updateDoc } from "firebase/firestore";
+
 // @mui material components
 import Grid from "@mui/material/Grid";
 import Divider from "@mui/material/Divider";
@@ -6,6 +10,8 @@ import Divider from "@mui/material/Divider";
 import FacebookIcon from "@mui/icons-material/Facebook";
 import TwitterIcon from "@mui/icons-material/Twitter";
 import InstagramIcon from "@mui/icons-material/Instagram";
+import YouTubeIcon from "@mui/icons-material/YouTube";
+import LinkedInIcon from "@mui/icons-material/LinkedIn";
 
 // Material Dashboard 3 PRO React components
 import MDBox from "components/MDBox";
@@ -37,6 +43,57 @@ import team3 from "assets/images/team-3.jpg";
 import team4 from "assets/images/team-4.jpg";
 
 function Overview() {
+
+  const [userProfile, setUserProfile] = useState({
+    firstName: "",
+    lastName: "",
+    aboutMe: "",
+    mobile: "",
+    email: "",
+    location: "",
+    facebook: "",
+    twitter: "",
+    instagram: "",
+    linkedin: "",
+    youtube: "",
+  });
+
+  const socialUrls = {
+    facebook: "https://facebook.com/",
+    twitter: "https://twitter.com/",
+    instagram: "https://instagram.com/",
+    youtube: "https://youtube.com/",
+    linkedin: "https://linkedin.com/in/", // or `/company/` for brands
+  };
+
+  useEffect(() => {
+    const fetchProfile = async () => {
+      const user = auth.currentUser;
+      if (user) {
+        const ref = doc(db, "users", user.uid);
+        const snap = await getDoc(ref);
+        if (snap.exists()) {
+          const data = snap.data();
+          setUserProfile({
+            firstName: data.firstName || "",
+            lastName: data.lastName || "",
+            aboutMe: data.aboutMe || "",
+            mobile: data.phone || "",
+            email: data.email || user.email || "",
+            location: data.location || "",
+            facebook: data.facebook || "",
+            twitter: data.twitter || "",
+            instagram: data.instagram || "",
+            linkedin: data.linkedin || "",
+            youtube: data.youtube || "",
+          });
+        }
+      }
+    };
+    fetchProfile();
+  }, []);
+
+
   return (
     <DashboardLayout>
       <DashboardNavbar />
@@ -51,31 +108,43 @@ function Overview() {
               <Divider orientation="vertical" sx={{ ml: -2, mr: 1 }} />
               <ProfileInfoCard
                 title="profile information"
-                description="Hi, I’m Alec Thompson, Decisions: If you can’t decide, the answer is no. If two equally difficult paths, choose the one more painful in the short term (pain avoidance is creating an illusion of equality)."
+                description={userProfile.aboutMe || "No description provided."}
                 info={{
-                  fullName: "Alec M. Thompson",
-                  mobile: "(44) 123 1234 123",
-                  email: "alecthompson@mail.com",
-                  location: "USA",
+                  fullName: `${userProfile.firstName} ${userProfile.lastName}`.trim(),
+                  mobile: userProfile.mobile,
+                  email: userProfile.email,
+                  location: userProfile.location,
                 }}
+
                 social={[
-                  {
-                    link: "https://www.facebook.com/CreativeTim/",
+                  userProfile.facebook && {
+                    link: `${socialUrls.facebook}${userProfile.facebook.replace(/^@|^\//, "")}`,
                     icon: <FacebookIcon />,
                     color: "facebook",
                   },
-                  {
-                    link: "https://twitter.com/creativetim",
+                  userProfile.twitter && {
+                    link: `${socialUrls.twitter}${userProfile.twitter.replace(/^@|^\//, "")}`,
                     icon: <TwitterIcon />,
                     color: "twitter",
                   },
-                  {
-                    link: "https://www.instagram.com/creativetimofficial/",
+                  userProfile.instagram && {
+                    link: `${socialUrls.instagram}${userProfile.instagram.replace(/^@|^\//, "")}`,
                     icon: <InstagramIcon />,
                     color: "instagram",
                   },
-                ]}
-                action={{ route: "", tooltip: "Edit Profile" }}
+                  userProfile.youtube && {
+                    link: `${socialUrls.youtube}${userProfile.youtube.replace(/^@|^\//, "")}`,
+                    icon: <YouTubeIcon />,
+                    color: "youtube",
+                  },
+                  userProfile.linkedin && {
+                    link: `${socialUrls.linkedin}${userProfile.linkedin.replace(/^@|^\//, "")}`,
+                    icon: <LinkedInIcon />,
+                    color: "linkedin",
+                  },
+                ].filter(Boolean)}
+
+                action={{ route: "/pages/account/settings", tooltip: "Edit Profile" }}
                 shadow={false}
               />
               <Divider orientation="vertical" sx={{ mx: 0 }} />

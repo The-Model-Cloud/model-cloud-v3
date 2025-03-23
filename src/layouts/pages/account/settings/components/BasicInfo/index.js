@@ -14,6 +14,8 @@ import MDTypography from "components/MDTypography";
 // Settings page components
 import FormField from "layouts/pages/account/components/FormField";
 
+import MDInput from "components/MDInput";
+
 // Data
 import selectData from "layouts/pages/account/settings/components/BasicInfo/data/selectData";
 
@@ -34,12 +36,13 @@ function BasicInfo() {
     lastName: "",
     gender: "",
     location: "",
+    aboutMe: "",
     email: "",
     phone: "",
     language: "",
-    profileAvatar: "", 
+    profileAvatar: "",
   });
-  
+
 
   useEffect(() => {
     const fetchUser = async () => {
@@ -53,12 +56,13 @@ function BasicInfo() {
             lastName: data.lastName || "",
             gender: data.gender || "",
             location: data.location || "",
+            aboutMe: data.aboutMe || "",
             email: data.email || user.email || "",
             phone: data.phone || "",
             language: data.language || "",
             profileAvatar: data.profileAvatar || "",
           });
-          
+
         }
       }
     };
@@ -262,7 +266,17 @@ function BasicInfo() {
               onChange={handleAutocompleteChange("categories")}
             />
           </Grid>
+          <Grid item xs={12} sm={12}>
+            <FormField
+              label="About Me"
+              placeholder="Tell us a little about yourself"
+              value={profile.aboutMe}
+              onChange={handleChange("aboutMe")}
+              multiline rows={5}
+            />
+          </Grid>
         </Grid>
+
       </MDBox>
     </Card>
   );
