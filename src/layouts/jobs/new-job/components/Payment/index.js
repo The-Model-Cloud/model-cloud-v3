@@ -29,7 +29,7 @@ function Payment() {
           </Grid>
           <Grid item xs={12} sm={4}>
             <Autocomplete
-              defaultValue="Flat Fee"
+              defaultValue="Per Day"
               options={["Flat Fee", "Hourly", "Per Day"]}
               renderInput={(params) => <MDInput {...params}
                 variant="standard"
