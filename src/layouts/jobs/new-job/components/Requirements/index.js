@@ -84,8 +84,8 @@ function Requirements({ formik }) {
           <Grid item xs={12} sm={3}>
             <Autocomplete
               multiple
-              value={values.dressSize}
-              options={selectOptions.dressSizes}
+              value={values.dressSize || []}
+              options={selectOptions.dressSizes || []}
               onChange={(_, newValue) => setFieldValue("dressSize", newValue)}
               renderInput={(params) => (
                 <FormField
@@ -102,8 +102,8 @@ function Requirements({ formik }) {
           <Grid item xs={12} sm={3}>
             <Autocomplete
               multiple
-              value={values.shoeSize}
-              options={selectOptions.shoeSizes}
+              value={values.shoeSize || []}
+              options={selectOptions.shoeSizes || []}
               onChange={(_, newValue) => setFieldValue("shoeSize", newValue)}
               renderInput={(params) => (
                 <FormField
@@ -120,8 +120,8 @@ function Requirements({ formik }) {
           <Grid item xs={12} sm={3}>
             <Autocomplete
               multiple
-              value={values.eyeColour}
-              options={selectOptions.eyeColours}
+              value={values.eyeColour || []}
+              options={selectOptions.eyeColours || []}
               onChange={(_, newValue) => setFieldValue("eyeColour", newValue)}
               renderInput={(params) => (
                 <FormField
@@ -138,8 +138,8 @@ function Requirements({ formik }) {
           <Grid item xs={12} sm={3}>
             <Autocomplete
               multiple
-              value={values.hairColour}
-              options={selectOptions.hairColours}
+              value={values.hairColour || []}
+              options={selectOptions.hairColours || []}
               onChange={(_, newValue) => setFieldValue("hairColour", newValue)}
               renderInput={(params) => (
                 <FormField
@@ -156,8 +156,8 @@ function Requirements({ formik }) {
           <Grid item xs={12}>
             <Autocomplete
               multiple
-              value={values.categories}
-              options={selectOptions.skills} // Multiple select for skills
+              value={values.categories || []}
+              options={selectOptions.skills || []} // Multiple select for skills
               onChange={(_, newValue) => setFieldValue("categories", newValue)}
               renderInput={(params) => (
                 <FormField

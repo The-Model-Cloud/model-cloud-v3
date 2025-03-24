@@ -51,6 +51,8 @@ import SignUpCover from "layouts/authentication/sign-up/cover";
 import SignUpIllustration from "layouts/authentication/sign-up/illustration";
 import ResetCover from "layouts/authentication/reset-password/cover";
 import NewJob from "layouts/jobs/new-job";
+import MyJobs from "layouts/jobs/my-jobs";
+import JobDetails from "layouts/jobs/job-details";
 
 // Material Dashboard 3 PRO React components
 import MDAvatar from "components/MDAvatar";
@@ -101,13 +103,13 @@ const routes = [
         route: "/jobs/new-job",
         component: <NewJob />,
       },
+      {
+        name: "My Jobs",
+        key: "job-list",
+        route: "/jobs/my-jobs",
+        component: <MyJobs />,
+      },
       // These will be connected later:
-      // {
-      //   name: "My Jobs",
-      //   key: "job-list",
-      //   route: "/jobs",
-      //   component: <JobList />,
-      // },
       // {
       //   name: "Edit Job",
       //   key: "edit-job",
@@ -122,7 +124,7 @@ const routes = [
       // },
     ],
   },
-  { type: "divider", key: "divider-0" },
+  { type: "divider", key: "divider-1" },
   {
     type: "collapse",
     name: "Dashboards",
@@ -385,7 +387,7 @@ const routes = [
       },
     ],
   },
-  { type: "divider", key: "divider-1" },
+  { type: "divider", key: "divider-2" },
   { type: "title", title: "Docs", key: "title-docs" },
   {
     type: "collapse",

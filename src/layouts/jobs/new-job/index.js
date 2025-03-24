@@ -1,37 +1,44 @@
 import { useState } from "react";
 import { auth, db } from "config/firebase";
-import { doc, updateDoc, collection, addDoc } from "firebase/firestore";
+import { collection, addDoc, updateDoc, doc, arrayUnion } from "firebase/firestore";
 import { Formik, Form } from "formik";
 import * as Yup from "yup";
 
-// @mui material components
 import Grid from "@mui/material/Grid";
 import Stepper from "@mui/material/Stepper";
 import Step from "@mui/material/Step";
 import StepLabel from "@mui/material/StepLabel";
 import Card from "@mui/material/Card";
 
-// Material Dashboard 3 PRO React components
 import MDBox from "components/MDBox";
 import MDButton from "components/MDButton";
 import MDTypography from "components/MDTypography";
 
-// Material Dashboard 3 PRO React examples
 import DashboardLayout from "examples/LayoutContainers/DashboardLayout";
 import DashboardNavbar from "examples/Navbars/DashboardNavbar";
 import Footer from "examples/Footer";
 
-// Import all step components
 import JobInfo from "./components/JobInfo";
 import Media from "./components/Media";
 import Requirements from "./components/Requirements";
 import Payment from "./components/Payment";
 
 function getSteps() {
-  return ["1. Job Info", "2. Media", "3. Requirements", "4. Payment"];
+  return ["1. Job Info", "2. Media", "3. Requirements", "4. Payment", "5. Confirmation"];
 }
 
-function getStepContent(stepIndex, formikProps) {
+const generateJobReference = () => {
+  const today = new Date();
+  const formattedDate = today.toISOString().split("T")[0].replace(/-/g, "");
+  const hours = today.getHours().toString().padStart(2, "0");
+  const minutes = today.getMinutes().toString().padStart(2, "0");
+  const seconds = today.getSeconds().toString().padStart(2, "0");
+  const milliseconds = today.getMilliseconds().toString().padStart(3, "0");
+  const random = seconds + milliseconds;
+  return `TMC-${formattedDate}-${hours}${minutes}${random}`;
+};
+
+function getStepContent(stepIndex, formikProps, jobRef) {
   switch (stepIndex) {
     case 0:
       return <JobInfo formik={formikProps} />;
@@ -41,6 +48,28 @@ function getStepContent(stepIndex, formikProps) {
       return <Requirements formik={formikProps} />;
     case 3:
       return <Payment formik={formikProps} />;
+    case 4:
+      return (
+        <MDBox textAlign="center" mt={4}>
+          <MDTypography variant="h4" color="success" gutterBottom>
+            ✅ Job successfully created!
+          </MDTypography>
+          <MDTypography variant="h6">
+            Your job reference is: <strong>{jobRef}</strong>
+          </MDTypography>
+          <MDBox mt={2}>
+            <MDButton
+              variant="gradient"
+              color="dark"
+              onClick={() => {
+                alert("Redirecting to your job list...");
+              }}
+            >
+              View My Jobs
+            </MDButton>
+          </MDBox>
+        </MDBox>
+      );
     default:
       return null;
   }
@@ -48,58 +77,37 @@ function getStepContent(stepIndex, formikProps) {
 
 function NewJob() {
   const [activeStep, setActiveStep] = useState(0);
+  const [jobRef, setJobRef] = useState("");
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
   const steps = getSteps();
-  const isLastStep = activeStep === steps.length - 1;
+  const isConfirmationStep = activeStep === steps.length - 1;
+  const isFinalFormStep = activeStep === steps.length - 2;
 
   const initialValues = {
     title: "",
     location: "",
-    description: "", 
+    description: "",
     jobType: "In-Person",
     minHeight: "",
     maxHeight: "",
     experienceLevel: "",
-    gender: [],             
+    gender: [],
+    categories: [],
+    height: "",
+    weight: "",
+    waist: "",
+    chest: "",
+    hips: "",
+    dressSize: [],
+    shoeSize: [],
+    eyeColour: [],
+    hairColour: [],
     budget: "",
     currency: "GBP",
     rateType: "Flat Fee",
     media: [],
   };
-  
-
-  const handleSubmit = async (values, actions) => {
-    try {
-      // Get the current user (the one creating the job)
-      const user = auth.currentUser;
-      if (!user) {
-        alert("You must be logged in to create a job.");
-        return;
-      }
-  
-      // Add the user ID (uid) to the job data
-      const jobData = {
-        ...values,
-        createdAt: new Date().toISOString(),
-        userId: user.uid,  // Link the job to the user
-      };
-  
-      // Save the job in Firestore under the "jobs" collection
-      await addDoc(collection(db, "jobs"), jobData);
-  
-      // update the user document with job information
-      const userRef = doc(db, "users", user.uid);
-      await updateDoc(userRef, {
-        jobs: [...(userRef.jobs || []), jobData], // Add the job reference to the user
-      });
-  
-      actions.setSubmitting(false);
-      alert("Job successfully created!");
-    } catch (error) {
-      console.error("Error creating job:", error);
-      alert("Failed to create job.");
-    }
-  };
-  
 
   const validationSchema = Yup.object({
     title: Yup.string().required("Job title is required").min(3, "Title must be at least 3 characters"),
@@ -107,13 +115,50 @@ function NewJob() {
     description: Yup.string().required("Description is required"),
     categories: Yup.array().min(1, "At least one category is required"),
     gender: Yup.array().min(1, "Please select at least one gender"),
-    budget: Yup.number().typeError("Budget must be a number").required("Budget is required").positive("Must be positive"),
     currency: Yup.string().required("Currency is required"),
     rateType: Yup.string().required("Rate type is required"),
     media: Yup.array().nullable(),
   });
-  
 
+  const handleSubmit = async (values, actions) => {
+    const user = auth.currentUser;
+    if (!user) {
+      alert("You must be logged in to create a job.");
+      return;
+    }
+
+    setIsSubmitting(true);
+    actions.setSubmitting(true);
+
+    try {
+      const generatedRef = generateJobReference();
+      setJobRef(generatedRef);
+
+      const jobData = {
+        ...values,
+        createdAt: new Date().toISOString(),
+        userId: user.uid,
+        reference: generatedRef,
+      };
+
+      const docRef = await addDoc(collection(db, "jobs"), jobData);
+      console.log("✅ Job posted with ID:", docRef.id);
+
+      const userRef = doc(db, "users", user.uid);
+      await updateDoc(userRef, {
+        jobs: arrayUnion(generatedRef),
+      });
+
+      setIsSubmitting(false);
+      actions.setSubmitting(false);
+      setActiveStep((prevStep) => prevStep + 1);
+    } catch (error) {
+      console.error("❌ Error submitting job:", error);
+      alert("An error occurred while creating the job. Please try again.");
+      setIsSubmitting(false);
+      actions.setSubmitting(false);
+    }
+  };
 
   return (
     <DashboardLayout>
@@ -128,7 +173,7 @@ function NewJob() {
             >
               {(formikProps) => (
                 <Form>
-                  <MDBox mt={6} mb={8} textAlign="center">
+                  <MDBox mt={6} mb={4} textAlign="center">
                     <MDTypography variant="h3" fontWeight="bold">
                       Add New Job
                     </MDTypography>
@@ -136,6 +181,7 @@ function NewJob() {
                       Fill out the details to post a new opportunity for models.
                     </MDTypography>
                   </MDBox>
+
                   <Card>
                     <MDBox mt={2} mb={3} mx={2}>
                       <Stepper activeStep={activeStep} alternativeLabel>
@@ -146,26 +192,45 @@ function NewJob() {
                         ))}
                       </Stepper>
                     </MDBox>
+
                     <MDBox p={2}>
-                      {getStepContent(activeStep, formikProps)}
-                      <MDBox mt={3} display="flex" justifyContent="space-between">
+                      {getStepContent(activeStep, formikProps, jobRef)}
+                    </MDBox>
+
+                    {!isConfirmationStep && (
+                      <MDBox mt={3} display="flex" justifyContent="space-between" alignItems="center">
                         {activeStep > 0 ? (
-                          <MDButton variant="gradient" color="light" onClick={() => setActiveStep((s) => s - 1)}>
+                          <MDButton
+                            variant="gradient"
+                            color="light"
+                            onClick={() => setActiveStep((s) => s - 1)}
+                          >
                             Back
                           </MDButton>
-                        ) : <MDBox />}
-                        <MDButton
-                          variant="gradient"
-                          color="dark"
-                          type={isLastStep ? "submit" : "button"}
-                          onClick={() => {
-                            if (!isLastStep) setActiveStep((s) => s + 1);
-                          }}
-                        >
-                          {isLastStep ? "Submit" : "Next"}
-                        </MDButton>
+                        ) : (
+                          <MDBox />
+                        )}
+
+                        {isFinalFormStep ? (
+                          <MDButton
+                            variant="gradient"
+                            color="dark"
+                            onClick={formikProps.handleSubmit}
+                            disabled={formikProps.isSubmitting || isSubmitting}
+                          >
+                            Submit
+                          </MDButton>
+                        ) : (
+                          <MDButton
+                            variant="gradient"
+                            color="dark"
+                            onClick={() => setActiveStep((s) => s + 1)}
+                          >
+                            Next
+                          </MDButton>
+                        )}
                       </MDBox>
-                    </MDBox>
+                    )}
                   </Card>
                 </Form>
               )}

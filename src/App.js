@@ -34,6 +34,9 @@ import routes from "routes";
 // Model public profile page
 import PublicProfile from "layouts/pages/profile/public-profile";
 
+//Job Details page
+import JobDetails from "layouts/jobs/job-details";
+
 // Material Dashboard 3 PRO React contexts
 import {
   useMaterialUIController,
@@ -186,8 +189,10 @@ export default function App() {
         <Routes>
           {getRoutes(routes)}
 
+          <Route path="/jobs/:reference" element={<JobDetails />} />
+
           {/* Public-facing profile route based on slug */}
-          <Route path="/:firstName.:lastNameFirstLetter" element={<PublicProfile />} />
+          <Route path="/:slug" element={<PublicProfile />} />
 
           <Route path="*" element={<Navigate to="/dashboards/analytics" />} />
         </Routes>
@@ -218,9 +223,11 @@ export default function App() {
       <Routes>
         {getRoutes(routes)}
 
-        {/* ✅ Add this */}
+        <Route path="/jobs/:reference" element={<JobDetails />} />
+
         <Route path="/:slug" element={<PublicProfile />} />
 
+        {/* Default fallback */}
         <Route path="*" element={<Navigate to="/dashboards/analytics" />} />
       </Routes>
 
