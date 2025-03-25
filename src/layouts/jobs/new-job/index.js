@@ -1,3 +1,4 @@
+import { Link } from "react-router-dom";
 import { useState } from "react";
 import { auth, db } from "config/firebase";
 import { collection, addDoc, updateDoc, doc, arrayUnion } from "firebase/firestore";
@@ -61,9 +62,8 @@ function getStepContent(stepIndex, formikProps, jobRef) {
             <MDButton
               variant="gradient"
               color="dark"
-              onClick={() => {
-                alert("Redirecting to your job list...");
-              }}
+              component={Link}
+              to="/jobs/my-jobs"
             >
               View My Jobs
             </MDButton>
@@ -88,24 +88,27 @@ function NewJob() {
     title: "",
     location: "",
     description: "",
-    jobType: "In-Person",
+    usage: "",
+    jobType: [],
     minHeight: "",
     maxHeight: "",
-    experienceLevel: "",
     gender: [],
     categories: [],
-    height: "",
-    weight: "",
+    minWeight: "",
+    maxWeight: "",
     waist: "",
+    qty: "",
     chest: "",
+    collar: "",
     hips: "",
+    braSize: [],
     dressSize: [],
     shoeSize: [],
     eyeColour: [],
     hairColour: [],
     budget: "",
-    currency: "GBP",
-    rateType: "Flat Fee",
+    currency: [],
+    rateType: [],
     media: [],
   };
 
@@ -122,6 +125,9 @@ function NewJob() {
 
   const handleSubmit = async (values, actions) => {
     const user = auth.currentUser;
+    console.log("👤 Current user:", user);
+    console.log("📝 Form values on submit:", values);
+
     if (!user) {
       alert("You must be logged in to create a job.");
       return;
@@ -133,13 +139,17 @@ function NewJob() {
     try {
       const generatedRef = generateJobReference();
       setJobRef(generatedRef);
+      console.log("🔧 Generated Job Ref:", generatedRef);
 
       const jobData = {
         ...values,
         createdAt: new Date().toISOString(),
         userId: user.uid,
         reference: generatedRef,
+        media: values.media || [],
       };
+
+      console.log("📦 Job data to be saved:", jobData);
 
       const docRef = await addDoc(collection(db, "jobs"), jobData);
       console.log("✅ Job posted with ID:", docRef.id);
@@ -148,6 +158,7 @@ function NewJob() {
       await updateDoc(userRef, {
         jobs: arrayUnion(generatedRef),
       });
+      console.log("🧾 Added job ref to user doc");
 
       setIsSubmitting(false);
       actions.setSubmitting(false);
@@ -159,6 +170,8 @@ function NewJob() {
       actions.setSubmitting(false);
     }
   };
+
+
 
   return (
     <DashboardLayout>
@@ -198,7 +211,7 @@ function NewJob() {
                     </MDBox>
 
                     {!isConfirmationStep && (
-                      <MDBox mt={3} display="flex" justifyContent="space-between" alignItems="center">
+                      <MDBox m={3} display="flex" justifyContent="space-between" alignItems="center">
                         {activeStep > 0 ? (
                           <MDButton
                             variant="gradient"
@@ -214,7 +227,7 @@ function NewJob() {
                         {isFinalFormStep ? (
                           <MDButton
                             variant="gradient"
-                            color="dark"
+                            color="info"
                             onClick={formikProps.handleSubmit}
                             disabled={formikProps.isSubmitting || isSubmitting}
                           >
@@ -223,7 +236,7 @@ function NewJob() {
                         ) : (
                           <MDButton
                             variant="gradient"
-                            color="dark"
+                            color="primary"
                             onClick={() => setActiveStep((s) => s + 1)}
                           >
                             Next

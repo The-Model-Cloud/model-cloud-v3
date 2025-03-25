@@ -9,6 +9,11 @@ import selectData from "layouts/pages/account/settings/components/BasicInfo/data
 
 function JobInfo({ formik }) {
   const { values, handleChange, setFieldValue, touched, errors } = formik;
+  const currentDay = (new Date().getDate()).toString(); // "1" to "31"
+  const currentMonth = new Date().toLocaleString("default", { month: "long" }); // e.g., "March"
+  const currentYear = new Date().getFullYear();
+  const futureYears = Array.from({ length: 5 }, (_, i) => (currentYear + i).toString());
+
 
   return (
     <MDBox>
@@ -21,7 +26,7 @@ function JobInfo({ formik }) {
 
       <MDBox mt={3}>
         <Grid container spacing={3}>
-          <Grid item xs={12} sm={4}>
+          <Grid item xs={12} sm={6}>
             <FormField
               type="text"
               label="Job Title"
@@ -32,11 +37,10 @@ function JobInfo({ formik }) {
               helperText={touched.title && errors.title}
             />
           </Grid>
-
-          <Grid item xs={12} sm={4}>
+          <Grid item xs={12} sm={6}>
             <FormField
               type="text"
-              label="Location"
+              label="Job Location"
               name="location"
               placeholder="e.g., London, UK"
               value={values.location}
@@ -45,8 +49,40 @@ function JobInfo({ formik }) {
               helperText={touched.location && errors.location}
             />
           </Grid>
-
           <Grid item xs={12} sm={4}>
+            <Autocomplete
+              multiple
+              options={selectData.jobType}
+              value={values.jobType || []}
+              onChange={(_, newValue) => setFieldValue("jobType", newValue)}
+              renderInput={(params) => (
+                <FormField
+                  {...params}
+                  label="Job Type"
+                  error={touched.jobType && Boolean(errors.jobType)}
+                  helperText={touched.jobType && errors.jobType}
+                />
+              )}
+            />
+          </Grid>
+
+          <Grid item xs={12} sm={2}>
+            <Autocomplete
+              options={selectData.qty}
+              value={values.qty || []}
+              onChange={(_, newValue) => setFieldValue("qty", newValue)}
+              renderInput={(params) => (
+                <FormField
+                  {...params}
+                  label="Number of Models"
+                  error={touched.qty && Boolean(errors.qty)}
+                  helperText={touched.qty && errors.qty}
+                />
+              )}
+            />
+          </Grid>
+
+          <Grid item xs={12} sm={6}>
             <Autocomplete
               multiple
               options={selectData.gender}
@@ -56,12 +92,56 @@ function JobInfo({ formik }) {
                 <FormField
                   {...params}
                   label="Preferred Gender"
-                  InputLabelProps={{ shrink: true }}
                   error={touched.gender && Boolean(errors.gender)}
                   helperText={touched.gender && errors.gender}
                 />
               )}
             />
+          </Grid>
+
+          <Grid item xs={12}>
+            <Grid container spacing={3}>
+              <Grid item xs={12} sm={4}><Autocomplete
+                value={values.dayDate || currentDay}
+                options={selectData.days}
+                onChange={(_, newValue) => setFieldValue("dayDate", newValue)}
+                renderInput={(params) => (
+                  <FormField {...params}
+                    label="Date of Job"
+                    InputLabelProps={{ shrink: true }} />
+                )}
+              />
+              </Grid>
+              <Grid item xs={12} sm={5}>
+                <Autocomplete
+                  value={values.monthDate || currentMonth}
+                  options={selectData.birthDate}
+                  onChange={(_, newValue) => setFieldValue("monthDate", newValue)}
+                  renderInput={(params) => (
+                    <FormField
+                      {...params}
+                      label="Month"
+                      InputLabelProps={{ shrink: true }}
+                    />
+                  )}
+                />
+              </Grid>
+              <Grid item xs={12} sm={3}>
+                <Autocomplete
+                  value={values.yearDate || currentYear.toString()}
+                  options={futureYears}
+                  onChange={(_, newValue) => setFieldValue("yearDate", newValue)}
+                  renderInput={(params) => (
+                    <FormField
+                      {...params}
+                      label="Year"
+                      InputLabelProps={{ shrink: true }}
+                    />
+                  )}
+                />
+
+              </Grid>
+            </Grid>
           </Grid>
         </Grid>
       </MDBox>
@@ -75,6 +155,19 @@ function JobInfo({ formik }) {
               </MDTypography>
             </MDBox>
             <FormikTiptap name="description" label="Job Description" />
+          </Grid>
+        </Grid>
+      </MDBox>
+
+      <MDBox mt={4}>
+        <Grid container spacing={3}>
+          <Grid item xs={12}>
+            <MDBox mb={1} ml={0.5} lineHeight={0}>
+              <MDTypography component="label" variant="button" fontWeight="regular" color="text">
+                Job Usage
+              </MDTypography>
+            </MDBox>
+            <FormikTiptap name="usage" label="Job Usage" />
           </Grid>
         </Grid>
       </MDBox>

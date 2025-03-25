@@ -53,6 +53,7 @@ import ResetCover from "layouts/authentication/reset-password/cover";
 import NewJob from "layouts/jobs/new-job";
 import MyJobs from "layouts/jobs/my-jobs";
 import JobDetails from "layouts/jobs/job-details";
+import JobSearch from "layouts/jobs/search";
 
 // Material Dashboard 3 PRO React components
 import MDAvatar from "components/MDAvatar";
@@ -108,6 +109,12 @@ const routes = [
         key: "job-list",
         route: "/jobs/my-jobs",
         component: <MyJobs />,
+      },
+      {
+        name: "Search Jobs",
+        key: "search",
+        route: "/jobs/search",
+        component: <JobSearch />,
       },
       // These will be connected later:
       // {

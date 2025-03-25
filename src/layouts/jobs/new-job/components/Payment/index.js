@@ -5,37 +5,55 @@ import MDTypography from "components/MDTypography";
 import MDInput from "components/MDInput";
 import FormField from "../FormField";
 
-function Payment() {
+function Payment({ formik }) {
+  const { values, handleChange, setFieldValue, touched, errors } = formik;
   return (
     <MDBox>
       <MDTypography variant="h5">Payment Details</MDTypography>
       <MDBox mt={3}>
         <Grid container spacing={3}>
           <Grid item xs={12} sm={4}>
-            <FormField type="text" label="Budget"
-              InputLabelProps={{ shrink: true }} placeholder="e.g., 500.00" />
-          </Grid>
-          <Grid item xs={12} sm={4}>
-            <Autocomplete
-              defaultValue="GBP"
-              options={["GBP", "EUR", "USD"]}
+            <FormField
+              label="Budget"
+              name="budget"
+              value={values.budget}
+              onChange={handleChange}
               InputLabelProps={{ shrink: true }}
-              renderInput={(params) => <MDInput {...params}
-                variant="standard"
-                InputLabelProps={{ shrink: true }}
-                label="Currency"
-              />}
+              error={touched.budget && Boolean(errors.budget)}
+              helperText={touched.budget && errors.budget}
+              inputProps={{ type: "number" }}
             />
           </Grid>
           <Grid item xs={12} sm={4}>
             <Autocomplete
-              defaultValue="Per Day"
+              options={["GBP", "EUR", "USD"]}
+              value={values.currency}
+              onChange={(_, newValue) => setFieldValue("currency", newValue)}
+              renderInput={(params) => (
+                <FormField
+                  {...params}
+                  label="Currency"
+                  InputLabelProps={{ shrink: true }}
+                  error={touched.currency && Boolean(errors.currency)}
+                  helperText={touched.currency && errors.currency}
+                />
+              )}
+            />
+          </Grid>
+          <Grid item xs={12} sm={4}>
+            <Autocomplete
               options={["Flat Fee", "Hourly", "Per Day"]}
-              renderInput={(params) => <MDInput {...params}
-                variant="standard"
-                InputLabelProps={{ shrink: true }}
-                label="Rate Type"
-              />}
+              value={values.rateType}
+              onChange={(_, newValue) => setFieldValue("rateType", newValue)}
+              renderInput={(params) => (
+                <FormField
+                  {...params}
+                  label="Rate Type"
+                  InputLabelProps={{ shrink: true }}
+                  error={touched.rateType && Boolean(errors.rateType)}
+                  helperText={touched.rateType && errors.rateType}
+                />
+              )}
             />
           </Grid>
         </Grid>

@@ -14,6 +14,7 @@ import MDBox from "components/MDBox";
 import MDButton from "components/MDButton";
 import MDTypography from "components/MDTypography";
 import MDBadge from "components/MDBadge";
+import Snackbar from "@mui/material/Snackbar";
 
 import DashboardLayout from "examples/LayoutContainers/DashboardLayout";
 import DashboardNavbar from "examples/Navbars/DashboardNavbar";
@@ -24,13 +25,31 @@ import JobImages from "./components/JobImages";
 import JobInfo from "./components/JobInfo";
 import JobApplicants from "./components/JobApplicants";
 
-
 function JobDetails() {
     const { reference } = useParams();
     const [job, setJob] = useState(null);
     const [model, setModel] = useState(null);
     const [models, setModels] = useState([]);
     const [hasApplied, setHasApplied] = useState(false);
+    const [snackOpen, setSnackOpen] = useState(false);
+
+    useEffect(() => {
+        const fetchCurrentModel = async () => {
+            const user = auth.currentUser;
+            if (!user) return;
+
+            const modelRef = doc(db, "users", user.uid);
+            const snap = await getDoc(modelRef);
+            if (snap.exists()) {
+                const modelData = snap.data();
+                modelData.uid = user.uid; // Make sure uid is available
+                setModel(modelData);
+            }
+        };
+
+        fetchCurrentModel();
+    }, []);
+
 
     const isMatch = model && job && doesModelMatchJob(model, job);
     const alreadyApplied = job?.applicants?.includes(model?.uid) ?? false;
@@ -39,11 +58,14 @@ function JobDetails() {
         if (!model || !job) return;
 
         try {
-            const jobRef = doc(db, "jobs", job.id); // NOTE: we'll fix this in a sec if you're not storing job.id
+            const jobRef = doc(db, "jobs", job.id);
             await updateDoc(jobRef, {
                 applicants: arrayUnion(model.uid),
+                [`appliedTimestamps.${model.uid}`]: new Date().toISOString(), // 🔑 nested update
             });
+
             setHasApplied(true);
+            setSnackOpen(true);
         } catch (err) {
             console.error("Failed to apply for job:", err);
         }
@@ -55,7 +77,9 @@ function JobDetails() {
             const q = query(jobRef, where("reference", "==", reference));
             const querySnapshot = await getDocs(q);
             if (!querySnapshot.empty) {
-                setJob(querySnapshot.docs[0].data());
+                const docSnap = querySnapshot.docs[0];
+                setJob({ id: docSnap.id, ...docSnap.data() });
+
             }
         };
         fetchJob();
@@ -101,9 +125,32 @@ function JobDetails() {
                                 </Grid>
                                 <Grid item xs={12} lg={5} sx={{ mx: "auto" }}>
                                     <JobInfo job={job} />
+
+                                    {/* 💡 INSERT this logic below JobInfo */}
+                                    {model && job.userId !== model.uid && (
+                                        <MDBox mt={4}>
+                                            {doesModelMatchJob(model, job) ? (
+                                                <MDButton color="info" variant="gradient" onClick={handleApply} disabled={hasApplied}>
+                                                    {hasApplied ? "You've Applied" : "Apply Now"}
+                                                </MDButton>
+                                            ) : (
+                                                <MDTypography color="error" variant="body2">
+                                                    Sorry, you don't match this job's requirements.
+                                                </MDTypography>
+                                            )}
+                                        </MDBox>
+                                    )}
+                                    <Snackbar
+                                        open={snackOpen}
+                                        autoHideDuration={4000}
+                                        onClose={() => setSnackOpen(false)}
+                                        message="You've successfully applied!"
+                                    />
+
                                 </Grid>
                             </Grid>
                         )}
+
 
                         {job && models.length > 0 && (
                             <JobApplicants job={job} models={models} />

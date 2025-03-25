@@ -54,7 +54,6 @@ function Settings() {
         { label: "Measurements", icon: <StraightenIcon />, component: <Measurements /> },
         { label: "Social Media", icon: <ShareIcon />, component: <SocialMedia /> },
         { label: "Notifications", icon: <NotificationsIcon />, component: <Notifications /> },
-        { label: "Sessions", icon: <DevicesIcon />, component: <Sessions /> },
         { label: "Change Password", icon: <LockIcon />, component: <ChangePassword /> },
         { label: "Delete Account", icon: <DeleteIcon />, component: <DeleteAccount /> },
       ];
