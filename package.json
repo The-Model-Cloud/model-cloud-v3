@@ -71,6 +71,7 @@
   "scripts": {
     "start": "cross-env GENERATE_SOURCEMAP=false react-scripts start",
     "build": "cross-env GENERATE_SOURCEMAP=false react-scripts build",
+    "deploy": "npm run build && node ftpDeploy.js",
     "test": "react-scripts test",
     "eject": "react-scripts eject",
     "install:clean": "rm -rf node_modules/ && rm -rf package-lock.json && npm install && npm start"
@@ -95,11 +96,13 @@
   },
   "devDependencies": {
     "@babel/plugin-proposal-private-property-in-object": "7.21.11",
+    "dotenv": "^16.4.7",
     "eslint": "9.14.0",
     "eslint-plugin-import": "2.31.0",
     "eslint-plugin-jsx-a11y": "6.10.2",
     "eslint-plugin-react": "7.37.2",
-    "eslint-plugin-react-hooks": "5.0.0"
+    "eslint-plugin-react-hooks": "5.0.0",
+    "ftp-deploy": "^2.4.7"
   },
   "overrides": {
     "svgo": "3.0.2"
