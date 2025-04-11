@@ -1,6 +1,7 @@
 require("dotenv").config();
 const FtpDeploy = require("ftp-deploy");
 const path = require("path");
+const notifier = require("node-notifier");
 
 const ftpDeploy = new FtpDeploy();
 
@@ -11,12 +12,37 @@ const config = {
   port: parseInt(process.env.FTP_PORT, 10) || 21,
   localRoot: path.join(__dirname, "build"),
   remoteRoot: process.env.FTP_REMOTE_ROOT || "/",
-  include: ["*", "**/*"], // everything inside build/
-  deleteRemote: false,    // set to true to clear remote folder before upload
+  include: ["*", "**/*"],
+  deleteRemote: false,
   forcePasv: true,
 };
 
+// Listen to deployment progress
+ftpDeploy.on("uploading", function (data) {
+  const percent = ((data.transferredFileCount / data.totalFilesCount) * 100).toFixed(2);
+  console.log(`Uploading: ${data.filename} (${percent}%)`);
+});
+
+ftpDeploy.on("uploaded", function (data) {
+  console.log(`✔ Uploaded: ${data.filename}`);
+});
+
 ftpDeploy
   .deploy(config)
-  .then(res => console.log("✅ FTP Deploy Finished:", res))
-  .catch(err => console.error("❌ FTP Deploy Error:", err));
+  .then(res => {
+    console.log("✅ FTP Deploy Finished:", res);
+    notifier.notify({
+      title: "FTP Deploy",
+      message: "Deployment complete!",
+      sound: true,
+    });
+  })
+  .catch(err => {
+    console.error("❌ FTP Deploy Error:", err);
+    notifier.notify({
+      title: "FTP Deploy Failed",
+      message: err.message || "Something went wrong",
+      sound: true,
+    });
+    process.exit(1);
+  });
