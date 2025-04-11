@@ -18,6 +18,10 @@ import MDTypography from "components/MDTypography";
 import MDInput from "components/MDInput";
 import MDButton from "components/MDButton";
 
+import ProfileAvatar from "components/Profile/ProfileAvatar";
+import PhotoCamera from "@mui/icons-material/PhotoCamera";
+import IconButton from "@mui/material/IconButton";
+
 // Layout
 import IllustrationLayout from "layouts/authentication/components/IllustrationLayout";
 import bgImage from "assets/images/illustrations/illustration-reset.jpg";
@@ -29,6 +33,9 @@ import { db } from "config/firebase";
 import { doc, setDoc } from "firebase/firestore";
 
 function SignUpIllustration() {
+
+    const [profileAvatar, setProfileAvatar] = useState("");
+
     const navigate = useNavigate();
 
     const [firstName, setFirstName] = useState("");
@@ -38,6 +45,29 @@ function SignUpIllustration() {
     const [role, setRole] = useState("model");
     const [agree, setAgree] = useState(false);
     const [error, setError] = useState("");
+    const [companyName, setCompanyName] = useState("");
+
+    const handleAvatarUpload = async (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+
+        const formData = new FormData();
+        formData.append("file", file);
+        formData.append("upload_preset", process.env.REACT_APP_CLOUDINARY_UPLOAD_PRESET);
+        formData.append("cloud_name", process.env.REACT_APP_CLOUDINARY_CLOUD_NAME);
+
+        const res = await fetch(`https://api.cloudinary.com/v1_1/${process.env.REACT_APP_CLOUDINARY_CLOUD_NAME}/upload`, {
+            method: "POST",
+            body: formData,
+        });
+
+        const data = await res.json();
+
+        if (data.secure_url) {
+            setProfileAvatar(data.secure_url);
+        }
+    };
+
 
     const generateUniqueSlug = async (firstName, lastName) => {
         const baseSlug = `${firstName.trim().toLowerCase()}.${lastName.trim().charAt(0).toLowerCase()}`;
@@ -88,6 +118,8 @@ function SignUpIllustration() {
                 email,
                 role,
                 publicSlug,
+                profileAvatar,
+                companyName, 
                 createdAt: new Date().toISOString(),
             });
 
@@ -97,6 +129,7 @@ function SignUpIllustration() {
             console.error("Registration error:", err.message);
             setError("Failed to create account. Please check your details.");
         }
+
     };
 
 
@@ -107,6 +140,22 @@ function SignUpIllustration() {
             illustration={bgImage}
         >
             <MDBox component="form" role="form" onSubmit={handleSignUp}>
+
+                {/* Role Selection */}
+                <MDBox mb={2}>
+                    <FormControl component="fieldset">
+                        <FormLabel component="legend">Register as</FormLabel>
+                        <RadioGroup
+                            row
+                            value={role}
+                            onChange={(e) => setRole(e.target.value)}
+                            name="role"
+                        >
+                            <FormControlLabel value="model" control={<Radio />} label="Model" />
+                            <FormControlLabel value="client" control={<Radio />} label="Client" />
+                        </RadioGroup>
+                    </FormControl>
+                </MDBox>
                 <MDBox mb={2}>
                     <MDInput
                         type="text"
@@ -136,6 +185,19 @@ function SignUpIllustration() {
                         autoComplete="email"
                     />
                 </MDBox>
+                {role === "client" && (
+                    <MDBox mt={3} mb={2}>
+                        <MDInput
+                            type="text"
+                            label="Company Name"
+                            name="companyName"
+                            value={companyName}
+                            onChange={(e) => setCompanyName(e.target.value)}
+                            fullWidth
+                        />
+                    </MDBox>
+                )}
+
                 <MDBox mb={2}>
                     <MDInput
                         type="password"
@@ -148,21 +210,28 @@ function SignUpIllustration() {
                     />
                 </MDBox>
 
-                {/* Role Selection */}
-                <MDBox mb={2}>
-                    <FormControl component="fieldset">
-                        <FormLabel component="legend">Register as</FormLabel>
-                        <RadioGroup
-                            row
-                            value={role}
-                            onChange={(e) => setRole(e.target.value)}
-                            name="role"
-                        >
-                            <FormControlLabel value="model" control={<Radio />} label="Model" />
-                            <FormControlLabel value="client" control={<Radio />} label="Client" />
-                        </RadioGroup>
-                    </FormControl>
-                </MDBox>
+                {role === "model" && (
+                    <MDBox mt={3} mb={2}>
+                        <MDTypography variant="h6" mb={1}>
+                            Upload Headshot
+                        </MDTypography>
+                        <MDBox display="flex" alignItems="center" gap={2}>
+                            <ProfileAvatar src={profileAvatar} size={100} />
+                            <label htmlFor="headshot-upload">
+                                <input
+                                    accept="image/*"
+                                    id="headshot-upload"
+                                    type="file"
+                                    style={{ display: "none" }}
+                                    onChange={handleAvatarUpload}
+                                />
+                                <IconButton color="primary" component="span">
+                                    <PhotoCamera />
+                                </IconButton>
+                            </label>
+                        </MDBox>
+                    </MDBox>
+                )}
 
                 <MDBox display="flex" alignItems="center" ml={-1}>
                     <Checkbox checked={agree} onChange={() => setAgree(!agree)} />
