@@ -78,24 +78,67 @@ function MyJobs() {
         title: data.title,
         location: data.location,
         status: data.status || "Open",
-        budget: data.budget || "-",
+        budget: {
+          amount: data.budget || "-",
+          currency: data.currency || "GBP", // default to GBP if missing
+        },
+
         createdAt: new Date(data.createdAt).toLocaleDateString("en-UK"),
       });
     });
 
+    const formatCurrency = ({ amount, currency }) => {
+      if (!amount || amount === "-") return "-";
+
+      const number = parseFloat(amount);
+      const formatter = new Intl.NumberFormat("en-GB", {
+        style: "currency",
+        currency,
+        currencyDisplay: "symbol", // can be "symbol" | "code" | "name"
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2,
+      });
+
+      return formatter.format(number);
+    };
+
+
+
     setTableData({
       columns: [
-        { Header: "reference", accessor: "reference",
-            Cell: ({ value }) => (
-              <Link to={`/jobs/${value}`}>
-                <MDTypography variant="button" color="info">{value}</MDTypography>
-              </Link>
-            ), },
+        {
+          Header: "reference", accessor: "reference",
+          Cell: ({ value }) => (
+            <Link to={`/jobs/${value}`}>
+              <MDTypography variant="button" color="info">{value}</MDTypography>
+            </Link>
+          ),
+        },
         { Header: "title", accessor: "title" },
         { Header: "location", accessor: "location" },
         { Header: "status", accessor: "status" },
-        { Header: "budget", accessor: "budget" },
+        {
+          Header: "budget",
+          accessor: "budget",
+          Cell: ({ value }) => (
+            <MDTypography variant="button" color="text">
+              {formatCurrency(value)}
+            </MDTypography>
+          ),
+        },
+
         { Header: "created", accessor: "createdAt" },
+        {
+          Header: "edit",
+          accessor: "edit",
+          Cell: ({ row }) => (
+            <Link to={`/jobs/edit/${row.original.reference}`}>
+              <MDButton variant="text" color="info" size="small">
+                <Icon>edit</Icon>&nbsp;Edit
+              </MDButton>
+            </Link>
+          ),
+        },
       ],
       rows: jobs,
     });

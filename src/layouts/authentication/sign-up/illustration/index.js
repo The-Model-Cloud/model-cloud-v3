@@ -24,7 +24,7 @@ import IconButton from "@mui/material/IconButton";
 
 // Layout
 import IllustrationLayout from "layouts/authentication/components/IllustrationLayout";
-import bgImage from "assets/images/illustrations/illustration-reset.jpg";
+import bgImage from "assets/images/illustrations/signup-image-1.png";
 
 // Firebase
 import { createUserWithEmailAndPassword, updateProfile, sendEmailVerification } from "firebase/auth";

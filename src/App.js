@@ -36,6 +36,8 @@ import PublicProfile from "layouts/pages/profile/public-profile";
 
 //Job Details page
 import JobDetails from "layouts/jobs/job-details";
+import EditJob from "layouts/jobs/edit-job";
+
 
 // Material Dashboard 3 PRO React contexts
 import {
@@ -224,6 +226,7 @@ export default function App() {
         {getRoutes(routes)}
 
         <Route path="/jobs/:reference" element={<JobDetails />} />
+        <Route path="/jobs/edit/:reference" element={<EditJob />} />
 
         <Route path="/:slug" element={<PublicProfile />} />
 

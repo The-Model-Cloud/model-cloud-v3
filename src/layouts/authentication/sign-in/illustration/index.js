@@ -12,7 +12,7 @@ import MDButton from "components/MDButton";
 
 // Layout wrapper
 import IllustrationLayout from "layouts/authentication/components/IllustrationLayout";
-import bgImage from "assets/images/illustrations/illustration-reset.jpg";
+import bgImage from "assets/images/illustrations/signup-image-1.png";
 
 // Firebase
 import { signInWithEmailAndPassword } from "firebase/auth";

@@ -118,12 +118,6 @@ const routes = [
       },
       // These will be connected later:
       // {
-      //   name: "Edit Job",
-      //   key: "edit-job",
-      //   route: "/jobs/edit-job/:id",
-      //   component: <EditJob />,
-      // },
-      // {
       //   name: "Job Details",
       //   key: "job-detail",
       //   route: "/jobs/job/:id",
