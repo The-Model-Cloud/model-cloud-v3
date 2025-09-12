@@ -27,7 +27,6 @@ function Measurements() {
     cupSize: "",
     eyeColour: "",
     hairColour: "",
-    weight: "",
     gender: "",
   });
 
@@ -51,7 +50,6 @@ function Measurements() {
             cupSize: docData.cupSize || "",
             eyeColour: docData.eyeColour || "",
             hairColour: docData.hairColour || "",
-            weight: docData.weight || "",
             gender: docData.gender || "",
             braSize: docData.braSize || "",
           });
@@ -99,15 +97,7 @@ function Measurements() {
           </Grid>
           <Grid item xs={12} sm={2}>
             <FormField
-              label="Weight (kg)"
-              value={data.weight}
-              onChange={handleChange("weight")}
-              inputProps={{ type: "number" }}
-            />
-          </Grid>
-          <Grid item xs={12} sm={2}>
-            <FormField
-              label="Waist (cm)"
+              label="Waist (inches)"
               value={data.waist}
               onChange={handleChange("waist")}
               inputProps={{ type: "number" }}
@@ -116,7 +106,7 @@ function Measurements() {
           {data.gender !== "Man" && (
             <Grid item xs={12} sm={2}>
               <FormField
-                label="Hips (cm)"
+                label="Hips (inches)"
                 value={data.hips}
                 onChange={handleChange("hips")}
                 inputProps={{ type: "number" }}

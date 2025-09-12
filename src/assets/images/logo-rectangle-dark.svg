@@ -1,0 +1,60 @@
+<svg id="Layer_1" data-name="Layer 1" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 6430 823">
+    <defs>
+        <style>
+            .tmc-logo-1 {
+                font-size: 710.25px;
+                fill: #ff7bac;
+                font-family: Montserrat-Bold, Montserrat;
+                font-weight: 700;
+                text-transform: lowercase;
+            }
+
+            .tmc-logo-2 {
+                letter-spacing: -0.07em;
+            }
+
+            .tmc-logo-3 {
+                letter-spacing: -0.02em;
+            }
+
+            .tmc-logo-4,
+            .tmc-logo-5,
+            .tmc-logo-6,
+            .tmc-logo-7,
+            .tmc-logo-9 {
+                fill: #312f38;
+            }
+
+            .tmc-logo-5 {
+                letter-spacing: 0.01em;
+            }
+
+            .tmc-logo-6 {
+                letter-spacing: 0.01em;
+            }
+
+            .tmc-logo-7 {
+                letter-spacing: 0em;
+            }
+
+            .tmc-logo-8 {
+                letter-spacing: -0.01em;
+            }
+
+            .tmc-logo-9 {
+                letter-spacing: 0em;
+            }
+        </style>
+    </defs><text class="tmc-logo-1" transform="translate(65.46 679.19)">
+        <tspan class="tmc-logo-2">/</tspan>
+        <tspan class="tmc-logo-3" x="226.57" y="0">/</tspan>
+        <tspan class="tmc-logo-4" x="487.95" y="0">t</tspan>
+        <tspan class="tmc-logo-5" x="796.91" y="0">h</tspan>
+        <tspan class="tmc-logo-4" x="1291.95" y="0">e</tspan>
+        <tspan class="tmc-logo-6" x="1740.11" y="0">m</tspan>
+        <tspan class="tmc-logo-7" x="2489.43" y="0">odel</tspan>
+        <tspan class="tmc-logo-8" x="4108.07" y="0">.</tspan>
+        <tspan class="tmc-logo-9" x="4289.19" y="0">c</tspan>
+        <tspan class="tmc-logo-4" x="4706.1" y="0">loud</tspan>
+    </text>
+</svg>

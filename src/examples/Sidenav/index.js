@@ -33,7 +33,14 @@ import {
   setWhiteSidenav,
 } from "context";
 
+import { useAuth } from "context/AuthContext"; // or wherever your auth context is
+import { hasAccess } from "routes"; // since it's exported at the bottom of routes.js
+
+
 function Sidenav({ color, brand, brandName, routes, ...rest }) {
+
+  const { user } = useAuth(); // Get the current user role
+
   const [openCollapse, setOpenCollapse] = useState(false);
   const [openNestedCollapse, setOpenNestedCollapse] = useState(false);
   const [controller, dispatch] = useMaterialUIController();
@@ -89,77 +96,57 @@ function Sidenav({ color, brand, brandName, routes, ...rest }) {
 
   // Render all the nested collapse items from the routes.js
   const renderNestedCollapse = (collapse) => {
-    const template = collapse.map(({ name, route, key, href }) =>
-      href ? (
-        <Link
-          key={key}
-          href={href}
-          target="_blank"
-          rel="noreferrer"
-          sx={{ textDecoration: "none" }}
-        >
-          <SidenavItem name={name} nested />
-        </Link>
-      ) : (
-        <NavLink to={route} key={key} sx={{ textDecoration: "none" }}>
-          <SidenavItem name={name} active={route === pathname} nested />
-        </NavLink>
-      )
-    );
+    // const template = collapse.map(({ name, route, key, href }) =>
+    const template = collapse
+      .filter(({ roles }) => !roles || hasAccess(user?.role, roles))
+      .map(({ name, route, key, href }) =>
+
+        href ? (
+          <Link
+            key={key}
+            href={href}
+            target="_blank"
+            rel="noreferrer"
+            sx={{ textDecoration: "none" }}
+          >
+            <SidenavItem name={name} nested />
+          </Link>
+        ) : (
+          <NavLink to={route} key={key} sx={{ textDecoration: "none" }}>
+            <SidenavItem name={name} active={route === pathname} nested />
+          </NavLink>
+        )
+      );
 
     return template;
   };
   // Render the all the collpases from the routes.js
   const renderCollapse = (collapses) =>
-    collapses.map(({ name, collapse, route, href, key }) => {
-      let returnValue;
+    collapses
+      .filter(({ roles }) => !roles || hasAccess(user?.role, roles))
+      .map(({ name, collapse, route, href, key }) => {
+        let returnValue;
 
-      if (collapse) {
-        returnValue = (
-          <SidenavItem
-            key={key}
-            color={color}
-            name={name}
-            active={key === itemParentName ? "isParent" : false}
-            open={openNestedCollapse === key}
-            onClick={({ currentTarget }) =>
-              openNestedCollapse === key &&
-              currentTarget.classList.contains("MuiListItem-root")
-                ? setOpenNestedCollapse(false)
-                : setOpenNestedCollapse(key)
-            }
-          >
-            {renderNestedCollapse(collapse)}
-          </SidenavItem>
-        );
-      } else {
-        returnValue = href ? (
-          <Link
-            href={href}
-            key={key}
-            target="_blank"
-            rel="noreferrer"
-            sx={{ textDecoration: "none" }}
-          >
-            <SidenavItem color={color} name={name} active={key === itemName} />
-          </Link>
-        ) : (
-          <NavLink to={route} key={key} sx={{ textDecoration: "none" }}>
-            <SidenavItem color={color} name={name} active={key === itemName} />
-          </NavLink>
-        );
-      }
-      return <SidenavList key={key}>{returnValue}</SidenavList>;
-    });
-
-  // Render all the routes from the routes.js (All the visible items on the Sidenav)
-  const renderRoutes = routes.map(
-    ({ type, name, icon, title, collapse, noCollapse, key, href, route }) => {
-      let returnValue;
-
-      if (type === "collapse") {
-        if (href) {
+        if (collapse) {
           returnValue = (
+            <SidenavItem
+              key={key}
+              color={color}
+              name={name}
+              active={key === itemParentName ? "isParent" : false}
+              open={openNestedCollapse === key}
+              onClick={({ currentTarget }) =>
+                openNestedCollapse === key &&
+                  currentTarget.classList.contains("MuiListItem-root")
+                  ? setOpenNestedCollapse(false)
+                  : setOpenNestedCollapse(key)
+              }
+            >
+              {renderNestedCollapse(collapse)}
+            </SidenavItem>
+          );
+        } else {
+          returnValue = href ? (
             <Link
               href={href}
               key={key}
@@ -167,77 +154,108 @@ function Sidenav({ color, brand, brandName, routes, ...rest }) {
               rel="noreferrer"
               sx={{ textDecoration: "none" }}
             >
-              <SidenavCollapse
-                name={name}
-                icon={icon}
-                active={key === collapseName}
-                noCollapse={noCollapse}
-              />
+              <SidenavItem color={color} name={name} active={key === itemName} />
             </Link>
+          ) : (
+            <NavLink to={route} key={key} sx={{ textDecoration: "none" }}>
+              <SidenavItem color={color} name={name} active={key === itemName} />
+            </NavLink>
           );
-        } else if (noCollapse && route) {
-          returnValue = (
-            <NavLink to={route} key={key}>
+        }
+        return <SidenavList key={key}>{returnValue}</SidenavList>;
+      });
+
+  // Render all the routes from the routes.js (All the visible items on the Sidenav)
+  // const renderRoutes = routes.map(
+  
+  const renderRoutes = routes
+    .filter(({ roles }) => !roles || hasAccess(user?.role, roles))
+    .map(
+
+      ({ type, name, icon, title, collapse, noCollapse, key, href, route }) => {
+        let returnValue;
+
+        if (type === "collapse") {
+          if (href) {
+            returnValue = (
+              <Link
+                href={href}
+                key={key}
+                target="_blank"
+                rel="noreferrer"
+                sx={{ textDecoration: "none" }}
+              >
+                <SidenavCollapse
+                  name={name}
+                  icon={icon}
+                  active={key === collapseName}
+                  noCollapse={noCollapse}
+                />
+              </Link>
+            );
+          } else if (noCollapse && route) {
+            returnValue = (
+              <NavLink to={route} key={key}>
+                <SidenavCollapse
+                  name={name}
+                  icon={icon}
+                  noCollapse={noCollapse}
+                  active={key === collapseName}
+                >
+                  {collapse ? renderCollapse(collapse) : null}
+                </SidenavCollapse>
+              </NavLink>
+            );
+          } else {
+            returnValue = (
               <SidenavCollapse
+                key={key}
                 name={name}
                 icon={icon}
-                noCollapse={noCollapse}
                 active={key === collapseName}
+                open={openCollapse === key}
+                onClick={() =>
+                  openCollapse === key
+                    ? setOpenCollapse(false)
+                    : setOpenCollapse(key)
+                }
               >
                 {collapse ? renderCollapse(collapse) : null}
               </SidenavCollapse>
-            </NavLink>
-          );
-        } else {
+            );
+          }
+        } else if (type === "title") {
           returnValue = (
-            <SidenavCollapse
+            <MDTypography
               key={key}
-              name={name}
-              icon={icon}
-              active={key === collapseName}
-              open={openCollapse === key}
-              onClick={() =>
-                openCollapse === key
-                  ? setOpenCollapse(false)
-                  : setOpenCollapse(key)
-              }
+              color={textColor}
+              display="block"
+              variant="caption"
+              fontWeight="bold"
+              textTransform="uppercase"
+              pl={2}
+              mt={2}
+              mb={1}
+              ml={1}
             >
-              {collapse ? renderCollapse(collapse) : null}
-            </SidenavCollapse>
+              {title}
+            </MDTypography>
+          );
+        } else if (type === "divider") {
+          returnValue = (
+            <Divider
+              key={key}
+              light={
+                (!darkMode && !whiteSidenav && !transparentSidenav) ||
+                (darkMode && !transparentSidenav && whiteSidenav)
+              }
+            />
           );
         }
-      } else if (type === "title") {
-        returnValue = (
-          <MDTypography
-            key={key}
-            color={textColor}
-            display="block"
-            variant="caption"
-            fontWeight="bold"
-            textTransform="uppercase"
-            pl={2}
-            mt={2}
-            mb={1}
-            ml={1}
-          >
-            {title}
-          </MDTypography>
-        );
-      } else if (type === "divider") {
-        returnValue = (
-          <Divider
-            key={key}
-            light={
-              (!darkMode && !whiteSidenav && !transparentSidenav) ||
-              (darkMode && !transparentSidenav && whiteSidenav)
-            }
-          />
-        );
-      }
 
-      return returnValue;
-    }
-  );
+        return returnValue;
+      }
+    );
 
   return (
     <SidenavRoot

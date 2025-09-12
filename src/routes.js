@@ -54,6 +54,11 @@ import NewJob from "layouts/jobs/new-job";
 import MyJobs from "layouts/jobs/my-jobs";
 import JobDetails from "layouts/jobs/job-details";
 import JobSearch from "layouts/jobs/search";
+import ImportModels from "layouts/models/import";
+import AddUser from "layouts/admin/add-user";
+import AllModels from "layouts/models/all";
+import ModelSettingsProxy from "layouts/pages/account/settings/ModelSettingsProxy";
+
 
 // Material Dashboard 3 PRO React components
 import MDAvatar from "components/MDAvatar";
@@ -102,18 +107,21 @@ const routes = [
         name: "Create Job",
         key: "new-job",
         route: "/jobs/new-job",
+        roles: ["client", "admin", "super admin"],
         component: <NewJob />,
       },
       {
         name: "My Jobs",
         key: "job-list",
         route: "/jobs/my-jobs",
+        roles: ["model", "client", "admin", "super admin"],
         component: <MyJobs />,
       },
       {
         name: "Search Jobs",
         key: "search",
         route: "/jobs/search",
+        roles: ["model", "admin", "super admin"],
         component: <JobSearch />,
       },
       // These will be connected later:
@@ -126,6 +134,49 @@ const routes = [
     ],
   },
   { type: "divider", key: "divider-1" },
+  {
+    type: "collapse",
+    name: "Admin",
+    key: "admin",
+    roles: ["client", "admin", "super admin"],
+    icon: <Icon fontSize="small">AdminPanelSettings</Icon>,
+    collapse: [
+      {
+        name: "Import Models",
+        key: "import-models",
+        route: "/models/import",
+        component: <ImportModels />,
+        roles: ["client", "admin", "super admin"],
+        icon: <Icon fontSize="small">cloud_upload</Icon>,
+      },
+      {
+        name: "Add User",
+        key: "add-user",
+        route: "/admin/add-user",
+        component: <AddUser />, // you’ll need to import this at the top
+        roles: ["admin", "super admin"],
+        icon: <Icon fontSize="small">person_add</Icon>,
+      },
+      {
+        name: "All Models",
+        key: "all-models",
+        route: "/models/all",
+        component: <AllModels />,
+        roles: ["admin", "super admin"],
+        icon: <Icon fontSize="small">people</Icon>,
+      },
+      {
+        name: "Model Settings",
+        key: "admin-model-settings",
+        route: "/admin/model/:uid/settings",
+        component: <ModelSettingsProxy />,
+        roles: ["admin", "super admin"],
+        noCollapse: true,
+        invisible: true, // Hide from sidebar
+      },
+    ]
+  },
+  { type: "divider", key: "divider-2" },
   {
     type: "collapse",
     name: "Dashboards",
@@ -388,7 +439,7 @@ const routes = [
       },
     ],
   },
-  { type: "divider", key: "divider-2" },
+  { type: "divider", key: "divider-3" },
   { type: "title", title: "Docs", key: "title-docs" },
   {
     type: "collapse",
@@ -557,5 +608,10 @@ const routes = [
     noCollapse: true,
   },
 ];
+
+// Role-based access check
+export const hasAccess = (userRole, allowedRoles) => {
+  return allowedRoles?.includes(userRole);
+};
 
 export default routes;

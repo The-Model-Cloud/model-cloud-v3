@@ -43,7 +43,7 @@ function UserInfo({ formData }) {
       <MDBox lineHeight={0}>
         <MDTypography variant="h5">About me</MDTypography>
         <MDTypography variant="button" color="text">
-          Mandatory informations
+          Tell us some information
         </MDTypography>
       </MDBox>
       <MDBox mt={1.625}>

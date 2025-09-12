@@ -13,16 +13,28 @@ import IconButton from "@mui/material/IconButton";
 import PhotoCamera from "@mui/icons-material/PhotoCamera";
 import ProfileAvatar from "components/Profile/ProfileAvatar";
 
+// Import countries and cities
+import { getCountries, getCities } from "countries-cities";
+import ukCounties from "uk-counties-cities-towns";
+import stateCities from "state-cities";
+
+
 const CLOUDINARY_URL = `https://api.cloudinary.com/v1_1/${process.env.REACT_APP_CLOUDINARY_CLOUD_NAME}/upload`;
 
 function BasicInfo() {
+  const [countries, setCountries] = useState([]);
+  const [cities, setCities] = useState([]);
   const user = auth.currentUser;
   const [profile, setProfile] = useState({
     firstName: "",
     lastName: "",
     gender: "",
-    location: "",
+    country: "",
+    county: "",
+    state: "",
+    city: "",
     aboutMe: "",
+    internalNotes: "",
     email: "",
     phone: "",
     language: "",
@@ -47,8 +59,10 @@ function BasicInfo() {
             firstName: data.firstName || "",
             lastName: data.lastName || "",
             gender: data.gender || "",
-            location: data.location || "",
-            aboutMe: data.aboutMe || "",
+            country: data.country || "",
+            county: data.county || "",
+            state: data.state || "",
+            city: data.city || "",
             email: data.email || user.email || "",
             phone: data.phone || "",
             language: data.language || "",
@@ -60,11 +74,31 @@ function BasicInfo() {
             vatNumber: data.vatNumber || "",
           });
           setUserRole(data.role);
+
+          // Handle UK Country and County Data
+          if (data.country === "United Kingdom" && data.county) {
+            setCities(ukCounties[data.county] || []);
+          } else if (data.country === "United States" && data.state) {
+            setCities((stateCities.getCities(data.state) || []).sort((a, b) => a.localeCompare(b)));
+          } else if (data.country) {
+            setCities((getCities(data.country) || []).sort((a, b) => a.localeCompare(b)));
+          }
         }
       }
     };
+
     fetchUser();
   }, [user]);
+
+  useEffect(() => {
+    const allCountries = getCountries();
+    const priorityCountries = ["United Kingdom", "Italy", "Spain", "France", "Germany", "United States"];
+    const sortedOthers = allCountries
+      .filter((c) => !priorityCountries.includes(c))
+      .sort((a, b) => a.localeCompare(b));
+    setCountries([...priorityCountries, "────────", ...sortedOthers]);
+  }, []);
+
 
   const handleChange = (field) => async (e) => {
     const value = e.target.value;
@@ -80,6 +114,64 @@ function BasicInfo() {
     if (user) {
       const ref = doc(db, "users", user.uid);
       await updateDoc(ref, { [field]: value });
+    }
+  };
+
+  const handleCountryChange = async (event, value) => {
+    if (!value) {
+      setProfile((prev) => ({ ...prev, country: "", city: "" }));
+      setCities([]);
+      if (user) {
+        const ref = doc(db, "users", user.uid);
+        await updateDoc(ref, { country: "", city: "" });
+      }
+      return;
+    }
+
+    let citiesList = [];
+    if (value === "United Kingdom") {
+      citiesList = []; // Wait for county selection
+    } else if (value === "United States") {
+      citiesList = []; // Wait for state selection
+    } else {
+      citiesList = (getCities(value) || []).sort((a, b) => a.localeCompare(b));
+    }
+
+    setProfile((prev) => ({ ...prev, country: value, city: "", county: "", state: "" }));
+    setCities(citiesList);
+
+    if (user) {
+      const ref = doc(db, "users", user.uid);
+      await updateDoc(ref, { country: value, city: "", county: "", state: "" });
+    }
+  };
+
+  const handleStateChange = async (event, value) => {
+    const citiesList = (stateCities.getCities(value) || []).sort((a, b) => a.localeCompare(b));
+    setProfile((prev) => ({ ...prev, state: value, city: "" }));
+    setCities(citiesList);
+
+    if (user) {
+      const ref = doc(db, "users", user.uid);
+      await updateDoc(ref, { state: value, city: "" });
+    }
+  };
+
+  const handleCountyChange = async (event, value) => {
+    setProfile((prev) => ({ ...prev, county: value }));
+    setCities(ukCounties[value] || []); // Populate towns based on county
+
+    if (user) {
+      const ref = doc(db, "users", user.uid);
+      await updateDoc(ref, { county: value });
+    }
+  };
+
+  const handleCityChange = async (event, value) => {
+    setProfile((prev) => ({ ...prev, city: value }));
+    if (user) {
+      const ref = doc(db, "users", user.uid);
+      await updateDoc(ref, { city: value });
     }
   };
 
@@ -146,38 +238,38 @@ function BasicInfo() {
       </MDBox>
       <MDBox component="form" pb={3} px={3}>
         <Grid container spacing={3}>
-          <Grid item xs={12} sm={6}>
+          <Grid item xs={12} sm={4}>
             <FormField
               label="First Name"
-              placeholder="Alec"
+              placeholder="Russell"
               value={profile.firstName}
               onChange={handleChange("firstName")}
             />
           </Grid>
-          <Grid item xs={12} sm={6}>
+          <Grid item xs={12} sm={4}>
             <FormField
               label="Last Name"
-              placeholder="Thompson"
+              placeholder="English"
               value={profile.lastName}
               onChange={handleChange("lastName")}
+            />
+          </Grid>
+          <Grid item xs={12} sm={4}>
+            <Autocomplete
+              value={profile.gender}
+              options={selectData.gender}
+              renderInput={(params) => (
+                <FormField {...params} label="I am a" InputLabelProps={{ shrink: true }} />
+              )}
+              onChange={handleAutocompleteChange("gender")}
             />
           </Grid>
           {userRole === "model" && (
             <Grid item xs={12}>
               <Grid container spacing={3}>
-                <Grid item xs={12} sm={4}>
-                  <Autocomplete
-                    value={profile.gender}
-                    options={selectData.gender}
-                    renderInput={(params) => (
-                      <FormField {...params} label="I am a" InputLabelProps={{ shrink: true }} />
-                    )}
-                    onChange={handleAutocompleteChange("gender")}
-                  />
-                </Grid>
-                <Grid item xs={12} sm={8}>
+                <Grid item xs={12}>
                   <Grid container spacing={3}>
-                    <Grid item xs={12} sm={4}>
+                    <Grid item xs={12} sm={1}>
                       <Autocomplete
                         defaultValue="1"
                         value={profile.dayOfBirth}
@@ -190,7 +282,7 @@ function BasicInfo() {
                         onChange={handleAutocompleteChange("dayOfBirth")}
                       />
                     </Grid>
-                    <Grid item xs={12} sm={5}>
+                    <Grid item xs={12} sm={2}>
                       <Autocomplete
                         defaultValue="February"
                         value={profile.monthOfBirth}
@@ -202,7 +294,7 @@ function BasicInfo() {
                         onChange={handleAutocompleteChange("monthOfBirth")}
                       />
                     </Grid>
-                    <Grid item xs={12} sm={3}>
+                    <Grid item xs={12} sm={1}>
                       <Autocomplete
                         value={profile.yearOfBirth || (new Date().getFullYear() - 21).toString()} // Default to 21 years ago
                         options={selectData.years}
@@ -212,34 +304,100 @@ function BasicInfo() {
                         onChange={handleAutocompleteChange("yearOfBirth")}
                       />
                     </Grid>
+                    <Grid item xs={12} sm={4}>
+                      <FormField
+                        label="Email"
+                        value={profile.email}
+                        inputProps={{ type: "email" }}
+                      />
+                    </Grid>
+                    <Grid item xs={12} sm={4}>
+                      <FormField
+                        label="Phone Number"
+                        placeholder="+44 7777 123456"
+                        value={profile.phone}
+                        onChange={handleChange("phone")}
+                      />
+                    </Grid>
                   </Grid>
                 </Grid>
               </Grid>
             </Grid>
           )}
-          <Grid item xs={12} sm={6}>
-            <FormField
-              label="Email"
-              value={profile.email}
-              inputProps={{ type: "email" }}
+          <Grid item xs={12} sm={4}>
+            <Autocomplete
+              value={profile.country}
+              options={countries}
+              onChange={handleCountryChange}
+              getOptionDisabled={(option) => option === "────────"}
+              renderOption={(props, option) =>
+                option === "────────" ? (
+                  <li {...props} style={{ fontStyle: "italic", opacity: 0.5 }}>
+                    ────────
+                  </li>
+                ) : (
+                  <li {...props}>{option}</li>
+                )
+              }
+              renderInput={(params) => (
+                <FormField {...params} label="Country" InputLabelProps={{ shrink: true }} />
+              )}
             />
           </Grid>
-          <Grid item xs={12} sm={6}>
-            <FormField
-              label="Your Location"
-              placeholder="London, UK"
-              value={profile.location}
-              onChange={handleChange("location")}
-            />
-          </Grid>
-          <Grid item xs={12} sm={6}>
-            <FormField
-              label="Phone Number"
-              placeholder="+44 7777 123456"
-              value={profile.phone}
-              onChange={handleChange("phone")}
-            />
-          </Grid>
+
+          {profile.country === "United Kingdom" && (
+            <>
+              <Grid item xs={12} sm={4}>
+                <Autocomplete
+                  value={profile.county}
+                  options={Object.keys(ukCounties)}
+                  onChange={handleCountyChange}
+                  renderInput={(params) => (
+                    <FormField {...params} label="County" InputLabelProps={{ shrink: true }} />
+                  )}
+                />
+              </Grid>
+
+              <Grid item xs={12} sm={4}>
+                <Autocomplete
+                  value={profile.city}
+                  options={cities}
+                  onChange={handleCityChange}
+                  renderInput={(params) => (
+                    <FormField {...params} label="City/Town" InputLabelProps={{ shrink: true }} />
+                  )}
+                />
+              </Grid>
+            </>
+          )}
+
+          {/* Additional logic for other countries (US, etc.) */}
+          {profile.country === "United States" && (
+            <>
+              <Grid item xs={12} sm={4}>
+                <Autocomplete
+                  value={profile.state}
+                  options={stateCities.getStates().sort((a, b) => a.localeCompare(b))}
+                  onChange={handleStateChange}
+                  renderInput={(params) => (
+                    <FormField {...params} label="State" InputLabelProps={{ shrink: true }} />
+                  )}
+                />
+              </Grid>
+
+              <Grid item xs={12} sm={4}>
+                <Autocomplete
+                  value={profile.city}
+                  options={cities}
+                  onChange={handleCityChange}
+                  renderInput={(params) => (
+                    <FormField {...params} label="City" InputLabelProps={{ shrink: true }} />
+                  )}
+                />
+              </Grid>
+            </>
+          )}
+
           <Grid item xs={12} md={6}>
             <Autocomplete
               multiple
@@ -283,9 +441,22 @@ function BasicInfo() {
             <Grid item xs={12} sm={12}>
               <FormField
                 label="About Me"
-                placeholder="Tell us a little about yourself"
+                placeholder="Tell us something unique about yourself and if you have any hidden talents and abilities."
                 value={profile.aboutMe}
                 onChange={handleChange("aboutMe")}
+                multiline rows={5}
+              />
+            </Grid>
+          </Grid>
+        )}
+        {userRole === "super admin" && (
+          <Grid container mt={1} spacing={3}>
+            <Grid item xs={12} sm={12}>
+              <FormField
+                label="Internal details about this model"
+                placeholder="Tell us something unique about yourself and if you have any hidden talents and abilities."
+                value={profile.internalNotes}
+                onChange={handleChange("internalNotes")}
                 multiline rows={5}
               />
             </Grid>

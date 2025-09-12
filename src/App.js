@@ -31,6 +31,9 @@ import createCache from "@emotion/cache";
 // Material Dashboard 3 PRO React routes
 import routes from "routes";
 
+import { hasAccess } from "routes";
+import { useAuth } from "context/AuthContext"; // Adjust if stored elsewhere
+
 // Model public profile page
 import PublicProfile from "layouts/pages/profile/public-profile";
 
@@ -120,13 +123,13 @@ export default function App() {
     document.scrollingElement.scrollTop = 0;
   }, [pathname]);
 
-  const getRoutes = (allRoutes) =>
-    allRoutes.map((route) => {
-      if (route.collapse) {
-        return getRoutes(route.collapse);
-      }
+  const { user } = useAuth();
 
-      if (route.route) {
+  const getRoutes = (allRoutes) =>
+    allRoutes.flatMap((route) => {
+      if (route.collapse) return getRoutes(route.collapse);
+
+      if (route.route && (!route.roles || hasAccess(user?.role, route.roles))) {
         return (
           <Route
             exact
@@ -137,7 +140,7 @@ export default function App() {
         );
       }
 
-      return null;
+      return [];
     });
 
   const configsButton = (

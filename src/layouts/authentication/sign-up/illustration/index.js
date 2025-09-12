@@ -144,7 +144,13 @@ function SignUpIllustration() {
                 {/* Role Selection */}
                 <MDBox mb={2}>
                     <FormControl component="fieldset">
-                        <FormLabel component="legend">Register as</FormLabel>
+                        {role === "model" && (
+                        <FormLabel component="legend">Apply to be a</FormLabel>
+                        )}
+                        
+                        {role === "client" && (
+                        <FormLabel component="legend">Register as a</FormLabel>
+                        )}
                         <RadioGroup
                             row
                             value={role}

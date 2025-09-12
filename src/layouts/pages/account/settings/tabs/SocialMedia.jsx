@@ -11,7 +11,6 @@ import MDInput from "components/MDInput";
 
 import InstagramIcon from "@mui/icons-material/Instagram";
 import YouTubeIcon from "@mui/icons-material/YouTube";
-import FacebookIcon from "@mui/icons-material/Facebook";
 import TwitterIcon from "@mui/icons-material/Twitter";
 import MusicVideoIcon from "@mui/icons-material/MusicVideo"; // TikTok
 
@@ -20,8 +19,6 @@ function SocialMedia() {
     instagram: "",
     tiktok: "",
     youtube: "",
-    facebook: "",
-    twitter: "",
   });
 
   const user = auth.currentUser;
@@ -37,8 +34,6 @@ function SocialMedia() {
             instagram: data.instagram || "",
             tiktok: data.tiktok || "",
             youtube: data.youtube || "",
-            facebook: data.facebook || "",
-            twitter: data.twitter || "",
           });
         }
       }
@@ -61,16 +56,6 @@ function SocialMedia() {
       icon: <YouTubeIcon color="error" sx={{ mr: 1 }} />,
       baseUrl: "https://youtube.com/",
       sanitize: (v) => v.replace(/.*(?:youtube\.com\/|\/)/i, "").split("?")[0],
-    },
-    facebook: {
-      icon: <FacebookIcon color="primary" sx={{ mr: 1 }} />,
-      baseUrl: "https://facebook.com/",
-      sanitize: (v) => v.replace(/.*(?:facebook\.com\/|\/)/i, "").split("?")[0],
-    },
-    twitter: {
-      icon: <TwitterIcon color="primary" sx={{ mr: 1 }} />,
-      baseUrl: "https://twitter.com/",
-      sanitize: (v) => v.replace(/.*(?:twitter\.com\/|@|\/)/i, "").split("?")[0],
     },
   };
 
@@ -120,7 +105,7 @@ function SocialMedia() {
       <MDBox p={3}>
         <Grid container spacing={3}>
           {Object.keys(platformMeta).map((platform) => (
-            <Grid item xs={12} md={6} key={platform}>
+            <Grid item xs={12} md={4} key={platform}>
               <MDInput
                 label={`${platform.charAt(0).toUpperCase() + platform.slice(1)} URL or @handle`}
                 value={links[platform]}

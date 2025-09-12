@@ -12,6 +12,9 @@ import MDTypography from "components/MDTypography";
 // Material Dashboard 3 PRO React base styles
 import typography from "assets/theme/base/typography";
 
+// Version number
+import version from "version";
+
 function Footer({ company, links }) {
   const { href, name } = company;
   const { size } = typography;
@@ -85,10 +88,10 @@ function Footer({ company, links }) {
 Footer.defaultProps = {
   company: { href: "https://themodel.cloud", name: "The Model Cloud" },
   links: [
-    { href: "https://www.creative-tim.com/", name: "Creative Tim" },
     { href: "https://www.creative-tim.com/presentation", name: "About Us" },
     { href: "https://www.creative-tim.com/blog", name: "Blog" },
     { href: "https://www.creative-tim.com/license", name: "License" },
+    { href: "#", name: `Version ${version}` }, 
   ],
 };
 

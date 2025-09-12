@@ -10,6 +10,9 @@ import MDTypography from "components/MDTypography";
 import MDInput from "components/MDInput";
 import MDButton from "components/MDButton";
 
+//Logo
+import { ReactComponent as Logo } from "assets/images/logo-rectangle-dark.svg";
+
 // Layout wrapper
 import IllustrationLayout from "layouts/authentication/components/IllustrationLayout";
 import bgImage from "assets/images/illustrations/signup-image-1.png";
@@ -27,18 +30,18 @@ function Illustration() {
   const [error, setError] = useState("");
 
   const handleSetRememberMe = () => setRememberMe(!rememberMe);
- 
+
   const handleSignIn = async (e) => {
     e.preventDefault();
     setError("");
-  
+
     try {
       const userCredential = await signInWithEmailAndPassword(auth, email, password);
       const user = userCredential.user;
-  
+
       const userRef = doc(db, "users", user.uid);
       const userSnap = await getDoc(userRef);
-  
+
       if (!userSnap.exists()) {
         // First time login — create Firestore profile
         await setDoc(userRef, {
@@ -48,24 +51,31 @@ function Illustration() {
           role: "model", // Default role — can adjust this
           createdAt: new Date().toISOString(),
         });
-  
+
         // 🔁 Send to account setup
         navigate("/pages/account/settings");
       } else {
         // 👤 Existing user — go to profile overview
         navigate("/pages/profile/profile-overview");
       }
-  
+
     } catch (err) {
       console.error("Login error:", err.message);
       setError("Invalid login credentials. Please try again.");
     }
   };
-  
+
 
   return (
     <IllustrationLayout
-      title="Sign In"
+      title={
+        <>
+          <MDBox display="flex" justifyContent="center" mb={2}>
+            <Logo style={{ height: 120 }} /> {/* Adjust height as needed */}
+          </MDBox>
+          Sign In
+        </>
+      }
       description="Enter your email and password to sign in"
       illustration={bgImage}
     >
