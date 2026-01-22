@@ -81,8 +81,8 @@ const pageRoutes = [
         icon: <Icon>badge</Icon>,
         collapse: [
           {
-            name: "profile overview",
-            route: "/pages/profile/profile-overview",
+            name: "dashboard",
+            route: "/dashboard",
           },
           {
             name: "all projects",
@@ -110,7 +110,7 @@ const pageRoutes = [
           },
           {
             name: "illustration",
-            route: "/authentication/sign-in/illustration",
+            route: "/sign-in",
           },
         ],
       },
@@ -125,7 +125,7 @@ const pageRoutes = [
           },
           {
             name: "illustration",
-            route: "/authentication/sign-up/illustration",
+            route: "/sign-up",
           },
         ],
       },

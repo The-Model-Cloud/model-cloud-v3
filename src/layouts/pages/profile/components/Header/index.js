@@ -66,9 +66,8 @@ function Header({ children }) {
           setFullName(`${firstName} ${lastName}`.trim());
           setAvatarUrl(data.profileAvatar || "");
           setUserRole(data.role || null); // Set the user role
-          // Generate public slug in the format firstname.lastnamefirstletter
-          const slug = `${firstName.toLowerCase()}.${lastName.charAt(0).toLowerCase()}`;
-          setPublicSlug(slug);
+          // Use the publicSlug from the database
+          setPublicSlug(data.publicSlug || "");
         }
       }
     };
@@ -159,7 +158,7 @@ function Header({ children }) {
                     </Icon>
                   }
                   component={Link}
-                  to="/pages/account/settings"
+                  to="/edit-profile"
                 />
               </Tabs>
             </AppBar>

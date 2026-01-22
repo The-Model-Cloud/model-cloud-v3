@@ -64,18 +64,18 @@ function UserCollapse() {
 
       {/* This replicates a nested collapse array */}
       <Collapse in={open} timeout="auto" unmountOnExit>
-        <SidenavList key="user-profile-link">
-          <NavLink to="/pages/profile/profile-overview">
-            <SidenavItem name="My Profile" nested />
+        <SidenavList key="user-dashboard-link">
+          <NavLink to="/dashboard">
+            <SidenavItem name="Dashboard" nested />
           </NavLink>
         </SidenavList>
-        <SidenavList key="user-settings-link">
-          <NavLink to="/pages/account/settings">
-            <SidenavItem name="Settings" nested />
+        <SidenavList key="user-edit-profile-link">
+          <NavLink to="/edit-profile">
+            <SidenavItem name="Edit Profile" nested />
           </NavLink>
         </SidenavList>
         <SidenavList key="user-logout-link">
-          <NavLink to="/authentication/sign-in/basic">
+          <NavLink to="/sign-in">
             <SidenavItem name="Logout" nested />
           </NavLink>
         </SidenavList>

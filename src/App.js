@@ -36,6 +36,8 @@ import { useAuth } from "context/AuthContext"; // Adjust if stored elsewhere
 
 // Model public profile page
 import PublicProfile from "layouts/pages/profile/public-profile";
+import ProfileOverview from "layouts/pages/profile/profile-overview";
+import Settings from "layouts/pages/account/settings";
 
 //Job Details page
 import JobDetails from "layouts/jobs/job-details";
@@ -70,9 +72,18 @@ export default function App() {
   const { pathname } = useLocation();
 
   useEffect(() => {
-    const isPublicProfile = /^\/[a-z0-9_-]+$/i.test(pathname);
-    if (isPublicProfile) {
-      // Disable dashboard layout features
+    // Check if it's an authentication route (should use page layout, no sidenav)
+    const isAuthRoute = pathname.startsWith('/authentication') || pathname === '/sign-in' || pathname === '/sign-up';
+
+    // Exclude app routes from public profile detection
+    const appRoutes = ['/dashboard', '/edit-profile', '/jobs', '/models', '/admin', '/dashboards', '/pages', '/applications', '/ecommerce', '/authentication', '/sign-in', '/sign-up'];
+    const isAppRoute = appRoutes.some(route => pathname.startsWith(route));
+
+    // Check if it's a public profile (single segment slug, not an app route)
+    const isPublicProfile = /^\/[a-z0-9_-]+$/i.test(pathname) && !isAppRoute;
+
+    if (isAuthRoute || isPublicProfile) {
+      // Disable dashboard layout features for auth pages and public profiles
       setMiniSidenav(dispatch, true); // collapse sidenav
       setOpenConfigurator(dispatch, false);
       controller.layout !== "page" && dispatch({ type: "LAYOUT", value: "page" });
@@ -193,13 +204,19 @@ export default function App() {
         {layout === "vr" && <Configurator />}
         <Routes>
           {getRoutes(routes)}
+          {/* Dashboard route (was /pages/profile/profile-overview) */}
+          <Route path="/dashboard" element={<ProfileOverview />} />
+          {/* Edit Profile route (was /pages/account/settings) */}
+          <Route path="/edit-profile" element={<Settings />} />
+
+
 
           <Route path="/jobs/:reference" element={<JobDetails />} />
-
+          <Route path="/jobs/edit/:reference" element={<EditJob />} />
           {/* Public-facing profile route based on slug */}
           <Route path="/:slug" element={<PublicProfile />} />
 
-          <Route path="*" element={<Navigate to="/dashboards/analytics" />} />
+          <Route path="*" element={<Navigate to="/dashboard" />} />
         </Routes>
       </ThemeProvider>
     </CacheProvider>

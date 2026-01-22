@@ -278,7 +278,7 @@ function SignUpIllustration() {
                         Already have an account?{" "}
                         <MDTypography
                             component={Link}
-                            to="/authentication/sign-in/illustration"
+                            to="/sign-in"
                             variant="button"
                             color="info"
                             fontWeight="medium"

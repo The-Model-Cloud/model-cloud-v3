@@ -63,6 +63,7 @@ import AddUser from "layouts/admin/add-user";
 import AllModels from "layouts/models/all";
 import ModelSettingsProxy from "layouts/pages/account/settings/ModelSettingsProxy";
 import ProfileAvatar from "components/Profile/ProfileAvatar";
+import PublicProfile from "layouts/pages/profile/public-profile";
 
 
 // Material Dashboard 3 PRO React components
@@ -81,22 +82,29 @@ const userProfileRoute = {
   icon: <MDAvatar src={profilePicture} alt="User" size="sm" />,
   collapse: [
     {
-      name: "My Profile",
-      key: "my-profile",
-      route: "/pages/profile/profile-overview",
+      name: "Dashboard",
+      key: "dashboard",
+      route: "/dashboard",
       component: <ProfileOverview />,
     },
     {
-      name: "Settings",
-      key: "profile-settings",
-      route: "/pages/account/settings",
+      name: "Edit Profile",
+      key: "edit-profile",
+      route: "/edit-profile",
       component: <Settings />,
+    },
+    {
+      name: "View Public Profile",
+      key: "view-public-profile",
+      route: ":slug", // This will be dynamic based on user's slug
+      component: <PublicProfile />,
+      icon: <Icon fontSize="small">visibility</Icon>,
     },
     {
       name: "Logout",
       key: "logout",
-      route: "/authentication/sign-in/basic",
-      component: <SignInBasic />,
+      route: "/sign-in",
+      component: <SignInIllustration />,
     },
   ],
 };
@@ -257,9 +265,9 @@ const routes = [
     icon: <Icon fontSize="small">person</Icon>,
     collapse: [
       {
-        name: "Settings",
-        key: "settings",
-        route: "/pages/account/settings",
+        name: "Edit Profile",
+        key: "edit-profile",
+        route: "/edit-profile",
         component: <Settings />,
       },
       {
@@ -295,9 +303,9 @@ const routes = [
         component: <NewUser />,
       },
       {
-        name: "Profile Overview",
-        key: "profile-overview",
-        route: "/pages/profile/profile-overview",
+        name: "Dashboard",
+        key: "dashboard",
+        route: "/dashboard",
         component: <ProfileOverview />,
       },
     ],
@@ -409,7 +417,7 @@ const routes = [
           {
             name: "Illustration",
             key: "illustration",
-            route: "/authentication/sign-in/illustration",
+            route: "/sign-in",
             component: <SignInIllustration />,
           },
         ],
@@ -427,7 +435,7 @@ const routes = [
           {
             name: "Illustration",
             key: "illustration",
-            route: "/authentication/sign-up/illustration",
+            route: "/sign-up",
             component: <SignUpIllustration />,
           },
         ],

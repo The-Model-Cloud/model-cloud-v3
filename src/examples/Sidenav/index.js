@@ -69,6 +69,7 @@ function Sidenav({ color, brand, brandName, routes, ...rest }) {
   const [userData, setUserData] = useState({
     name: "Loading...",
     avatar: null,
+    publicSlug: null,
   });
 
   // ✅ Fetch user data
@@ -83,6 +84,7 @@ function Sidenav({ color, brand, brandName, routes, ...rest }) {
           setUserData({
             name: `${data.firstName || ""} ${data.lastName || ""}`.trim() || "User",
             avatar: data.profileAvatar || null,
+            publicSlug: data.publicSlug || null,
           });
         }
       }
@@ -163,6 +165,12 @@ function Sidenav({ color, brand, brandName, routes, ...rest }) {
     collapses.map(({ name, collapse, route, href, key }) => {
       let returnValue;
 
+      // ✅ Make "View Public Profile" route dynamic based on user's publicSlug
+      let dynamicRoute = route;
+      if (key === "view-public-profile" && userData.publicSlug) {
+        dynamicRoute = `/${userData.publicSlug}`;
+      }
+
       if (collapse) {
         returnValue = (
           <SidenavItem
@@ -192,7 +200,7 @@ function Sidenav({ color, brand, brandName, routes, ...rest }) {
             <SidenavItem color={color} name={name} active={key === itemName} />
           </Link>
         ) : (
-          <NavLink to={route} key={key} style={{ textDecoration: "none" }}>
+          <NavLink to={dynamicRoute} key={key} style={{ textDecoration: "none" }}>
             <SidenavItem color={color} name={name} active={key === itemName} />
           </NavLink>
         );

@@ -29,6 +29,19 @@ function Illustration() {
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
 
+  // Load saved credentials on component mount
+  useEffect(() => {
+    const savedEmail = localStorage.getItem("rememberedEmail");
+    const savedPassword = localStorage.getItem("rememberedPassword");
+    const savedRememberMe = localStorage.getItem("rememberMe") === "true";
+
+    if (savedRememberMe && savedEmail && savedPassword) {
+      setEmail(savedEmail);
+      setPassword(savedPassword);
+      setRememberMe(true);
+    }
+  }, []);
+
   const handleSetRememberMe = () => setRememberMe(!rememberMe);
 
   const handleSignIn = async (e) => {
@@ -38,6 +51,17 @@ function Illustration() {
     try {
       const userCredential = await signInWithEmailAndPassword(auth, email, password);
       const user = userCredential.user;
+
+      // Handle "Remember me" functionality
+      if (rememberMe) {
+        localStorage.setItem("rememberedEmail", email);
+        localStorage.setItem("rememberedPassword", password);
+        localStorage.setItem("rememberMe", "true");
+      } else {
+        localStorage.removeItem("rememberedEmail");
+        localStorage.removeItem("rememberedPassword");
+        localStorage.removeItem("rememberMe");
+      }
 
       const userRef = doc(db, "users", user.uid);
       const userSnap = await getDoc(userRef);
@@ -53,10 +77,10 @@ function Illustration() {
         });
 
         // 🔁 Send to account setup
-        navigate("/pages/account/settings");
+        navigate("/edit-profile");
       } else {
         // 👤 Existing user — go to profile overview
-        navigate("/pages/profile/profile-overview");
+        navigate("/dashboard");
       }
 
     } catch (err) {
@@ -129,7 +153,7 @@ function Illustration() {
             Don&apos;t have an account?{" "}
             <MDTypography
               component={Link}
-              to="/authentication/sign-up/illustration"
+              to="/sign-up"
               variant="button"
               color="info"
               fontWeight="medium"

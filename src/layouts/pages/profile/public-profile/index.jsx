@@ -79,7 +79,7 @@ function PublicProfile() {
                     variant="outlined"
                     color="info"
                     size="medium"
-                    href="/authentication/sign-in/illustration"
+                    href="/sign-in"
                   >
                     Log in to Book Model
                   </MDButton>

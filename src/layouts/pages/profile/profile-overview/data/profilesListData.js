@@ -27,7 +27,7 @@ const profilesListData = [
     description: "Hi! I need more information..",
     action: {
       type: "internal",
-      route: "/pages/profile/profile-overview",
+      route: "/dashboard",
       color: "info",
       label: "reply",
     },
@@ -38,7 +38,7 @@ const profilesListData = [
     description: "Awesome work, can you..",
     action: {
       type: "internal",
-      route: "/pages/profile/profile-overview",
+      route: "/dashboard",
       color: "info",
       label: "reply",
     },
@@ -49,7 +49,7 @@ const profilesListData = [
     description: "About files I can..",
     action: {
       type: "internal",
-      route: "/pages/profile/profile-overview",
+      route: "/dashboard",
       color: "info",
       label: "reply",
     },
@@ -60,7 +60,7 @@ const profilesListData = [
     description: "Have a great afternoon..",
     action: {
       type: "internal",
-      route: "/pages/profile/profile-overview",
+      route: "/dashboard",
       color: "info",
       label: "reply",
     },
@@ -71,7 +71,7 @@ const profilesListData = [
     description: "Hi! I need more information..",
     action: {
       type: "internal",
-      route: "/pages/profile/profile-overview",
+      route: "/dashboard",
       color: "info",
       label: "reply",
     },

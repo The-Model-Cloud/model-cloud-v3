@@ -150,7 +150,7 @@ function Overview() {
                   },
                 ].filter(Boolean)}
 
-                action={{ route: "/pages/account/settings", tooltip: "Edit Profile" }}
+                action={{ route: "/edit-profile", tooltip: "Edit Profile" }}
                 shadow={false}
               />
               <Divider orientation="vertical" sx={{ mx: 0 }} />
@@ -180,7 +180,7 @@ function Overview() {
                 description="As Uber works through a huge amount of internal management turmoil."
                 action={{
                   type: "internal",
-                  route: "/pages/profile/profile-overview",
+                  route: "/dashboard",
                   color: "info",
                   label: "view project",
                 }}
@@ -200,7 +200,7 @@ function Overview() {
                 description="Music is something that everyone has their own specific opinion about."
                 action={{
                   type: "internal",
-                  route: "/pages/profile/profile-overview",
+                  route: "/dashboard",
                   color: "info",
                   label: "view project",
                 }}
@@ -220,7 +220,7 @@ function Overview() {
                 description="Different people have different taste, and various types of music."
                 action={{
                   type: "internal",
-                  route: "/pages/profile/profile-overview",
+                  route: "/dashboard",
                   color: "info",
                   label: "view project",
                 }}
@@ -240,7 +240,7 @@ function Overview() {
                 description="Why would anyone pick blue over pink? Pink is obviously a better color."
                 action={{
                   type: "internal",
-                  route: "/pages/profile/profile-overview",
+                  route: "/dashboard",
                   color: "info",
                   label: "view project",
                 }}

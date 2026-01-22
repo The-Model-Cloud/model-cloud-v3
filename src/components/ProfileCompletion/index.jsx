@@ -56,14 +56,14 @@ function ProfileCompletion() {
                 label: "Profile Photo",
                 completed: !!data.profileAvatar,
                 required: true,
-                link: "/pages/account/settings",
+                link: "/edit-profile",
                 icon: data.profileAvatar ? "check" : "close",
             },
             {
                 label: "Basic Information",
                 completed: !!(data.firstName && data.lastName && data.gender && data.country),
                 required: true,
-                link: "/pages/account/settings",
+                link: "/edit-profile",
                 icon: (data.firstName && data.lastName && data.gender && data.country) ? "check" : "close",
                 detail: !data.firstName ? "Add your name" : !data.gender ? "Add your gender" : !data.country ? "Add your location" : null,
             },
@@ -71,7 +71,7 @@ function ProfileCompletion() {
                 label: "Birth Date",
                 completed: !!(data.dayOfBirth && data.monthOfBirth && data.yearOfBirth),
                 required: true,
-                link: "/pages/account/settings",
+                link: "/edit-profile",
                 icon: (data.dayOfBirth && data.monthOfBirth && data.yearOfBirth) ? "check" : "close",
                 detail: "Required for age verification",
             },
@@ -79,7 +79,7 @@ function ProfileCompletion() {
                 label: "Contact Details",
                 completed: !!(data.email && data.phone),
                 required: true,
-                link: "/pages/account/settings",
+                link: "/edit-profile",
                 icon: (data.email && data.phone) ? "check" : "close",
                 detail: !data.phone ? "Add phone number" : null,
             },
@@ -87,7 +87,7 @@ function ProfileCompletion() {
                 label: "Portfolio Images",
                 completed: (data.portfolioImages?.length || 0) >= 8,
                 required: true,
-                link: "/pages/account/settings",
+                link: "/edit-profile",
                 icon: (data.portfolioImages?.length || 0) >= 8 ? "check" : (data.portfolioImages?.length || 0) >= 5 ? "warning" : "close",
                 detail: `${data.portfolioImages?.length || 0}/8 images (minimum 8 recommended)`,
             },
@@ -95,7 +95,7 @@ function ProfileCompletion() {
                 label: "Digitals/Polaroids",
                 completed: (data.digitalImages?.length || 0) >= 3,
                 required: true,
-                link: "/pages/account/settings",
+                link: "/edit-profile",
                 icon: (data.digitalImages?.length || 0) >= 3 ? "check" : (data.digitalImages?.length || 0) >= 1 ? "warning" : "close",
                 detail: `${data.digitalImages?.length || 0}/3 images (minimum 3 recommended)`,
             },
@@ -103,7 +103,7 @@ function ProfileCompletion() {
                 label: "Measurements",
                 completed: !!(data.height && data.waist && data.shoeSize && data.eyeColour && data.hairColour),
                 required: true,
-                link: "/pages/account/settings",
+                link: "/edit-profile",
                 icon: (data.height && data.waist && data.shoeSize && data.eyeColour && data.hairColour) ? "check" : "close",
                 detail: "Height, waist, shoe size, eye & hair color",
             },
@@ -111,7 +111,7 @@ function ProfileCompletion() {
                 label: "Categories/Skills",
                 completed: (data.categories?.length || 0) >= 1,
                 required: true,
-                link: "/pages/account/settings",
+                link: "/edit-profile",
                 icon: (data.categories?.length || 0) >= 3 ? "check" : (data.categories?.length || 0) >= 1 ? "warning" : "close",
                 detail: `${data.categories?.length || 0} selected (add more for better visibility)`,
             },
@@ -119,7 +119,7 @@ function ProfileCompletion() {
                 label: "About Me",
                 completed: !!(data.aboutMe && data.aboutMe.length >= 50),
                 required: false,
-                link: "/pages/account/settings",
+                link: "/edit-profile",
                 icon: (data.aboutMe && data.aboutMe.length >= 50) ? "check" : "warning",
                 detail: data.aboutMe ? `${data.aboutMe.length} characters (50+ recommended)` : "Add a description",
             },
@@ -127,7 +127,7 @@ function ProfileCompletion() {
                 label: "Social Media",
                 completed: !!(data.instagram || data.tiktok || data.youtube),
                 required: false,
-                link: "/pages/account/settings",
+                link: "/edit-profile",
                 icon: (data.instagram || data.tiktok || data.youtube) ? "check" : "warning",
                 detail: "Connect at least one platform",
             },
@@ -265,7 +265,7 @@ function ProfileCompletion() {
                         <MDBox mt={3} textAlign="center">
                             <MDButton
                                 component={Link}
-                                to="/pages/account/settings"
+                                to="/edit-profile"
                                 variant="gradient"
                                 color="info"
                                 fullWidth
