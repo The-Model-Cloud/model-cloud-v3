@@ -26,6 +26,7 @@ import ProfilesList from "examples/Lists/ProfilesList";
 import DefaultProjectCard from "examples/Cards/ProjectCards/DefaultProjectCard";
 
 // Overview page components
+import ProfileCompletion from "components/ProfileCompletion";
 import Header from "layouts/pages/profile/components/Header";
 import PlatformSettings from "layouts/pages/profile/profile-overview/components/PlatformSettings";
 
@@ -100,7 +101,12 @@ function Overview() {
       <MDBox mb={2} />
       <Header>
         <MDBox mt={5} mb={3}>
-          <Grid container spacing={1}>
+          <Grid container spacing={3}>
+
+            <Grid item xs={12}>
+              <ProfileCompletion />
+            </Grid>
+
             <Grid item xs={12} md={6} xl={4}>
               <PlatformSettings />
             </Grid>

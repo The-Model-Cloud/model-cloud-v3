@@ -63,15 +63,15 @@ function PublicProfile() {
                       Book Model
                     </MDButton>
                     {currentUser && currentUser.uid !== profile.uid && currentUser.role === "client" && (
-                    <MDButton
-                      variant="outlined"
-                      color="primary"
-                      size="medium"
-                      sx={{ mt: 2 }}
-                      startIcon={<FavoriteBorderIcon />}
-                    >
-                      Add to Favourites
-                    </MDButton>
+                      <MDButton
+                        variant="outlined"
+                        color="primary"
+                        size="medium"
+                        sx={{ mt: 2 }}
+                        startIcon={<FavoriteBorderIcon />}
+                      >
+                        Add to Favourites
+                      </MDButton>
                     )}
                   </>
                 ) : (
@@ -136,12 +136,86 @@ function PublicProfile() {
           </Grid>
         </MDBox>
         <MDBox p={4}>
-          {profile.portfolio?.length > 0 && (
+          {/* Portfolio Images */}
+          {profile.portfolioImages?.length > 0 && (
             <>
+              <MDTypography variant="h4" mb={2}>
+                Portfolio
+              </MDTypography>
+              <Grid container spacing={2}>
+                {profile.portfolioImages.map((url, index) => (
+                  <Grid item xs={12} sm={6} md={4} lg={3} key={`portfolio-${index}`}>
+                    <MDBox
+                      component="img"
+                      src={url}
+                      alt={`Portfolio ${index + 1}`}
+                      width="100%"
+                      height="300px"
+                      borderRadius="lg"
+                      sx={{
+                        objectFit: "cover",
+                        cursor: "pointer",
+                        transition: "transform 0.2s",
+                        "&:hover": {
+                          transform: "scale(1.02)"
+                        }
+                      }}
+                    />
+                  </Grid>
+                ))}
+              </Grid>
+            </>
+          )}
+
+          {/* Digitals Images */}
+          {profile.digitalImages?.length > 0 && (
+            <>
+              <MDTypography variant="h4" mt={4} mb={2}>
+                Digitals
+              </MDTypography>
+              <Grid container spacing={2}>
+                {profile.digitalImages.map((url, index) => (
+                  <Grid item xs={12} sm={6} md={4} lg={3} key={`digital-${index}`}>
+                    <MDBox
+                      component="img"
+                      src={url}
+                      alt={`Digital ${index + 1}`}
+                      width="100%"
+                      height="300px"
+                      borderRadius="lg"
+                      sx={{
+                        objectFit: "cover",
+                        cursor: "pointer",
+                        transition: "transform 0.2s",
+                        "&:hover": {
+                          transform: "scale(1.02)"
+                        }
+                      }}
+                    />
+                  </Grid>
+                ))}
+              </Grid>
+            </>
+          )}
+
+          {/* Fallback for legacy 'portfolio' field */}
+          {!profile.portfolioImages && !profile.digitalImages && profile.portfolio?.length > 0 && (
+            <>
+              <MDTypography variant="h4" mb={2}>
+                Portfolio
+              </MDTypography>
               <Grid container spacing={2}>
                 {profile.portfolio.map((url, index) => (
-                  <Grid item xs={12} mt={1} sm={6} md={4} lg={3} key={index}>
-                    <MDBox component="img" src={url} alt={`Portfolio ${index + 1}`} width="100%" sx={{ objectFit: "cover" }} />
+                  <Grid item xs={12} sm={6} md={4} lg={3} key={`legacy-${index}`}>
+                    <MDBox
+                      component="img"
+                      src={url}
+                      alt={`Portfolio ${index + 1}`}
+                      width="100%"
+                      height="300px"
+                      borderRadius="lg"
+                      sx={{ objectFit: "cover" }}
+                    />
                   </Grid>
                 ))}
               </Grid>

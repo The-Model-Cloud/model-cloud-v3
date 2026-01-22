@@ -37,7 +37,8 @@ function BasicInfo() {
     internalNotes: "",
     email: "",
     phone: "",
-    language: "",
+    languages: [],
+    categories: [],
     profileAvatar: "",
     companyName: "",
     yearEstablished: "",
@@ -63,9 +64,11 @@ function BasicInfo() {
             county: data.county || "",
             state: data.state || "",
             city: data.city || "",
+            aboutMe: data.aboutMe || "", // ← ADD THIS
             email: data.email || user.email || "",
             phone: data.phone || "",
-            language: data.language || "",
+            languages: data.languages || [], // ← ADD THIS (array)
+            categories: data.categories || [], // ← ADD THIS (array)
             profileAvatar: data.profileAvatar || "",
             companyName: data.companyName || "",
             yearEstablished: data.yearEstablished || "",
@@ -444,7 +447,8 @@ function BasicInfo() {
                 placeholder="Tell us something unique about yourself and if you have any hidden talents and abilities."
                 value={profile.aboutMe}
                 onChange={handleChange("aboutMe")}
-                multiline rows={5}
+                multiline
+                rows={5}
               />
             </Grid>
           </Grid>
