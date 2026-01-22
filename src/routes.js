@@ -1,3 +1,7 @@
+import { useEffect, useState } from "react";
+import { auth, db } from "config/firebase";
+import { doc, getDoc } from "firebase/firestore";
+
 /** 
   All of the routes for the Material Dashboard 3 PRO React are added here,
   You can add a new route, customize the routes and delete the routes here.
@@ -58,6 +62,7 @@ import ImportModels from "layouts/models/import";
 import AddUser from "layouts/admin/add-user";
 import AllModels from "layouts/models/all";
 import ModelSettingsProxy from "layouts/pages/account/settings/ModelSettingsProxy";
+import ProfileAvatar from "components/Profile/ProfileAvatar";
 
 
 // Material Dashboard 3 PRO React components
@@ -69,33 +74,35 @@ import Icon from "@mui/material/Icon";
 // Images
 import profilePicture from "assets/images/team-3.jpg";
 
+const userProfileRoute = {
+  type: "collapse",
+  name: "Loading...",
+  key: "user-profile",
+  icon: <MDAvatar src={profilePicture} alt="User" size="sm" />,
+  collapse: [
+    {
+      name: "My Profile",
+      key: "my-profile",
+      route: "/pages/profile/profile-overview",
+      component: <ProfileOverview />,
+    },
+    {
+      name: "Settings",
+      key: "profile-settings",
+      route: "/pages/account/settings",
+      component: <Settings />,
+    },
+    {
+      name: "Logout",
+      key: "logout",
+      route: "/authentication/sign-in/basic",
+      component: <SignInBasic />,
+    },
+  ],
+};
+
 const routes = [
-  {
-    type: "collapse",
-    name: "Brooklyn Alice",
-    key: "brooklyn-alice",
-    icon: <MDAvatar src={profilePicture} alt="Brooklyn Alice" size="sm" />,
-    collapse: [
-      {
-        name: "My Profile",
-        key: "my-profile",
-        route: "/pages/profile/profile-overview",
-        component: <ProfileOverview />,
-      },
-      {
-        name: "Settings",
-        key: "profile-settings",
-        route: "/pages/account/settings",
-        component: <Settings />,
-      },
-      {
-        name: "Logout",
-        key: "logout",
-        route: "/authentication/sign-in/basic",
-        component: <SignInBasic />,
-      },
-    ],
-  },
+  userProfileRoute,
   { type: "divider", key: "divider-0" },
   {
     type: "collapse",
