@@ -4,6 +4,7 @@ import MDBox from "components/MDBox";
 import MDTypography from "components/MDTypography";
 import MDInput from "components/MDInput";
 import FormField from "../FormField";
+import { currencies, rateTypes } from "config/paymentOptions";
 
 function Payment({ formik }) {
   const { values, handleChange, setFieldValue, touched, errors } = formik;
@@ -26,7 +27,7 @@ function Payment({ formik }) {
           </Grid>
           <Grid item xs={12} sm={4}>
             <Autocomplete
-              options={["GBP", "EUR", "USD"]}
+              options={currencies}
               value={values.currency}
               onChange={(_, newValue) => setFieldValue("currency", newValue)}
               renderInput={(params) => (
@@ -42,7 +43,7 @@ function Payment({ formik }) {
           </Grid>
           <Grid item xs={12} sm={4}>
             <Autocomplete
-              options={["Flat Fee", "Hourly", "Per Day"]}
+              options={rateTypes}
               value={values.rateType}
               onChange={(_, newValue) => setFieldValue("rateType", newValue)}
               renderInput={(params) => (

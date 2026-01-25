@@ -123,6 +123,9 @@ function SignUpIllustration() {
                 createdAt: new Date().toISOString(),
             });
 
+            // Set logged in flag to remember login status
+            localStorage.setItem("isLoggedIn", "true");
+
             alert("Verification email sent. Please check your inbox.");
             navigate("/dashboard");
         } catch (err) {

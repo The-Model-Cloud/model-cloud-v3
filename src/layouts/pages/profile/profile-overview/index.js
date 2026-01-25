@@ -22,16 +22,13 @@ import DashboardLayout from "examples/LayoutContainers/DashboardLayout";
 import DashboardNavbar from "examples/Navbars/DashboardNavbar";
 import Footer from "examples/Footer";
 import ProfileInfoCard from "examples/Cards/InfoCards/ProfileInfoCard";
-import ProfilesList from "examples/Lists/ProfilesList";
 import DefaultProjectCard from "examples/Cards/ProjectCards/DefaultProjectCard";
 
 // Overview page components
 import ProfileCompletion from "components/ProfileCompletion";
+import ConversationsWidget from "components/ConversationsWidget";
 import Header from "layouts/pages/profile/components/Header";
 import PlatformSettings from "layouts/pages/profile/profile-overview/components/PlatformSettings";
-
-// Data
-import profilesListData from "layouts/pages/profile/profile-overview/data/profilesListData";
 
 // Images
 import homeDecor1 from "assets/images/home-decor-1.jpg";
@@ -58,6 +55,7 @@ function Overview() {
     linkedin: "",
     youtube: "",
   });
+  const [userRole, setUserRole] = useState(null);
 
   const socialUrls = {
     facebook: "https://facebook.com/",
@@ -67,6 +65,9 @@ function Overview() {
     linkedin: "https://linkedin.com/in/", // or `/company/` for brands
   };
 
+  // Only show profile completion for models and clients
+  const showProfileCompletion = userRole === "model" || userRole === "client";
+
   useEffect(() => {
     const fetchProfile = async () => {
       const user = auth.currentUser;
@@ -75,6 +76,7 @@ function Overview() {
         const snap = await getDoc(ref);
         if (snap.exists()) {
           const data = snap.data();
+          setUserRole(data.role || null);
           setUserProfile({
             firstName: data.firstName || "",
             lastName: data.lastName || "",
@@ -103,9 +105,11 @@ function Overview() {
         <MDBox mt={5} mb={3}>
           <Grid container spacing={3}>
 
-            <Grid item xs={12}>
-              <ProfileCompletion />
-            </Grid>
+            {showProfileCompletion && (
+              <Grid item xs={12}>
+                <ProfileCompletion />
+              </Grid>
+            )}
 
             <Grid item xs={12} md={6} xl={4}>
               <PlatformSettings />
@@ -156,7 +160,7 @@ function Overview() {
               <Divider orientation="vertical" sx={{ mx: 0 }} />
             </Grid>
             <Grid item xs={12} xl={4}>
-              <ProfilesList title="conversations" profiles={profilesListData} shadow={false} />
+              <ConversationsWidget title="conversations" maxItems={5} shadow={false} />
             </Grid>
           </Grid>
         </MDBox>

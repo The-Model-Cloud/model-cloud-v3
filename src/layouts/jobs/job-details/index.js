@@ -1,10 +1,16 @@
-import { useParams } from "react-router-dom";
+import { useParams, useNavigate } from "react-router-dom";
 import { useEffect, useState } from "react";
-import { doc, getDoc, setDoc, updateDoc, arrayUnion, collection, query, where, getDocs } from "firebase/firestore";
+import { doc, getDoc, setDoc, updateDoc, arrayUnion, arrayRemove, collection, query, where, getDocs } from "firebase/firestore";
 import { auth, db } from "config/firebase";
 
 //Algorithm
 import { doesModelMatchJob } from "utils/matching";
+
+// Notifications
+import { createJobApplicationNotification, createJobApplicationConfirmationNotification, createJobApplicationCancellationNotification } from "utils/notifications";
+
+// API utilities
+import { sendApplicationEmail, sendModelApplicationConfirmation, createThread } from "utils/api";
 
 // MUI and MD components
 import Card from "@mui/material/Card";
@@ -13,6 +19,7 @@ import Modal from "@mui/material/Modal";
 import Box from "@mui/material/Box";
 import Fade from "@mui/material/Fade";
 import Backdrop from "@mui/material/Backdrop";
+import Icon from "@mui/material/Icon";
 
 
 import MDBox from "components/MDBox";
@@ -29,6 +36,10 @@ import Footer from "examples/Footer";
 import JobImages from "./components/JobImages";
 import JobInfo from "./components/JobInfo";
 import JobApplicants from "./components/JobApplicants";
+import ShortlistForJobModal from "components/Favourites/ShortlistForJobModal";
+
+// Favourites utilities
+import { getListsForJob } from "utils/favourites";
 
 const modalStyle = {
     position: "absolute",
@@ -45,13 +56,21 @@ const modalStyle = {
 
 function JobDetails() {
     const { reference } = useParams();
+    const navigate = useNavigate();
     const [job, setJob] = useState(null);
     const [model, setModel] = useState(null);
     const [models, setModels] = useState([]);
     const [hasApplied, setHasApplied] = useState(false);
+    const [applicationStatus, setApplicationStatus] = useState(null); // 'pending', 'cancelled', etc.
     const [snackOpen, setSnackOpen] = useState(false);
+    const [snackMessage, setSnackMessage] = useState("");
     const [showApplyModal, setShowApplyModal] = useState(false);
+    const [showCancelModal, setShowCancelModal] = useState(false);
     const [isApplying, setIsApplying] = useState(false);
+    const [isCancelling, setIsCancelling] = useState(false);
+    const [isCreatingThread, setIsCreatingThread] = useState(false);
+    const [shortlistModalOpen, setShortlistModalOpen] = useState(false);
+    const [linkedShortlist, setLinkedShortlist] = useState(null);
 
     useEffect(() => {
         const fetchCurrentModel = async () => {
@@ -71,50 +90,114 @@ function JobDetails() {
     }, []);
 
     const isMatch = model && job && doesModelMatchJob(model, job);
-    const alreadyApplied = job?.applicants?.includes(model?.uid) ?? false;
 
     const handleConfirmApply = async () => {
-        if (!model || !job) return;
+        if (!model || !job) {
+            console.error("Missing model or job data");
+            return;
+        }
 
         setIsApplying(true);
 
         try {
+            console.log("🚀 Starting job application process...");
+
             const jobRef = doc(db, "jobs", job.id);
 
-            // ✅ Step 1: Update the main job doc — ONLY this update for now
+            // ✅ Step 1: Update the main job doc
+            console.log("Step 1: Updating job applicants...");
             await updateDoc(jobRef, {
                 applicants: arrayUnion(model.uid),
                 [`appliedTimestamps.${model.uid}`]: new Date().toISOString(),
             });
 
-            // ✅ Step 2: Write to the subcollection (separate transaction)
+            // ✅ Step 2: Write/update the subcollection (handles re-applications)
+            console.log("Step 2: Creating/updating application record...");
             const applicationRef = doc(db, "jobs", job.id, "applications", model.uid);
             await setDoc(applicationRef, {
                 modelId: model.uid,
-                modelName: model.firstName || "",
+                modelName: `${model.firstName} ${model.lastName || ""}`,
                 appliedAt: new Date().toISOString(),
                 status: "pending",
-            });
+            }, { merge: true });
 
-            // ✅ Step 3: Email the client
-            const clientSnap = await getDoc(doc(db, "users", job.userId));
-            if (clientSnap.exists()) {
-                const client = clientSnap.data();
+            // ✅ Step 3: Add/update job in model's applied jobs
+            console.log("Step 3: Updating model's applied jobs...");
+            const modelRef = doc(db, "users", model.uid);
+            const modelSnap = await getDoc(modelRef);
+            if (modelSnap.exists()) {
+                const modelData = modelSnap.data();
+                const existingAppliedJobs = modelData.appliedJobs || [];
+                const existingIndex = existingAppliedJobs.findIndex(aj => aj.jobReference === job.reference);
 
-                const payload = {
-                    to: client.email,
-                    subject: `New model application for your job "${job.title}"`,
-                    text: `${model.firstName} has applied for your job.\n\nView the job here: https://themodel.cloud/jobs/${job.reference}`,
-                };
-
-                await fetch("/send-application-email", {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify(payload),
-                });
+                if (existingIndex >= 0) {
+                    // Re-applying: update existing entry
+                    existingAppliedJobs[existingIndex] = {
+                        ...existingAppliedJobs[existingIndex],
+                        appliedAt: new Date().toISOString(),
+                        status: "pending",
+                    };
+                    await updateDoc(modelRef, { appliedJobs: existingAppliedJobs });
+                } else {
+                    // First time applying
+                    await updateDoc(modelRef, {
+                        appliedJobs: arrayUnion({
+                            jobId: job.id,
+                            jobReference: job.reference,
+                            jobTitle: job.title,
+                            appliedAt: new Date().toISOString(),
+                            status: "pending",
+                        }),
+                    });
+                }
             }
 
+            console.log("✅ Core application process completed successfully!");
+
+            // ✅ Step 4: Get client details and send notifications/emails (non-critical)
+            try {
+                console.log("Step 4: Fetching client details...");
+                const clientSnap = await getDoc(doc(db, "users", job.userId));
+                if (clientSnap.exists()) {
+                    const client = clientSnap.data();
+
+                    // ✅ Step 5: Create notification for client
+                    console.log("Step 5: Creating notification for client...");
+                    await createJobApplicationNotification(job.userId, model, job)
+                        .catch(err => console.warn("⚠️ Notification creation failed:", err.message));
+
+                    // ✅ Step 6: Send email to client
+                    console.log("Step 6: Sending email to client...");
+                    await sendApplicationEmail(
+                        client.email,
+                        `${model.firstName} ${model.lastName || ""}`,
+                        job.title,
+                        job.reference
+                    );
+                }
+            } catch (clientError) {
+                console.warn("⚠️ Client notification/email failed (non-critical):", clientError.message);
+            }
+
+            // ✅ Step 7: Create confirmation notification for model
+            console.log("Step 7: Creating confirmation notification for model...");
+            await createJobApplicationConfirmationNotification(model.uid, job)
+                .catch(err => console.warn("⚠️ Model notification creation failed:", err.message));
+
+            // ✅ Step 8: Send confirmation email to model
+            console.log("Step 8: Sending confirmation email to model...");
+            await sendModelApplicationConfirmation(
+                model.email,
+                `${model.firstName} ${model.lastName || ""}`,
+                job.title,
+                job.reference
+            ).catch(err => console.warn("⚠️ Model confirmation email failed:", err.message));
+
+            console.log("✅ Application process completed!");
+
             setHasApplied(true);
+            setApplicationStatus("pending");
+            setSnackMessage("You've successfully applied!");
             setSnackOpen(true);
 
             setTimeout(() => {
@@ -123,9 +206,106 @@ function JobDetails() {
             }, 3000);
 
         } catch (err) {
-            console.error("❌ Failed to apply or send email:", err);
-            alert("Something went wrong when applying.");
+            console.error("❌ Critical error in application process:", err);
+            alert(`Application failed: ${err.message}\n\nPlease check the console for details.`);
             setIsApplying(false);
+        }
+    };
+
+    const handleCancelApplication = async () => {
+        if (!model || !job) {
+            console.error("Missing model or job data");
+            return;
+        }
+
+        setIsCancelling(true);
+
+        try {
+            console.log("🚫 Starting application cancellation process...");
+
+            const jobRef = doc(db, "jobs", job.id);
+
+            // Step 1: Remove model from job applicants array
+            console.log("Step 1: Removing from job applicants...");
+            await updateDoc(jobRef, {
+                applicants: arrayRemove(model.uid),
+            });
+
+            // Step 2: Update the application record status
+            console.log("Step 2: Updating application status...");
+            const applicationRef = doc(db, "jobs", job.id, "applications", model.uid);
+            await updateDoc(applicationRef, {
+                status: "cancelled",
+                cancelledAt: new Date().toISOString(),
+            });
+
+            // Step 3: Update model's appliedJobs - need to find and update the specific job
+            console.log("Step 3: Updating model's applied jobs...");
+            const modelRef = doc(db, "users", model.uid);
+            const modelSnap = await getDoc(modelRef);
+            if (modelSnap.exists()) {
+                const modelData = modelSnap.data();
+                const updatedAppliedJobs = (modelData.appliedJobs || []).map(aj => {
+                    if (aj.jobReference === job.reference) {
+                        return { ...aj, status: "cancelled", cancelledAt: new Date().toISOString() };
+                    }
+                    return aj;
+                });
+                await updateDoc(modelRef, { appliedJobs: updatedAppliedJobs });
+            }
+
+            console.log("✅ Core cancellation process completed!");
+
+            // Step 4: Notify client (non-critical)
+            try {
+                console.log("Step 4: Notifying client...");
+                await createJobApplicationCancellationNotification(job.userId, model, job)
+                    .catch(err => console.warn("⚠️ Client notification failed:", err.message));
+            } catch (clientError) {
+                console.warn("⚠️ Client notification failed (non-critical):", clientError.message);
+            }
+
+            console.log("✅ Cancellation process completed!");
+
+            setHasApplied(false);
+            setApplicationStatus("cancelled");
+            setSnackMessage("Application cancelled successfully");
+            setSnackOpen(true);
+
+            setTimeout(() => {
+                setShowCancelModal(false);
+                setIsCancelling(false);
+            }, 2000);
+
+        } catch (err) {
+            console.error("❌ Error cancelling application:", err);
+            alert(`Cancellation failed: ${err.message}`);
+            setIsCancelling(false);
+        }
+    };
+
+    // ✅ Handle messaging the client about this job
+    const handleMessageClient = async () => {
+        if (!model || !job) {
+            console.error("Missing model or job data");
+            return;
+        }
+
+        setIsCreatingThread(true);
+
+        try {
+            const result = await createThread(job.userId, "job", job.id);
+
+            if (result.threadId) {
+                navigate(`/messages/${result.threadId}`);
+            } else {
+                throw new Error("Failed to create conversation");
+            }
+        } catch (err) {
+            console.error("❌ Error creating message thread:", err);
+            setSnackMessage("Failed to start conversation. Please try again.");
+            setSnackOpen(true);
+            setIsCreatingThread(false);
         }
     };
 
@@ -137,8 +317,27 @@ function JobDetails() {
             const querySnapshot = await getDocs(q);
             if (!querySnapshot.empty) {
                 const docSnap = querySnapshot.docs[0];
-                setJob({ id: docSnap.id, ...docSnap.data() });
+                const jobData = { id: docSnap.id, ...docSnap.data() };
+                setJob(jobData);
 
+                // Check if current user has already applied and their status
+                const user = auth.currentUser;
+                if (user) {
+                    // Check from model's appliedJobs for accurate status
+                    const userRef = doc(db, "users", user.uid);
+                    const userSnap = await getDoc(userRef);
+                    if (userSnap.exists()) {
+                        const userData = userSnap.data();
+                        const appliedJob = (userData.appliedJobs || []).find(
+                            aj => aj.jobReference === jobData.reference
+                        );
+                        if (appliedJob) {
+                            setApplicationStatus(appliedJob.status);
+                            // Only set hasApplied if not cancelled
+                            setHasApplied(appliedJob.status !== "cancelled");
+                        }
+                    }
+                }
             }
         };
         fetchJob();
@@ -153,7 +352,7 @@ function JobDetails() {
                 const modelRef = doc(db, "users", uid);
                 const snap = await getDoc(modelRef);
                 if (snap.exists()) {
-                    modelsData.push(snap.data());
+                    modelsData.push({ uid, ...snap.data() });
                 }
             }
 
@@ -164,6 +363,24 @@ function JobDetails() {
             fetchModels();
         }
     }, [job]);
+
+    // Fetch linked shortlist for this job (for job owner)
+    useEffect(() => {
+        const fetchShortlist = async () => {
+            if (!job || !model || job.userId !== model.uid) return;
+
+            try {
+                const lists = await getListsForJob(job.id, model.uid);
+                if (lists.length > 0) {
+                    setLinkedShortlist(lists[0]);
+                }
+            } catch (error) {
+                console.error("Error fetching shortlist:", error);
+            }
+        };
+
+        fetchShortlist();
+    }, [job, model]);
 
     return (
         <DashboardLayout>
@@ -185,19 +402,58 @@ function JobDetails() {
                                 <Grid item xs={12} lg={5} sx={{ mx: "auto" }}>
                                     <JobInfo job={job} />
 
-                                    {/* 💡 INSERT this logic below JobInfo */}
+                                    {/* Application status and buttons */}
                                     {model && job.userId !== model.uid && (
                                         <MDBox mt={4}>
                                             {doesModelMatchJob(model, job) ? (
-                                                <MDButton
-                                                    color="info"
-                                                    variant="gradient"
-                                                    onClick={() => setShowApplyModal(true)}
-                                                    disabled={hasApplied}
-                                                >
-                                                    {hasApplied ? "You've Applied" : "Apply Now"}
-                                                </MDButton>
-
+                                                <>
+                                                    {hasApplied ? (
+                                                        <MDBox>
+                                                            <MDTypography variant="body2" color="success" fontWeight="medium" mb={2}>
+                                                                You've applied for this job
+                                                            </MDTypography>
+                                                            <MDBox display="flex" gap={2} flexWrap="wrap">
+                                                                <MDButton
+                                                                    color="info"
+                                                                    variant="outlined"
+                                                                    onClick={handleMessageClient}
+                                                                    disabled={isCreatingThread}
+                                                                >
+                                                                    <Icon sx={{ mr: 1 }}>message</Icon>
+                                                                    {isCreatingThread ? "Opening..." : "Message Client"}
+                                                                </MDButton>
+                                                                <MDButton
+                                                                    color="error"
+                                                                    variant="outlined"
+                                                                    onClick={() => setShowCancelModal(true)}
+                                                                >
+                                                                    Cancel Application
+                                                                </MDButton>
+                                                            </MDBox>
+                                                        </MDBox>
+                                                    ) : applicationStatus === "cancelled" ? (
+                                                        <MDBox>
+                                                            <MDTypography variant="body2" color="warning" fontWeight="medium" mb={2}>
+                                                                Application Cancelled
+                                                            </MDTypography>
+                                                            <MDButton
+                                                                color="info"
+                                                                variant="gradient"
+                                                                onClick={() => setShowApplyModal(true)}
+                                                            >
+                                                                Apply Again
+                                                            </MDButton>
+                                                        </MDBox>
+                                                    ) : (
+                                                        <MDButton
+                                                            color="info"
+                                                            variant="gradient"
+                                                            onClick={() => setShowApplyModal(true)}
+                                                        >
+                                                            Apply Now
+                                                        </MDButton>
+                                                    )}
+                                                </>
                                             ) : (
                                                 <MDTypography color="error" variant="body2">
                                                     Sorry, you don't match this job's requirements.
@@ -209,7 +465,7 @@ function JobDetails() {
                                         open={snackOpen}
                                         autoHideDuration={4000}
                                         onClose={() => setSnackOpen(false)}
-                                        message="You've successfully applied!"
+                                        message={snackMessage}
                                     />
 
                                 </Grid>
@@ -217,7 +473,53 @@ function JobDetails() {
                         )}
 
 
-                        {job && models.length > 0 && (
+                        {/* Shortlist section for job owner */}
+                        {job && model && job.userId === model.uid && (
+                            <MDBox mt={4} mb={2}>
+                                <MDBox display="flex" alignItems="center" justifyContent="space-between" mb={2}>
+                                    <MDTypography variant="h6" fontWeight="medium">
+                                        Model Shortlist
+                                    </MDTypography>
+                                    <MDButton
+                                        variant="outlined"
+                                        color="info"
+                                        size="small"
+                                        onClick={() => setShortlistModalOpen(true)}
+                                        startIcon={<Icon>playlist_add</Icon>}
+                                    >
+                                        {linkedShortlist ? "Change Shortlist" : "Add Shortlist"}
+                                    </MDButton>
+                                </MDBox>
+                                {linkedShortlist ? (
+                                    <Card sx={{ p: 2, backgroundColor: "grey.100" }}>
+                                        <MDBox display="flex" alignItems="center" justifyContent="space-between">
+                                            <MDBox>
+                                                <MDTypography variant="body1" fontWeight="medium">
+                                                    {linkedShortlist.title}
+                                                </MDTypography>
+                                                <MDTypography variant="caption" color="text">
+                                                    {linkedShortlist.modelCount || 0} models in shortlist
+                                                </MDTypography>
+                                            </MDBox>
+                                            <MDButton
+                                                variant="text"
+                                                color="info"
+                                                size="small"
+                                                href={`/favourites/${linkedShortlist.id}`}
+                                            >
+                                                View List
+                                            </MDButton>
+                                        </MDBox>
+                                    </Card>
+                                ) : (
+                                    <MDTypography variant="body2" color="text">
+                                        No shortlist linked to this job yet. Create or link a favourite list to shortlist models for this job.
+                                    </MDTypography>
+                                )}
+                            </MDBox>
+                        )}
+
+                        {job && (
                             <JobApplicants job={job} models={models} />
                         )}
                     </MDBox>
@@ -225,13 +527,13 @@ function JobDetails() {
             </MDBox>
             <Footer />
 
+            {/* Apply Confirmation Modal */}
             <Modal
                 open={showApplyModal}
                 onClose={() => setShowApplyModal(false)}
                 closeAfterTransition
                 BackdropComponent={Backdrop}
                 BackdropProps={{ timeout: 500 }}
-
             >
                 <Fade in={showApplyModal}>
                     <Box sx={modalStyle}>
@@ -266,7 +568,68 @@ function JobDetails() {
                 </Fade>
             </Modal>
 
+            {/* Cancel Application Confirmation Modal */}
+            <Modal
+                open={showCancelModal}
+                onClose={() => setShowCancelModal(false)}
+                closeAfterTransition
+                BackdropComponent={Backdrop}
+                BackdropProps={{ timeout: 500 }}
+            >
+                <Fade in={showCancelModal}>
+                    <Box sx={modalStyle}>
+                        <MDTypography id="cancel-modal-title" variant="h6" component="h2" gutterBottom color="error">
+                            Cancel Application?
+                        </MDTypography>
+                        <MDTypography id="cancel-modal-description" variant="body2" gutterBottom>
+                            Are you sure you want to cancel your application for this job? The client will be notified of this cancellation.
+                        </MDTypography>
+                        <MDTypography variant="body2" color="warning" fontWeight="medium" mt={2}>
+                            You can re-apply later if you change your mind.
+                        </MDTypography>
 
+                        <MDBox mt={3} display="flex" justifyContent="flex-end" gap={1}>
+                            <MDButton variant="outlined" color="secondary" onClick={() => setShowCancelModal(false)} disabled={isCancelling}>
+                                Keep Application
+                            </MDButton>
+                            <MDButton
+                                variant="gradient"
+                                color="error"
+                                onClick={handleCancelApplication}
+                                disabled={isCancelling}
+                            >
+                                {isCancelling ? (
+                                    <span style={{ display: "flex", alignItems: "center" }}>
+                                        <span className="spinner-border spinner-border-sm" role="status" aria-hidden="true" style={{ marginRight: 8 }} />
+                                        Cancelling...
+                                    </span>
+                                ) : (
+                                    "Yes, Cancel Application"
+                                )}
+                            </MDButton>
+                        </MDBox>
+                    </Box>
+                </Fade>
+            </Modal>
+
+            {/* Shortlist for Job Modal */}
+            {job && (
+                <ShortlistForJobModal
+                    open={shortlistModalOpen}
+                    onClose={() => setShortlistModalOpen(false)}
+                    job={job}
+                    onShortlistUpdated={(listId) => {
+                        if (listId) {
+                            // Refetch the linked shortlist
+                            getListsForJob(job.id, model?.uid).then(lists => {
+                                setLinkedShortlist(lists.length > 0 ? lists[0] : null);
+                            });
+                        } else {
+                            setLinkedShortlist(null);
+                        }
+                    }}
+                />
+            )}
 
         </DashboardLayout>
 

@@ -1,0 +1,118 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Helper: Check if user is authenticated
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    // Helper: Check if user is a participant of a thread
+    function isParticipant(threadData) {
+      return request.auth.uid in threadData.participants;
+    }
+
+    // Users collection - existing rules
+    match /users/{userId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated() && request.auth.uid == userId;
+      allow update: if isAuthenticated() && request.auth.uid == userId;
+      allow delete: if false;
+
+      // User notifications subcollection
+      match /notifications/{notificationId} {
+        allow read: if isAuthenticated() && request.auth.uid == userId;
+        allow create: if isAuthenticated();
+        allow update: if isAuthenticated() && request.auth.uid == userId;
+        allow delete: if isAuthenticated() && request.auth.uid == userId;
+      }
+    }
+
+    // Jobs collection - existing rules
+    match /jobs/{jobId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated();
+      allow update: if isAuthenticated();
+      allow delete: if isAuthenticated();
+
+      // Job applications subcollection
+      match /applications/{applicationId} {
+        allow read: if isAuthenticated();
+        allow create: if isAuthenticated();
+        allow update: if isAuthenticated();
+        allow delete: if isAuthenticated();
+      }
+    }
+
+    // ============================================================================
+    // FAVOURITES - Lists and Model Collections
+    // ============================================================================
+
+    // Favourite Lists collection
+    match /favouriteLists/{listId} {
+      // Read rules:
+      // - Owner can always read their own lists
+      // - Authenticated users can read lists with 'authenticated' visibility
+      // - Anyone can read lists with 'public' visibility
+      allow read: if
+        (isAuthenticated() && resource.data.ownerId == request.auth.uid)
+        || (isAuthenticated() && resource.data.visibility == "authenticated")
+        || resource.data.visibility == "public";
+
+      // Create: Only authenticated users can create lists
+      // Must set themselves as the owner
+      allow create: if isAuthenticated()
+        && request.resource.data.ownerId == request.auth.uid;
+
+      // Update: Only the owner can update their lists
+      allow update: if isAuthenticated()
+        && resource.data.ownerId == request.auth.uid;
+
+      // Delete: Only the owner can delete their lists
+      allow delete: if isAuthenticated()
+        && resource.data.ownerId == request.auth.uid;
+    }
+
+    // ============================================================================
+    // MESSAGING - Threads and Messages
+    // ============================================================================
+
+    // Threads collection
+    match /threads/{threadId} {
+      // Only participants can read threads
+      allow read: if isAuthenticated() && isParticipant(resource.data);
+
+      // Thread creation only via Cloud Functions (not direct client writes)
+      // This ensures proper validation of job access, participants, etc.
+      allow create: if false;
+
+      // Participants can update only their own muted/archived flags and unread count
+      allow update: if isAuthenticated()
+        && isParticipant(resource.data)
+        && request.resource.data.diff(resource.data).affectedKeys()
+            .hasOnly(['muted', 'unread']);
+
+      // No direct deletes
+      allow delete: if false;
+
+      // Messages subcollection
+      match /messages/{messageId} {
+        // Only participants can read messages
+        allow read: if isAuthenticated()
+          && isParticipant(get(/databases/$(database)/documents/threads/$(threadId)).data);
+
+        // Only participants can create messages
+        // Validates: sender matches auth, body is non-empty string under limit
+        allow create: if isAuthenticated()
+          && isParticipant(get(/databases/$(database)/documents/threads/$(threadId)).data)
+          && request.resource.data.senderId == request.auth.uid
+          && request.resource.data.body is string
+          && request.resource.data.body.size() > 0
+          && request.resource.data.body.size() <= 5000;
+
+        // No updates or deletes on messages (immutable)
+        allow update, delete: if false;
+      }
+    }
+  }
+}

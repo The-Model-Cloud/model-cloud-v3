@@ -59,31 +59,45 @@ function MyJobs() {
 
     if (!userSnap.exists()) return;
 
-    const jobRefs = userSnap.data().jobs || [];
+    const userData = userSnap.data();
+    const jobRefs = userData.jobs || [];
+    const appliedJobs = userData.appliedJobs || [];
 
-    if (jobRefs.length === 0) {
+    // Combine both created jobs and applied jobs
+    const allJobRefs = [...new Set([...jobRefs, ...appliedJobs.map(j => j.jobReference)])];
+
+    if (allJobRefs.length === 0) {
       setTableData({ columns: [], rows: [] });
       setLoading(false);
       return;
     }
 
-    const jobsQuery = query(collection(db, "jobs"), where("reference", "in", jobRefs));
+    const jobsQuery = query(collection(db, "jobs"), where("reference", "in", allJobRefs));
     const jobDocs = await getDocs(jobsQuery);
 
     const jobs = [];
     jobDocs.forEach((doc) => {
       const data = doc.data();
+
+      // Check if this is a created job or applied job
+      const isCreated = jobRefs.includes(data.reference);
+      const appliedJob = appliedJobs.find(aj => aj.jobReference === data.reference);
+      const isApplied = !!appliedJob;
+
       jobs.push({
         reference: data.reference,
         title: data.title,
         location: data.location,
         status: data.status || "Open",
+        applicationStatus: isApplied ? (appliedJob.status || "pending") : (isCreated ? "Owner" : "-"),
         budget: {
           amount: data.budget || "-",
-          currency: data.currency || "GBP", // default to GBP if missing
+          currency: data.currency || "GBP",
         },
-
-        createdAt: new Date(data.createdAt).toLocaleDateString("en-UK"),
+        createdAt: isApplied && appliedJob.appliedAt
+          ? new Date(appliedJob.appliedAt).toLocaleDateString("en-UK")
+          : new Date(data.createdAt).toLocaleDateString("en-UK"),
+        isOwner: isCreated,
       });
     });
 
@@ -104,6 +118,22 @@ function MyJobs() {
 
 
 
+    const getStatusColor = (status) => {
+      switch (status.toLowerCase()) {
+        case "pending":
+          return "warning";
+        case "accepted":
+        case "approved":
+          return "success";
+        case "rejected":
+          return "error";
+        case "owner":
+          return "info";
+        default:
+          return "text";
+      }
+    };
+
     setTableData({
       columns: [
         {
@@ -118,6 +148,15 @@ function MyJobs() {
         { Header: "location", accessor: "location" },
         { Header: "status", accessor: "status" },
         {
+          Header: "application",
+          accessor: "applicationStatus",
+          Cell: ({ value }) => (
+            <MDTypography variant="button" color={getStatusColor(value)} fontWeight="medium">
+              {value}
+            </MDTypography>
+          ),
+        },
+        {
           Header: "budget",
           accessor: "budget",
           Cell: ({ value }) => (
@@ -126,17 +165,24 @@ function MyJobs() {
             </MDTypography>
           ),
         },
-
-        { Header: "created", accessor: "createdAt" },
+        { Header: "date", accessor: "createdAt" },
         {
-          Header: "edit",
-          accessor: "edit",
+          Header: "action",
+          accessor: "action",
           Cell: ({ row }) => (
-            <Link to={`/jobs/edit/${row.original.reference}`}>
-              <MDButton variant="text" color="info" size="small">
-                <Icon>edit</Icon>&nbsp;Edit
-              </MDButton>
-            </Link>
+            row.original.isOwner ? (
+              <Link to={`/jobs/edit/${row.original.reference}`}>
+                <MDButton variant="text" color="info" size="small">
+                  <Icon>edit</Icon>&nbsp;Edit
+                </MDButton>
+              </Link>
+            ) : (
+              <Link to={`/jobs/${row.original.reference}`}>
+                <MDButton variant="text" color="info" size="small">
+                  <Icon>visibility</Icon>&nbsp;View
+                </MDButton>
+              </Link>
+            )
           ),
         },
       ],

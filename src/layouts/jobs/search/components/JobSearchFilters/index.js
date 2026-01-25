@@ -42,8 +42,17 @@ function JobSearchFilters({ setFilters, setResults, setLoading }) {
         const snapshot = await getDocs(q);
         const jobs = [];
 
+        // Get user's applied jobs to check application status
+        const appliedJobs = model?.appliedJobs || [];
+        const appliedJobRefs = appliedJobs.map(aj => aj.jobReference);
+
         snapshot.forEach((doc) => {
             const job = doc.data();
+
+            // Filter out closed jobs - they shouldn't appear in search
+            if (job.status?.toLowerCase() === "closed") {
+                return;
+            }
 
             const genderMatch =
                 gender.length === 0 || gender.some((g) => job.gender?.includes(g));
@@ -53,7 +62,12 @@ function JobSearchFilters({ setFilters, setResults, setLoading }) {
 
             if (genderMatch && categoryMatch) {
                 if (!matchOnly || (matchOnly && doesModelMatchJob(model, job))) {
-                    jobs.push(job);
+                    // Determine application status for the model
+                    const hasApplied = appliedJobRefs.includes(job.reference);
+                    jobs.push({
+                        ...job,
+                        applicationStatus: hasApplied ? "Applied" : "Not Applied",
+                    });
                 }
             }
         });

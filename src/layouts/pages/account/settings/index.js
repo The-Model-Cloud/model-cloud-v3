@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { useParams } from "react-router-dom";
+import { useParams, useSearchParams } from "react-router-dom";
 import Grid from "@mui/material/Grid";
 import AppBar from "@mui/material/AppBar";
 import Tabs from "@mui/material/Tabs";
@@ -30,10 +30,33 @@ import SocialMedia from "./tabs/SocialMedia";
 import { auth, db } from "config/firebase";
 import { doc, getDoc } from "firebase/firestore";
 
+// Tab name to index mapping for URL query parameter support
+const TAB_MAP = {
+  "basic-info": 0,
+  "portfolio": 1,
+  "digitals": 2,
+  "measurements": 3,
+  "social-media": 4,
+  "notifications": 5,
+  "change-password": 6,
+  "delete-account": 7,
+};
+
 function Settings() {
-  const [tabValue, setTabValue] = useState(0);
+  const [searchParams] = useSearchParams();
+  const tabParam = searchParams.get("tab");
+  const initialTab = tabParam && TAB_MAP[tabParam] !== undefined ? TAB_MAP[tabParam] : 0;
+
+  const [tabValue, setTabValue] = useState(initialTab);
   const [userRole, setUserRole] = useState(null);
   const { uid } = useParams(); // ✅ check for impersonated UID
+
+  // ✅ Update tab when URL query param changes
+  useEffect(() => {
+    if (tabParam && TAB_MAP[tabParam] !== undefined) {
+      setTabValue(TAB_MAP[tabParam]);
+    }
+  }, [tabParam]);
 
   useEffect(() => {
     const fetchUserRole = async () => {

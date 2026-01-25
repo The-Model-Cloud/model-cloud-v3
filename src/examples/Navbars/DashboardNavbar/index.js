@@ -16,7 +16,11 @@ Coded by www.creative-tim.com
 import { useState, useEffect } from "react";
 
 // react-router components
-import { useLocation, Link } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
+
+// Firebase
+import { signOut } from "firebase/auth";
+import { auth } from "config/firebase";
 
 // prop-types is a library for typechecking of props.
 import PropTypes from "prop-types";
@@ -58,6 +62,7 @@ import {
 function DashboardNavbar({ absolute, light, isMini }) {
   const [navbarType, setNavbarType] = useState();
   const [controller, dispatch] = useMaterialUIController();
+  const navigate = useNavigate();
   const {
     miniSidenav,
     transparentNavbar,
@@ -102,6 +107,16 @@ function DashboardNavbar({ absolute, light, isMini }) {
     setOpenConfigurator(dispatch, !openConfigurator);
   const handleOpenMenu = (event) => setOpenMenu(event.currentTarget);
   const handleCloseMenu = () => setOpenMenu(false);
+
+  const handleLogout = async () => {
+    try {
+      await signOut(auth);
+      localStorage.removeItem("isLoggedIn");
+      navigate("/sign-in");
+    } catch (error) {
+      console.error("Error signing out:", error);
+    }
+  };
 
   // Render the notifications menu
   const renderMenu = () => (
@@ -177,11 +192,15 @@ function DashboardNavbar({ absolute, light, isMini }) {
               <MDInput label="Search here" />
             </MDBox>
             <MDBox color={light ? "white" : "inherit"}>
-              <Link to="/sign-in">
-                <IconButton sx={navbarIconButton} size="small" disableRipple>
-                  <Icon sx={iconsStyle}>account_circle</Icon>
-                </IconButton>
-              </Link>
+              <IconButton
+                sx={navbarIconButton}
+                size="small"
+                disableRipple
+                onClick={handleLogout}
+                title="Logout"
+              >
+                <Icon sx={iconsStyle}>logout</Icon>
+              </IconButton>
               <IconButton
                 size="small"
                 disableRipple

@@ -63,6 +63,9 @@ function Illustration() {
         localStorage.removeItem("rememberMe");
       }
 
+      // Set logged in flag to remember login status
+      localStorage.setItem("isLoggedIn", "true");
+
       const userRef = doc(db, "users", user.uid);
       const userSnap = await getDoc(userRef);
 

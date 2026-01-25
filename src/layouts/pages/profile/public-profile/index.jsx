@@ -1,29 +1,31 @@
 import { useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
-import { collection, query, where, getDocs } from "firebase/firestore";
+import { collection, query, where, getDocs, doc, getDoc } from "firebase/firestore";
 import { auth, db } from "config/firebase";
 
 // MUI components
 import Container from "@mui/material/Container";
 import Grid from "@mui/material/Grid";
 import Card from "@mui/material/Card";
+import Icon from "@mui/material/Icon";
 import MDButton from "components/MDButton";
 import MDBox from "components/MDBox";
 import MDTypography from "components/MDTypography";
 import ProfileAvatar from "components/Profile/ProfileAvatar";
-import FavoriteBorderIcon from '@mui/icons-material/FavoriteBorder'; // Import the heart icon
+
+// Favourites
+import { useFavourites } from "context/FavouritesContext";
+import { useAuth } from "context/AuthContext";
+import AddToListModal from "components/Favourites/AddToListModal";
 
 function PublicProfile() {
   const { slug } = useParams();
-  const [profile, setProfile] = useState(null);
-  const [currentUser, setCurrentUser] = useState(null);
+  const { user } = useAuth();
+  const { isModelFavourited, toggleQuickFavourite } = useFavourites();
 
-  useEffect(() => {
-    const unsubscribe = auth.onAuthStateChanged((user) => {
-      setCurrentUser(user);
-    });
-    return () => unsubscribe();
-  }, []);
+  const [profile, setProfile] = useState(null);
+  const [profileUid, setProfileUid] = useState(null);
+  const [addToListModalOpen, setAddToListModalOpen] = useState(false);
 
   useEffect(() => {
     fetchUser();
@@ -33,8 +35,24 @@ function PublicProfile() {
     const q = query(collection(db, "users"), where("publicSlug", "==", slug));
     const snapshot = await getDocs(q);
     if (!snapshot.empty) {
-      setProfile(snapshot.docs[0].data());
+      const docData = snapshot.docs[0];
+      setProfile({ uid: docData.id, ...docData.data() });
+      setProfileUid(docData.id);
     }
+  };
+
+  // Check if current user can favourite (is a client or above)
+  const canFavourite = user && ["client", "account manager", "admin", "super admin"].includes(user.role);
+  const isFavourited = profileUid && canFavourite ? isModelFavourited(profileUid) : false;
+
+  const handleFavouriteToggle = async () => {
+    if (profileUid && canFavourite) {
+      await toggleQuickFavourite(profileUid);
+    }
+  };
+
+  const handleAddToList = () => {
+    setAddToListModalOpen(true);
   };
 
   if (!profile) return <MDBox p={4}>Loading profile...</MDBox>;
@@ -54,7 +72,7 @@ function PublicProfile() {
               </MDTypography>
 
               <Grid item xs={12} mt={2}>
-                {currentUser && profile.role === "model" ? null : currentUser ? (
+                {user && profile.role === "model" ? null : user ? (
                   <>
                     <MDTypography variant="h6" color="info">
                       Book this Model
@@ -62,16 +80,27 @@ function PublicProfile() {
                     <MDButton variant="gradient" color="info" size="medium">
                       Book Model
                     </MDButton>
-                    {currentUser && currentUser.uid !== profile.uid && currentUser.role === "client" && (
-                      <MDButton
-                        variant="outlined"
-                        color="primary"
-                        size="medium"
-                        sx={{ mt: 2 }}
-                        startIcon={<FavoriteBorderIcon />}
-                      >
-                        Add to Favourites
-                      </MDButton>
+                    {canFavourite && user.uid !== profileUid && (
+                      <MDBox display="flex" gap={1} mt={2}>
+                        <MDButton
+                          variant={isFavourited ? "gradient" : "outlined"}
+                          color={isFavourited ? "error" : "dark"}
+                          size="medium"
+                          onClick={handleFavouriteToggle}
+                          startIcon={<Icon>{isFavourited ? "favorite" : "favorite_border"}</Icon>}
+                        >
+                          {isFavourited ? "Favourited" : "Favourite"}
+                        </MDButton>
+                        <MDButton
+                          variant="outlined"
+                          color="info"
+                          size="medium"
+                          onClick={handleAddToList}
+                          startIcon={<Icon>playlist_add</Icon>}
+                        >
+                          Add to List
+                        </MDButton>
+                      </MDBox>
                     )}
                   </>
                 ) : (
@@ -223,6 +252,15 @@ function PublicProfile() {
           )}
         </MDBox>
       </Card>
+
+      {/* Add to List Modal */}
+      {canFavourite && profile && (
+        <AddToListModal
+          open={addToListModalOpen}
+          onClose={() => setAddToListModalOpen(false)}
+          model={profile}
+        />
+      )}
     </Container>
   );
 }

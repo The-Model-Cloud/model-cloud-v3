@@ -51,7 +51,10 @@ function ProfileCompletion() {
     }, []);
 
     const calculateCompletion = (data) => {
-        const items = [
+        const userRole = data.role;
+
+        // Common items for all users
+        const commonItems = [
             {
                 label: "Profile Photo",
                 completed: !!data.profileAvatar,
@@ -59,6 +62,10 @@ function ProfileCompletion() {
                 link: "/edit-profile",
                 icon: data.profileAvatar ? "check" : "close",
             },
+        ];
+
+        // Model-specific items
+        const modelItems = [
             {
                 label: "Basic Information",
                 completed: !!(data.firstName && data.lastName && data.gender && data.country),
@@ -132,6 +139,67 @@ function ProfileCompletion() {
                 detail: "Connect at least one platform",
             },
         ];
+
+        // Client-specific items
+        const clientItems = [
+            {
+                label: "Basic Information",
+                completed: !!(data.firstName && data.lastName && data.country),
+                required: true,
+                link: "/edit-profile",
+                icon: (data.firstName && data.lastName && data.country) ? "check" : "close",
+                detail: !data.firstName ? "Add your name" : !data.country ? "Add your location" : null,
+            },
+            {
+                label: "Contact Details",
+                completed: !!(data.email && data.phone),
+                required: true,
+                link: "/edit-profile",
+                icon: (data.email && data.phone) ? "check" : "close",
+                detail: !data.phone ? "Add phone number" : null,
+            },
+            {
+                label: "Year Established",
+                completed: !!data.yearEstablished,
+                required: true,
+                link: "/edit-profile",
+                icon: data.yearEstablished ? "check" : "close",
+                detail: "When was your company established?",
+            },
+            {
+                label: "Company Number",
+                completed: !!data.companyNumber,
+                required: true,
+                link: "/edit-profile",
+                icon: data.companyNumber ? "check" : "close",
+                detail: "Your registered company number",
+            },
+            {
+                label: "Registered Address",
+                completed: !!data.registeredAddress,
+                required: true,
+                link: "/edit-profile",
+                icon: data.registeredAddress ? "check" : "close",
+                detail: "Your company's registered address",
+            },
+            {
+                label: "VAT Number",
+                completed: !!data.vatNumber,
+                required: false,
+                link: "/edit-profile",
+                icon: data.vatNumber ? "check" : "warning",
+                detail: "Add if applicable",
+            },
+        ];
+
+        // Build items array based on user role
+        let items;
+        if (userRole === "client") {
+            items = [...commonItems, ...clientItems];
+        } else {
+            // Default to model items for models and any other role
+            items = [...commonItems, ...modelItems];
+        }
 
         // Calculate percentage (only count required items)
         const requiredItems = items.filter(item => item.required);

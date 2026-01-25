@@ -86,7 +86,10 @@ function NewJob() {
 
   const initialValues = {
     title: "",
-    location: "",
+    country: "",
+    county: "",
+    state: "",
+    city: "",
     description: "",
     usage: "",
     jobType: [],
@@ -114,7 +117,7 @@ function NewJob() {
 
   const validationSchema = Yup.object({
     title: Yup.string().required("Job title is required").min(3, "Title must be at least 3 characters"),
-    location: Yup.string().required("Location is required"),
+    country: Yup.string().required("Country is required"),
     description: Yup.string().required("Description is required"),
     categories: Yup.array().min(1, "At least one category is required"),
     gender: Yup.array().min(1, "Please select at least one gender"),

@@ -5,19 +5,7 @@ import Papa from "papaparse";
 import { useAuth } from "context/AuthContext";
 
 // Firebase
-import {
-  getAuth,
-  createUserWithEmailAndPassword,
-} from "firebase/auth";
-import {
-  getFirestore,
-  collection,
-  query,
-  where,
-  getDocs,
-  doc,
-  setDoc,
-} from "firebase/firestore";
+import { getFunctions, httpsCallable } from "firebase/functions";
 
 // UI
 import DashboardLayout from "examples/LayoutContainers/DashboardLayout";
@@ -29,30 +17,141 @@ import Button from "@mui/material/Button";
 import Icon from "@mui/material/Icon";
 import Card from "@mui/material/Card";
 import CircularProgress from "@mui/material/CircularProgress";
-import Box from "@mui/material/Box";
-import Typography from "@mui/material/Typography";
+import Divider from "@mui/material/Divider";
+import Grid from "@mui/material/Grid";
 
-function CircularProgressWithLabel({ value }) {
-  return (
-    <Box position="relative" display="inline-flex">
-      <CircularProgress variant="determinate" value={value} />
-      <Box
-        top={0}
-        left={0}
-        bottom={0}
-        right={0}
-        position="absolute"
-        display="flex"
-        alignItems="center"
-        justifyContent="center"
-      >
-        <Typography variant="caption" component="div" color="text.secondary">
-          {`${Math.round(value)}%`}
-        </Typography>
-      </Box>
-    </Box>
-  );
-}
+// Example CSV data for the template
+// Gender options: Woman, Man, Transwoman, Transman, Non-binary person, Other
+const EXAMPLE_CSV_DATA = [
+  {
+    firstName: "Jane",
+    lastName: "Smith",
+    email: "jane.smith@example.com",
+    gender: "Woman",
+    phone: "07700900123",
+    town: "London",
+    county: "Greater London",
+    height: "175",
+    chest: "34",
+    waist: "26",
+    hips: "36",
+    shoeSize: "6",
+    aboutMe: "Experienced model with 5 years in fashion and commercial work.",
+    instagram: "@janesmith_model",
+  },
+  {
+    firstName: "John",
+    lastName: "Doe",
+    email: "john.doe@example.com",
+    gender: "Man",
+    phone: "07700900456",
+    town: "Manchester",
+    county: "Greater Manchester",
+    height: "185",
+    chest: "40",
+    waist: "32",
+    hips: "38",
+    shoeSize: "10",
+    aboutMe: "Fitness model specialising in sportswear and lifestyle campaigns.",
+    instagram: "@johndoe_fitness",
+  },
+  {
+    firstName: "Sophie",
+    lastName: "Taylor",
+    email: "sophie.taylor@example.com",
+    gender: "Transwoman",
+    phone: "07700900789",
+    town: "Brighton",
+    county: "East Sussex",
+    height: "178",
+    chest: "36",
+    waist: "28",
+    hips: "38",
+    shoeSize: "8",
+    aboutMe: "Runway and editorial model with a passion for inclusive fashion.",
+    instagram: "@sophietaylor_model",
+  },
+  {
+    firstName: "Alex",
+    lastName: "Morgan",
+    email: "alex.morgan@example.com",
+    gender: "Transman",
+    phone: "07700900321",
+    town: "Bristol",
+    county: "Bristol",
+    height: "175",
+    chest: "38",
+    waist: "30",
+    hips: "36",
+    shoeSize: "9",
+    aboutMe: "Commercial model focusing on lifestyle and fitness campaigns.",
+    instagram: "@alexmorgan_fit",
+  },
+  {
+    firstName: "Jordan",
+    lastName: "Lee",
+    email: "jordan.lee@example.com",
+    gender: "Non-binary person",
+    phone: "07700900654",
+    town: "Edinburgh",
+    county: "Midlothian",
+    height: "170",
+    chest: "35",
+    waist: "27",
+    hips: "37",
+    shoeSize: "7",
+    aboutMe: "Androgynous model working in high fashion and editorial.",
+    instagram: "@jordanlee_style",
+  },
+  {
+    firstName: "Sam",
+    lastName: "Williams",
+    email: "sam.williams@example.com",
+    gender: "Other",
+    phone: "07700900987",
+    town: "Cardiff",
+    county: "South Glamorgan",
+    height: "168",
+    chest: "33",
+    waist: "25",
+    hips: "35",
+    shoeSize: "5",
+    aboutMe: "Creative model specialising in art and conceptual photography.",
+    instagram: "@samwilliams_art",
+  },
+];
+
+// Function to download CSV template
+const downloadExampleCSV = () => {
+  try {
+    const headers = Object.keys(EXAMPLE_CSV_DATA[0]);
+    const csvContent = [
+      headers.join(","),
+      ...EXAMPLE_CSV_DATA.map((row) =>
+        headers.map((header) => {
+          const value = String(row[header] ?? "");
+          // Escape values that contain commas or quotes
+          if (value.includes(",") || value.includes('"') || value.includes("\n")) {
+            return `"${value.replace(/"/g, '""')}"`;
+          }
+          return value;
+        }).join(",")
+      ),
+    ].join("\n");
+
+    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = "import-models-template.csv";
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  } catch (error) {
+    console.error("Error downloading CSV template:", error);
+  }
+};
 
 export default function ImportModels() {
   const { user, loading } = useAuth();
@@ -127,64 +226,34 @@ export default function ImportModels() {
   };
 
   const handleImport = async () => {
-    const auth = getAuth();
-    const db = getFirestore();
-    const feedback = [];
+    setProgress(10); // Show initial progress
+    setResults([]);
 
-    for (let i = 0; i < rawData.length; i++) {
-      const model = rawData[i];
-      const email = model.email?.toLowerCase();
-      if (!email) {
-        feedback.push({ email: "(missing)", status: "error", message: "Missing email address" });
-        setProgress(((i + 1) / rawData.length) * 100);
-        continue;
-      }
+    try {
+      const functions = getFunctions();
+      const importModels = httpsCallable(functions, "importModels");
 
-      const firstName = (model.firstName || "").trim().toLowerCase();
-      const lastInitial = (model.lastName || "").trim().charAt(0).toLowerCase();
-      const publicSlug = `${firstName}.${lastInitial}`;
+      setProgress(30); // Calling cloud function
 
-      const modelData = {
-        ...model,
-        email,
-        role: "model",
-        publicSlug,
-        updatedAt: new Date().toISOString(),
-      };
+      const response = await importModels({ models: rawData });
+      const { results: importResults, summary } = response.data;
 
-      try {
-        const q = query(collection(db, "users"), where("email", "==", email));
-        const snapshot = await getDocs(q);
+      setProgress(100);
+      setResults(importResults);
 
-        if (!snapshot.empty) {
-          const docRef = snapshot.docs[0].ref;
-          await setDoc(docRef, {
-            ...snapshot.docs[0].data(),
-            ...modelData,
-            status: "imported",
-          });
-          feedback.push({ email, status: "updated" });
-        } else {
-          const password = model.password || "Model123!";
-          const userCred = await createUserWithEmailAndPassword(auth, email, password);
-          const uid = userCred.user.uid;
-
-          await setDoc(doc(db, "users", uid), {
-            ...modelData,
-            createdAt: new Date().toISOString(),
-            status: "activated",
-          });
-
-          feedback.push({ email, status: "created" });
-        }
-      } catch (err) {
-        feedback.push({ email, status: "error", message: err.message });
-      }
-
-      setProgress(((i + 1) / rawData.length) * 100);
+      // Show summary alert
+      alert(
+        `Import Complete!\n\n` +
+        `Created: ${summary.created}\n` +
+        `Updated: ${summary.updated}\n` +
+        `Linked to existing Auth: ${summary.linked}\n` +
+        `Errors: ${summary.errors}`
+      );
+    } catch (err) {
+      console.error("Import error:", err);
+      setResults([{ email: "Import failed", status: "error", message: err.message }]);
+      setProgress(0);
     }
-
-    setResults(feedback);
   };
 
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
@@ -206,61 +275,156 @@ export default function ImportModels() {
     <DashboardLayout>
       <DashboardNavbar />
       <MDBox pt={4} pb={3}>
-        <Card>
-          <MDBox p={3}>
-            <MDTypography variant="h5" gutterBottom>Import Models via CSV</MDTypography>
-            <MDBox
-              {...getRootProps()}
-              border="2px dashed"
-              borderColor={isDragActive ? "info.main" : "grey.400"}
-              p={4}
-              textAlign="center"
-              borderRadius="lg"
-              sx={{ cursor: "pointer" }}
-            >
-              <input {...getInputProps()} />
-              <Icon sx={{ fontSize: 40, color: "info.main" }}>cloud_upload</Icon>
-              <MDTypography variant="body1" mt={1}>
-                {isDragActive ? "Drop the CSV here..." : "Drag & drop or click to upload a CSV file"}
-              </MDTypography>
-              {uploading && (
-                <MDBox mt={2}>
-                  <CircularProgress size={24} color="info" />
+        <Grid container spacing={3}>
+          {/* Template Download Card */}
+          <Grid item xs={12} lg={4}>
+            <Card>
+              <MDBox p={3}>
+                <MDTypography variant="h5" gutterBottom>
+                  CSV Template
+                </MDTypography>
+                <MDTypography variant="body2" color="text" mb={3}>
+                  Download the example CSV template to ensure your data is formatted correctly for import.
+                </MDTypography>
+
+                <Button
+                  variant="contained"
+                  color="success"
+                  onClick={downloadExampleCSV}
+                  startIcon={<Icon>download</Icon>}
+                  fullWidth
+                  sx={{ mb: 3 }}
+                >
+                  Download Example CSV
+                </Button>
+
+                <Divider sx={{ my: 2 }} />
+
+                <MDTypography variant="h6" gutterBottom>
+                  Required Columns
+                </MDTypography>
+                <MDBox component="ul" sx={{ pl: 2, mb: 2 }}>
+                  <li><MDTypography variant="caption"><strong>email</strong> - User's email address (required)</MDTypography></li>
+                  <li><MDTypography variant="caption"><strong>firstName</strong> - First name</MDTypography></li>
+                  <li><MDTypography variant="caption"><strong>lastName</strong> - Last name</MDTypography></li>
                 </MDBox>
-              )}
-            </MDBox>
-          </MDBox>
 
-          {rawData.length > 0 && (
-            <MDBox px={3} pb={3}>
-              <MDTypography>Rows ready to import: {rawData.length}</MDTypography>
-              <Button variant="contained" color="info" onClick={handleImport} startIcon={<Icon>cloud_upload</Icon>}>
-                Import {rawData.length} Models
-              </Button>
-            </MDBox>
-          )}
+                <MDTypography variant="h6" gutterBottom>
+                  Optional Columns
+                </MDTypography>
+                <MDBox component="ul" sx={{ pl: 2 }}>
+                  <li><MDTypography variant="caption">gender, phone, town, county</MDTypography></li>
+                  <li><MDTypography variant="caption">height, chest, waist, hips</MDTypography></li>
+                  <li><MDTypography variant="caption">shoeSize, aboutMe, instagram</MDTypography></li>
+                </MDBox>
 
-          {progress > 0 && progress < 100 && (
-            <MDBox px={3} pb={3}>
-              <MDTypography variant="body2" mb={1}>Importing…</MDTypography>
-              <CircularProgressWithLabel value={progress} />
-            </MDBox>
-          )}
+                <Divider sx={{ my: 2 }} />
 
-          {results.length > 0 && (
-            <MDBox px={3} pb={3}>
-              <MDTypography variant="h6">Import Summary:</MDTypography>
-              <ul>
-                {results.map((res, i) => (
-                  <li key={i}>
-                    <strong>{res.email}</strong>: {res.status}
-                    {res.message && ` — ${res.message}`}
-                  </li>
-                ))}
-              </ul>
-            </MDBox>
-          )}
-        </Card>
+                <MDTypography variant="caption" color="text">
+                  New users will be created with the default password: <strong>Model123!</strong>
+                </MDTypography>
+              </MDBox>
+            </Card>
+          </Grid>
+
+          {/* Upload Card */}
+          <Grid item xs={12} lg={8}>
+            <Card>
+              <MDBox p={3}>
+                <MDTypography variant="h5" gutterBottom>
+                  Import Models via CSV
+                </MDTypography>
+                <MDTypography variant="body2" color="text" mb={3}>
+                  Upload a CSV file containing model data. Existing users (matched by email) will be updated,
+                  new users will be created with Firebase Authentication accounts.
+                </MDTypography>
+
+                <MDBox
+                  {...getRootProps()}
+                  border="2px dashed"
+                  borderColor={isDragActive ? "info.main" : "grey.400"}
+                  p={4}
+                  textAlign="center"
+                  borderRadius="lg"
+                  sx={{ cursor: "pointer" }}
+                >
+                  <input {...getInputProps()} />
+                  <Icon sx={{ fontSize: 40, color: "info.main" }}>cloud_upload</Icon>
+                  <MDTypography variant="body1" mt={1}>
+                    {isDragActive ? "Drop the CSV here..." : "Drag & drop or click to upload a CSV file"}
+                  </MDTypography>
+                  <MDTypography variant="caption" color="text" display="block" mt={1}>
+                    Maximum file size: 2MB
+                  </MDTypography>
+                  {uploading && (
+                    <MDBox mt={2}>
+                      <CircularProgress size={24} color="info" />
+                    </MDBox>
+                  )}
+                </MDBox>
+
+                {rawData.length > 0 && (
+                  <MDBox mt={3}>
+                    <MDTypography variant="body2" mb={2}>
+                      <strong>{rawData.length}</strong> rows ready to import
+                    </MDTypography>
+                    <Button
+                      variant="contained"
+                      color="info"
+                      onClick={handleImport}
+                      startIcon={<Icon>cloud_upload</Icon>}
+                      size="large"
+                    >
+                      Import {rawData.length} Models
+                    </Button>
+                  </MDBox>
+                )}
+
+                {progress > 0 && progress < 100 && (
+                  <MDBox mt={3} textAlign="center">
+                    <CircularProgress color="info" />
+                    <MDTypography variant="body2" mt={2}>
+                      Importing {rawData.length} models... Please do not close this page.
+                    </MDTypography>
+                    <MDTypography variant="caption" color="text" display="block" mt={1}>
+                      This may take a moment for large imports.
+                    </MDTypography>
+                  </MDBox>
+                )}
+              </MDBox>
+            </Card>
+
+            {/* Results Card */}
+            {results.length > 0 && (
+              <Card sx={{ mt: 3 }}>
+                <MDBox p={3}>
+                  <MDTypography variant="h6" gutterBottom>
+                    Import Summary
+                  </MDTypography>
+                  <MDBox sx={{ maxHeight: 400, overflow: "auto" }}>
+                    <ul style={{ margin: 0, paddingLeft: 20 }}>
+                      {results.map((res, i) => (
+                        <li key={i} style={{ marginBottom: 4 }}>
+                          <MDTypography variant="body2">
+                            <strong>{res.email}</strong>:{" "}
+                            <span style={{
+                              color: res.status === "created" ? "green" :
+                                     res.status === "updated" ? "blue" :
+                                     res.status === "linked" ? "purple" : "red"
+                            }}>
+                              {res.status}
+                            </span>
+                            {res.message && ` — ${res.message}`}
+                          </MDTypography>
+                        </li>
+                      ))}
+                    </ul>
+                  </MDBox>
+                </MDBox>
+              </Card>
+            )}
+          </Grid>
+        </Grid>
       </MDBox>
       <Footer />
     </DashboardLayout>

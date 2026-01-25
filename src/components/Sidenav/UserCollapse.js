@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
-import { NavLink, useLocation } from "react-router-dom";
+import { NavLink, useLocation, useNavigate } from "react-router-dom";
 import { auth, db } from "config/firebase";
+import { signOut } from "firebase/auth";
 import { doc, getDoc } from "firebase/firestore";
 import MDAvatar from "components/MDAvatar";
 import MDTypography from "components/MDTypography";
@@ -15,6 +16,17 @@ function UserCollapse() {
   const [avatarUrl, setAvatarUrl] = useState("");
   const [open, setOpen] = useState(false);
   const location = useLocation();
+  const navigate = useNavigate();
+
+  const handleLogout = async () => {
+    try {
+      await signOut(auth);
+      localStorage.removeItem("isLoggedIn");
+      navigate("/sign-in");
+    } catch (error) {
+      console.error("Logout error:", error);
+    }
+  };
 
   useEffect(() => {
     const fetchUser = async () => {
@@ -75,9 +87,9 @@ function UserCollapse() {
           </NavLink>
         </SidenavList>
         <SidenavList key="user-logout-link">
-          <NavLink to="/sign-in">
+          <MDBox onClick={handleLogout} sx={{ cursor: "pointer" }}>
             <SidenavItem name="Logout" nested />
-          </NavLink>
+          </MDBox>
         </SidenavList>
       </Collapse>
     </>

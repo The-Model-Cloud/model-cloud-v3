@@ -43,6 +43,9 @@ import Settings from "layouts/pages/account/settings";
 import JobDetails from "layouts/jobs/job-details";
 import EditJob from "layouts/jobs/edit-job";
 
+// Messaging
+import MessagesInbox from "layouts/messages";
+
 
 // Material Dashboard 3 PRO React contexts
 import {
@@ -54,6 +57,12 @@ import {
 // Images
 import brandWhite from "assets/images/logo-ct.png";
 import brandDark from "assets/images/logo-ct-dark.png";
+
+// Component to handle default redirect based on login status
+function DefaultRedirect() {
+  const isLoggedIn = localStorage.getItem("isLoggedIn") === "true";
+  return <Navigate to={isLoggedIn ? "/dashboard" : "/sign-in"} replace />;
+}
 
 export default function App() {
   const [controller, dispatch] = useMaterialUIController();
@@ -76,7 +85,7 @@ export default function App() {
     const isAuthRoute = pathname.startsWith('/authentication') || pathname === '/sign-in' || pathname === '/sign-up';
 
     // Exclude app routes from public profile detection
-    const appRoutes = ['/dashboard', '/edit-profile', '/jobs', '/models', '/admin', '/dashboards', '/pages', '/applications', '/ecommerce', '/authentication', '/sign-in', '/sign-up'];
+    const appRoutes = ['/dashboard', '/edit-profile', '/jobs', '/models', '/admin', '/dashboards', '/pages', '/applications', '/ecommerce', '/authentication', '/sign-in', '/sign-up', '/messages'];
     const isAppRoute = appRoutes.some(route => pathname.startsWith(route));
 
     // Check if it's a public profile (single segment slug, not an app route)
@@ -213,10 +222,12 @@ export default function App() {
 
           <Route path="/jobs/:reference" element={<JobDetails />} />
           <Route path="/jobs/edit/:reference" element={<EditJob />} />
+          {/* Messaging routes */}
+          <Route path="/messages/:threadId" element={<MessagesInbox />} />
           {/* Public-facing profile route based on slug */}
           <Route path="/:slug" element={<PublicProfile />} />
 
-          <Route path="*" element={<Navigate to="/dashboard" />} />
+          <Route path="*" element={<DefaultRedirect />} />
         </Routes>
       </ThemeProvider>
     </CacheProvider>
@@ -247,11 +258,13 @@ export default function App() {
 
         <Route path="/jobs/:reference" element={<JobDetails />} />
         <Route path="/jobs/edit/:reference" element={<EditJob />} />
+        {/* Messaging routes */}
+        <Route path="/messages/:threadId" element={<MessagesInbox />} />
 
         <Route path="/:slug" element={<PublicProfile />} />
 
         {/* Default fallback */}
-        <Route path="*" element={<Navigate to="/dashboards/analytics" />} />
+        <Route path="*" element={<DefaultRedirect />} />
       </Routes>
 
     </ThemeProvider>

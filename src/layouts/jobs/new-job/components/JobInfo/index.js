@@ -1,3 +1,4 @@
+import { useEffect, useState } from "react";
 import Grid from "@mui/material/Grid";
 import Autocomplete from "@mui/material/Autocomplete";
 import MDBox from "components/MDBox";
@@ -7,13 +8,78 @@ import FormField from "../FormField";
 
 import selectData from "layouts/pages/account/settings/components/BasicInfo/data/selectData";
 
+// Import countries and cities
+import { getCountries, getCities } from "countries-cities";
+import ukCounties from "uk-counties-cities-towns";
+import stateCities from "state-cities";
+
 function JobInfo({ formik }) {
   const { values, handleChange, setFieldValue, touched, errors } = formik;
+  const [countries, setCountries] = useState([]);
+  const [cities, setCities] = useState([]);
   const currentDay = (new Date().getDate()).toString(); // "1" to "31"
   const currentMonth = new Date().toLocaleString("default", { month: "long" }); // e.g., "March"
   const currentYear = new Date().getFullYear();
   const futureYears = Array.from({ length: 5 }, (_, i) => (currentYear + i).toString());
 
+  // Load countries on mount
+  useEffect(() => {
+    const allCountries = getCountries();
+    const priorityCountries = ["United Kingdom", "Italy", "Spain", "France", "Germany", "United States"];
+    const sortedOthers = allCountries
+      .filter((c) => !priorityCountries.includes(c))
+      .sort((a, b) => a.localeCompare(b));
+    setCountries([...priorityCountries, "────────", ...sortedOthers]);
+  }, []);
+
+  // Load cities when country/county/state changes
+  useEffect(() => {
+    if (values.country === "United Kingdom" && values.county) {
+      setCities(ukCounties[values.county] || []);
+    } else if (values.country === "United States" && values.state) {
+      setCities((stateCities.getCities(values.state) || []).sort((a, b) => a.localeCompare(b)));
+    } else if (values.country && values.country !== "United Kingdom" && values.country !== "United States") {
+      setCities((getCities(values.country) || []).sort((a, b) => a.localeCompare(b)));
+    }
+  }, [values.country, values.county, values.state]);
+
+  const handleCountryChange = (event, value) => {
+    if (!value || value === "────────") {
+      setFieldValue("country", "");
+      setFieldValue("county", "");
+      setFieldValue("state", "");
+      setFieldValue("city", "");
+      setCities([]);
+      return;
+    }
+
+    setFieldValue("country", value);
+    setFieldValue("county", "");
+    setFieldValue("state", "");
+    setFieldValue("city", "");
+
+    if (value === "United Kingdom" || value === "United States") {
+      setCities([]);
+    } else {
+      setCities((getCities(value) || []).sort((a, b) => a.localeCompare(b)));
+    }
+  };
+
+  const handleCountyChange = (event, value) => {
+    setFieldValue("county", value || "");
+    setFieldValue("city", "");
+    setCities(ukCounties[value] || []);
+  };
+
+  const handleStateChange = (event, value) => {
+    setFieldValue("state", value || "");
+    setFieldValue("city", "");
+    setCities((stateCities.getCities(value) || []).sort((a, b) => a.localeCompare(b)));
+  };
+
+  const handleCityChange = (event, value) => {
+    setFieldValue("city", value || "");
+  };
 
   return (
     <MDBox>
@@ -38,17 +104,114 @@ function JobInfo({ formik }) {
             />
           </Grid>
           <Grid item xs={12} sm={6}>
-            <FormField
-              type="text"
-              label="Job Location"
-              name="location"
-              placeholder="e.g., London, UK"
-              value={values.location}
-              onChange={handleChange}
-              error={touched.location && Boolean(errors.location)}
-              helperText={touched.location && errors.location}
+            <Autocomplete
+              value={values.country || ""}
+              options={countries}
+              onChange={handleCountryChange}
+              getOptionDisabled={(option) => option === "────────"}
+              renderOption={(props, option) =>
+                option === "────────" ? (
+                  <li {...props} style={{ fontStyle: "italic", opacity: 0.5 }}>
+                    ────────
+                  </li>
+                ) : (
+                  <li {...props}>{option}</li>
+                )
+              }
+              renderInput={(params) => (
+                <FormField
+                  {...params}
+                  label="Country"
+                  InputLabelProps={{ shrink: true }}
+                  error={touched.country && Boolean(errors.country)}
+                  helperText={touched.country && errors.country}
+                />
+              )}
             />
           </Grid>
+
+          {values.country === "United Kingdom" && (
+            <>
+              <Grid item xs={12} sm={3}>
+                <Autocomplete
+                  value={values.county || ""}
+                  options={Object.keys(ukCounties)}
+                  onChange={handleCountyChange}
+                  renderInput={(params) => (
+                    <FormField
+                      {...params}
+                      label="County"
+                      InputLabelProps={{ shrink: true }}
+                    />
+                  )}
+                />
+              </Grid>
+              <Grid item xs={12} sm={3}>
+                <Autocomplete
+                  value={values.city || ""}
+                  options={cities}
+                  onChange={handleCityChange}
+                  renderInput={(params) => (
+                    <FormField
+                      {...params}
+                      label="City/Town"
+                      InputLabelProps={{ shrink: true }}
+                    />
+                  )}
+                />
+              </Grid>
+            </>
+          )}
+
+          {values.country === "United States" && (
+            <>
+              <Grid item xs={12} sm={3}>
+                <Autocomplete
+                  value={values.state || ""}
+                  options={stateCities.getStates().sort((a, b) => a.localeCompare(b))}
+                  onChange={handleStateChange}
+                  renderInput={(params) => (
+                    <FormField
+                      {...params}
+                      label="State"
+                      InputLabelProps={{ shrink: true }}
+                    />
+                  )}
+                />
+              </Grid>
+              <Grid item xs={12} sm={3}>
+                <Autocomplete
+                  value={values.city || ""}
+                  options={cities}
+                  onChange={handleCityChange}
+                  renderInput={(params) => (
+                    <FormField
+                      {...params}
+                      label="City"
+                      InputLabelProps={{ shrink: true }}
+                    />
+                  )}
+                />
+              </Grid>
+            </>
+          )}
+
+          {values.country && values.country !== "United Kingdom" && values.country !== "United States" && (
+            <Grid item xs={12} sm={6}>
+              <Autocomplete
+                value={values.city || ""}
+                options={cities}
+                onChange={handleCityChange}
+                renderInput={(params) => (
+                  <FormField
+                    {...params}
+                    label="City"
+                    InputLabelProps={{ shrink: true }}
+                  />
+                )}
+              />
+            </Grid>
+          )}
           <Grid item xs={12} sm={4}>
             <Autocomplete
               multiple

@@ -12,6 +12,7 @@ import selectData from "layouts/pages/account/settings/components/BasicInfo/data
 import IconButton from "@mui/material/IconButton";
 import PhotoCamera from "@mui/icons-material/PhotoCamera";
 import ProfileAvatar from "components/Profile/ProfileAvatar";
+import { currencies, rateTypes } from "config/paymentOptions";
 
 // Import countries and cities
 import { getCountries, getCities } from "countries-cities";
@@ -45,6 +46,9 @@ function BasicInfo() {
     companyNumber: "",
     registeredAddress: "",
     vatNumber: "",
+    rate: "",
+    rateType: "",
+    currency: "",
   });
 
   const [userRole, setUserRole] = useState(null);
@@ -64,17 +68,20 @@ function BasicInfo() {
             county: data.county || "",
             state: data.state || "",
             city: data.city || "",
-            aboutMe: data.aboutMe || "", // ← ADD THIS
+            aboutMe: data.aboutMe || "",
             email: data.email || user.email || "",
             phone: data.phone || "",
-            languages: data.languages || [], // ← ADD THIS (array)
-            categories: data.categories || [], // ← ADD THIS (array)
+            languages: data.languages || [],
+            categories: data.categories || [],
             profileAvatar: data.profileAvatar || "",
             companyName: data.companyName || "",
             yearEstablished: data.yearEstablished || "",
             companyNumber: data.companyNumber || "",
             registeredAddress: data.registeredAddress || "",
             vatNumber: data.vatNumber || "",
+            rate: data.rate || "",
+            rateType: data.rateType || "",
+            currency: data.currency || "",
           });
           setUserRole(data.role);
 
@@ -257,16 +264,18 @@ function BasicInfo() {
               onChange={handleChange("lastName")}
             />
           </Grid>
-          <Grid item xs={12} sm={4}>
-            <Autocomplete
-              value={profile.gender}
-              options={selectData.gender}
-              renderInput={(params) => (
-                <FormField {...params} label="I am a" InputLabelProps={{ shrink: true }} />
-              )}
-              onChange={handleAutocompleteChange("gender")}
-            />
-          </Grid>
+          {userRole === "model" && (
+            <Grid item xs={12} sm={4}>
+              <Autocomplete
+                value={profile.gender}
+                options={selectData.gender}
+                renderInput={(params) => (
+                  <FormField {...params} label="I am a" InputLabelProps={{ shrink: true }} />
+                )}
+                onChange={handleAutocompleteChange("gender")}
+              />
+            </Grid>
+          )}
           {userRole === "model" && (
             <Grid item xs={12}>
               <Grid container spacing={3}>
@@ -401,15 +410,50 @@ function BasicInfo() {
             </>
           )}
 
-          <Grid item xs={12} md={6}>
-            <Autocomplete
-              multiple
-              value={profile.languages}
-              options={selectData.languages}
-              renderInput={(params) => <FormField {...params} label="Language spoken" InputLabelProps={{ shrink: true }} />}
-              onChange={handleAutocompleteChange("languages")}
-            />
-          </Grid>
+          {userRole === "model" && (
+            <Grid item xs={12} md={6}>
+              <Autocomplete
+                multiple
+                value={profile.languages}
+                options={selectData.languages}
+                renderInput={(params) => <FormField {...params} label="Language spoken" InputLabelProps={{ shrink: true }} />}
+                onChange={handleAutocompleteChange("languages")}
+              />
+            </Grid>
+          )}
+          {userRole === "model" && (
+            <>
+              <Grid item xs={12} sm={2}>
+                <FormField
+                  label="Rate"
+                  placeholder="e.g. 250"
+                  value={profile.rate}
+                  onChange={handleChange("rate")}
+                  inputProps={{ type: "number" }}
+                />
+              </Grid>
+              <Grid item xs={12} sm={2}>
+                <Autocomplete
+                  value={profile.rateType}
+                  options={rateTypes}
+                  renderInput={(params) => (
+                    <FormField {...params} label="Rate Type" InputLabelProps={{ shrink: true }} />
+                  )}
+                  onChange={handleAutocompleteChange("rateType")}
+                />
+              </Grid>
+              <Grid item xs={12} sm={2}>
+                <Autocomplete
+                  value={profile.currency}
+                  options={currencies}
+                  renderInput={(params) => (
+                    <FormField {...params} label="Currency" InputLabelProps={{ shrink: true }} />
+                  )}
+                  onChange={handleAutocompleteChange("currency")}
+                />
+              </Grid>
+            </>
+          )}
         </Grid>
         {userRole === "client" || userRole === "super admin" || userRole === "admin" ? (
           <Grid container mt={1} spacing={3}>
