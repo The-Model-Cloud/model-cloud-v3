@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useParams } from "react-router-dom";
 import { auth, db } from "config/firebase";
 import { doc, getDoc, updateDoc } from "firebase/firestore";
 
@@ -11,22 +12,27 @@ import MDInput from "components/MDInput";
 
 import InstagramIcon from "@mui/icons-material/Instagram";
 import YouTubeIcon from "@mui/icons-material/YouTube";
-import TwitterIcon from "@mui/icons-material/Twitter";
 import MusicVideoIcon from "@mui/icons-material/MusicVideo"; // TikTok
+import { logAdminAction, ADMIN_ACTIONS } from "utils/adminLogs";
 
 function SocialMedia() {
+  const { uid: impersonatedUid } = useParams(); // For admin editing
+  const currentUser = auth.currentUser;
+  const targetUid = impersonatedUid || currentUser?.uid;
+  const isAdminEdit = !!impersonatedUid && currentUser?.uid !== impersonatedUid;
+
   const [links, setLinks] = useState({
     instagram: "",
     tiktok: "",
     youtube: "",
   });
-
-  const user = auth.currentUser;
+  const [adminData, setAdminData] = useState(null);
+  const [modelData, setModelData] = useState(null);
 
   useEffect(() => {
     const fetchSocial = async () => {
-      if (user) {
-        const ref = doc(db, "users", user.uid);
+      if (targetUid) {
+        const ref = doc(db, "users", targetUid);
         const snap = await getDoc(ref);
         if (snap.exists()) {
           const data = snap.data();
@@ -35,11 +41,42 @@ function SocialMedia() {
             tiktok: data.tiktok || "",
             youtube: data.youtube || "",
           });
+          setModelData({ uid: targetUid, ...data });
+        }
+
+        // Fetch admin data if admin is editing
+        if (isAdminEdit && currentUser) {
+          const adminRef = doc(db, "users", currentUser.uid);
+          const adminSnap = await getDoc(adminRef);
+          if (adminSnap.exists()) {
+            setAdminData({ uid: currentUser.uid, ...adminSnap.data() });
+          }
         }
       }
     };
     fetchSocial();
-  }, [user]);
+  }, [targetUid, isAdminEdit, currentUser]);
+
+  // Helper function to log admin edits
+  const logAdminEdit = async (field, oldValue, newValue) => {
+    if (isAdminEdit && adminData && modelData) {
+      await logAdminAction({
+        adminUid: adminData.uid,
+        adminEmail: adminData.email || currentUser?.email,
+        adminName: `${adminData.firstName || ""} ${adminData.lastName || ""}`.trim() || "Admin",
+        action: ADMIN_ACTIONS.EDIT_MODEL,
+        description: `Edited model social media: ${field}`,
+        details: {
+          modelUid: targetUid,
+          modelEmail: modelData.email,
+          modelName: `${modelData.firstName || ""} ${modelData.lastName || ""}`.trim(),
+          field,
+          oldValue,
+          newValue,
+        },
+      });
+    }
+  };
 
   const platformMeta = {
     instagram: {
@@ -66,11 +103,15 @@ function SocialMedia() {
 
     if (!value) return;
 
+    const oldValue = links[field];
     setLinks((prev) => ({ ...prev, [field]: value }));
 
-    if (user) {
-      const ref = doc(db, "users", user.uid);
+    if (targetUid) {
+      const ref = doc(db, "users", targetUid);
       await updateDoc(ref, { [field]: value });
+      if (isAdminEdit && oldValue !== value) {
+        await logAdminEdit(field, oldValue, value);
+      }
     }
   };
 

@@ -10,21 +10,30 @@ import MDTypography from "components/MDTypography";
 
 const CLOUDINARY_URL = `https://api.cloudinary.com/v1_1/${process.env.REACT_APP_CLOUDINARY_CLOUD_NAME}/upload`;
 
-function Media({ formik }) {
+function Media({ formik, jobRef, user }) {
   const [uploading, setUploading] = useState(false);
   const [media, setMedia] = useState(formik.values.media || []);
+
+  // Build folder path: /users/clients/{username}/jobs/{jobReference}
+  const getFolderPath = () => {
+    const username = user?.username || user?.uid || "unknown";
+    return `users/clients/${username}/jobs/${jobRef}`;
+  };
 
   const onDrop = async (acceptedFiles) => {
     if (!acceptedFiles.length) return;
 
     setUploading(true);
     const uploaded = [];
+    const folderPath = getFolderPath();
 
     for (const file of acceptedFiles) {
       const formData = new FormData();
       formData.append("file", file);
       formData.append("upload_preset", process.env.REACT_APP_CLOUDINARY_UPLOAD_PRESET);
       formData.append("cloud_name", process.env.REACT_APP_CLOUDINARY_CLOUD_NAME);
+      formData.append("folder", folderPath);
+      formData.append("public_id", `${jobRef}_${Date.now()}`);
 
       try {
         const res = await fetch(CLOUDINARY_URL, {

@@ -20,6 +20,13 @@ import MDTypography from "components/MDTypography";
 // Default avatar placeholder
 const DEFAULT_AVATAR = "https://via.placeholder.com/300x400?text=No+Photo";
 
+// Transform Cloudinary URL to use face-cropping
+const transformCloudinaryForCard = (url, width = 350, height = 280) => {
+  if (!url || !url.includes("res.cloudinary.com")) return url;
+  const parts = url.split("/upload/");
+  return `${parts[0]}/upload/c_fill,g_face,w_${width},h_${height}/${parts[1]}`;
+};
+
 function ModelCard({
   model,
   isFavourited,
@@ -30,6 +37,7 @@ function ModelCard({
   onRemove,
   showDeleteButton,
   onDelete,
+  isHidden,
 }) {
   const {
     uid,
@@ -86,12 +94,34 @@ function ModelCard({
         flexDirection: "column",
         position: "relative",
         transition: "transform 0.2s, box-shadow 0.2s",
+        overflow: "hidden",
         "&:hover": {
           transform: "translateY(-4px)",
           boxShadow: 6,
         },
       }}
     >
+      {/* Hidden from search ribbon */}
+      {isHidden && (
+        <MDBox
+          sx={{
+            position: "absolute",
+            top: 16,
+            left: -32,
+            backgroundColor: "warning.main",
+            color: "white",
+            padding: "4px 40px",
+            transform: "rotate(-45deg)",
+            zIndex: 3,
+            boxShadow: 2,
+          }}
+        >
+          <MDTypography variant="caption" fontWeight="bold" color="white" sx={{ fontSize: "0.65rem" }}>
+            HIDDEN
+          </MDTypography>
+        </MDBox>
+      )}
+
       {/* Action buttons overlay */}
       {showActions && (
         <MDBox
@@ -192,7 +222,7 @@ function ModelCard({
         {/* Profile image */}
         <MDBox
           component="img"
-          src={profileAvatar || DEFAULT_AVATAR}
+          src={transformCloudinaryForCard(profileAvatar) || DEFAULT_AVATAR}
           alt={fullName}
           sx={{
             width: "100%",
@@ -259,6 +289,7 @@ ModelCard.defaultProps = {
   onRemove: null,
   showDeleteButton: false,
   onDelete: null,
+  isHidden: false,
 };
 
 ModelCard.propTypes = {
@@ -279,6 +310,7 @@ ModelCard.propTypes = {
   onRemove: PropTypes.func,
   showDeleteButton: PropTypes.bool,
   onDelete: PropTypes.func,
+  isHidden: PropTypes.bool,
 };
 
 export default ModelCard;

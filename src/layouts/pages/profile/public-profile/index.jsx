@@ -1,13 +1,17 @@
-import { useEffect, useState } from "react";
-import { useParams } from "react-router-dom";
-import { collection, query, where, getDocs, doc, getDoc } from "firebase/firestore";
-import { auth, db } from "config/firebase";
+import { useEffect, useState, useMemo } from "react";
+import { useParams, useNavigate } from "react-router-dom";
+import { collection, query, where, getDocs, doc, updateDoc } from "firebase/firestore";
+import { db } from "config/firebase";
+import ImgsViewer from "react-images-viewer";
+import logoWatermark from "assets/images/logo-rectangle-white.svg";
 
 // MUI components
 import Container from "@mui/material/Container";
 import Grid from "@mui/material/Grid";
 import Card from "@mui/material/Card";
 import Icon from "@mui/material/Icon";
+import Switch from "@mui/material/Switch";
+import Tooltip from "@mui/material/Tooltip";
 import MDButton from "components/MDButton";
 import MDBox from "components/MDBox";
 import MDTypography from "components/MDTypography";
@@ -20,12 +24,15 @@ import AddToListModal from "components/Favourites/AddToListModal";
 
 function PublicProfile() {
   const { slug } = useParams();
+  const navigate = useNavigate();
   const { user } = useAuth();
   const { isModelFavourited, toggleQuickFavourite } = useFavourites();
 
   const [profile, setProfile] = useState(null);
   const [profileUid, setProfileUid] = useState(null);
   const [addToListModalOpen, setAddToListModalOpen] = useState(false);
+  const [lightboxOpen, setLightboxOpen] = useState(false);
+  const [lightboxIndex, setLightboxIndex] = useState(0);
 
   useEffect(() => {
     fetchUser();
@@ -45,6 +52,20 @@ function PublicProfile() {
   const canFavourite = user && ["client", "account manager", "admin", "super admin"].includes(user.role);
   const isFavourited = profileUid && canFavourite ? isModelFavourited(profileUid) : false;
 
+  // Check if current user can toggle visibility (admin, super admin, or profile owner)
+  const isAdmin = user && ["admin", "super admin"].includes(user.role);
+  const isProfileOwner = user && profileUid && user.uid === profileUid;
+  const canToggleVisibility = isAdmin || isProfileOwner;
+
+  // Handle visibility toggle
+  const handleVisibilityToggle = async () => {
+    if (!canToggleVisibility || !profileUid) return;
+    const newValue = !profile.hideFromSearch;
+    setProfile((prev) => ({ ...prev, hideFromSearch: newValue }));
+    const userRef = doc(db, "users", profileUid);
+    await updateDoc(userRef, { hideFromSearch: newValue });
+  };
+
   const handleFavouriteToggle = async () => {
     if (profileUid && canFavourite) {
       await toggleQuickFavourite(profileUid);
@@ -55,11 +76,91 @@ function PublicProfile() {
     setAddToListModalOpen(true);
   };
 
+  // Combine all images for the lightbox carousel
+  const allImages = useMemo(() => {
+    const images = [];
+    if (profile?.portfolioImages?.length > 0) {
+      images.push(...profile.portfolioImages);
+    }
+    if (profile?.digitalImages?.length > 0) {
+      images.push(...profile.digitalImages);
+    }
+    // Fallback for legacy portfolio field
+    if (!profile?.portfolioImages && !profile?.digitalImages && profile?.portfolio?.length > 0) {
+      images.push(...profile.portfolio);
+    }
+    return images;
+  }, [profile]);
+
+  const openLightbox = (index) => {
+    setLightboxIndex(index);
+    setLightboxOpen(true);
+  };
+
+  const closeLightbox = () => setLightboxOpen(false);
+
   if (!profile) return <MDBox p={4}>Loading profile...</MDBox>;
 
   return (
     <Container maxWidth="lg">
       <Card>
+        {/* Admin Controls - Edit Model & Visibility Toggle */}
+        {(isAdmin || canToggleVisibility) && (
+          <MDBox
+            px={3}
+            py={1.5}
+            display="flex"
+            alignItems="center"
+            justifyContent="space-between"
+            sx={{
+              backgroundColor: profile.hideFromSearch ? "warning.main" : "transparent",
+              borderBottom: profile.hideFromSearch ? "none" : "1px solid",
+              borderColor: "grey.200",
+            }}
+          >
+            {/* Edit Model Button - Admin/Super Admin Only */}
+            {isAdmin && profileUid && (
+              <MDButton
+                variant="gradient"
+                color="info"
+                size="small"
+                onClick={() => navigate(`/admin/model/${profileUid}/settings`)}
+                startIcon={<Icon>edit</Icon>}
+              >
+                Edit Model
+              </MDButton>
+            )}
+            {!isAdmin && <MDBox />}
+
+            {/* Visibility Toggle */}
+            {canToggleVisibility && (
+              <Tooltip title={profile.hideFromSearch ? "Profile is hidden from search and Browse Models" : "Profile is visible in search and Browse Models"}>
+                <MDBox display="flex" alignItems="center" gap={1}>
+                  <Icon sx={{ color: profile.hideFromSearch ? "white" : "text.secondary" }}>
+                    {profile.hideFromSearch ? "visibility_off" : "visibility"}
+                  </Icon>
+                  <MDTypography variant="button" fontWeight="medium" color={profile.hideFromSearch ? "white" : "text"}>
+                    {profile.hideFromSearch ? "Hidden from Search" : "Visible in Search"}
+                  </MDTypography>
+                  <Switch
+                    checked={!profile.hideFromSearch}
+                    onChange={handleVisibilityToggle}
+                    color="default"
+                    sx={{
+                      "& .MuiSwitch-switchBase.Mui-checked": {
+                        color: "success.main",
+                      },
+                      "& .MuiSwitch-switchBase.Mui-checked + .MuiSwitch-track": {
+                        backgroundColor: "success.main",
+                      },
+                    }}
+                  />
+                </MDBox>
+              </Tooltip>
+            )}
+          </MDBox>
+        )}
+
         <MDBox p={4}>
           <Grid container spacing={4} alignItems="center">
             <Grid item xs={4}>
@@ -72,7 +173,7 @@ function PublicProfile() {
               </MDTypography>
 
               <Grid item xs={12} mt={2}>
-                {user && profile.role === "model" ? null : user ? (
+                {user && user.uid === profileUid ? null : user ? (
                   <>
                     <MDTypography variant="h6" color="info">
                       Book this Model
@@ -139,10 +240,8 @@ function PublicProfile() {
 
               {profile.gender !== "Man" &&
                 [
-                  ["Bust", profile.bust, "cm"],
                   ["Hips", profile.hips, "cm"],
                   ["Dress Size", profile.dressSize],
-                  ["Cup Size", profile.cupSize],
                   ["Bra Size", profile.braSize],
                 ].map(([label, value, unit]) =>
                   value ? (
@@ -181,6 +280,7 @@ function PublicProfile() {
                       width="100%"
                       height="300px"
                       borderRadius="lg"
+                      onClick={() => openLightbox(index)}
                       sx={{
                         objectFit: "cover",
                         cursor: "pointer",
@@ -203,26 +303,31 @@ function PublicProfile() {
                 Digitals
               </MDTypography>
               <Grid container spacing={2}>
-                {profile.digitalImages.map((url, index) => (
-                  <Grid item xs={12} sm={6} md={4} lg={3} key={`digital-${index}`}>
-                    <MDBox
-                      component="img"
-                      src={url}
-                      alt={`Digital ${index + 1}`}
-                      width="100%"
-                      height="300px"
-                      borderRadius="lg"
-                      sx={{
-                        objectFit: "cover",
-                        cursor: "pointer",
-                        transition: "transform 0.2s",
-                        "&:hover": {
-                          transform: "scale(1.02)"
-                        }
-                      }}
-                    />
-                  </Grid>
-                ))}
+                {profile.digitalImages.map((url, index) => {
+                  // Offset by portfolio images count for correct lightbox index
+                  const lightboxIdx = (profile.portfolioImages?.length || 0) + index;
+                  return (
+                    <Grid item xs={12} sm={6} md={4} lg={3} key={`digital-${index}`}>
+                      <MDBox
+                        component="img"
+                        src={url}
+                        alt={`Digital ${index + 1}`}
+                        width="100%"
+                        height="300px"
+                        borderRadius="lg"
+                        onClick={() => openLightbox(lightboxIdx)}
+                        sx={{
+                          objectFit: "cover",
+                          cursor: "pointer",
+                          transition: "transform 0.2s",
+                          "&:hover": {
+                            transform: "scale(1.02)"
+                          }
+                        }}
+                      />
+                    </Grid>
+                  );
+                })}
               </Grid>
             </>
           )}
@@ -243,7 +348,15 @@ function PublicProfile() {
                       width="100%"
                       height="300px"
                       borderRadius="lg"
-                      sx={{ objectFit: "cover" }}
+                      onClick={() => openLightbox(index)}
+                      sx={{
+                        objectFit: "cover",
+                        cursor: "pointer",
+                        transition: "transform 0.2s",
+                        "&:hover": {
+                          transform: "scale(1.02)"
+                        }
+                      }}
                     />
                   </Grid>
                 ))}
@@ -252,6 +365,39 @@ function PublicProfile() {
           )}
         </MDBox>
       </Card>
+
+      {/* Lightbox for image carousel */}
+      {allImages.length > 0 && (
+        <>
+          <ImgsViewer
+            imgs={allImages.map((url) => ({ src: url }))}
+            isOpen={lightboxOpen}
+            onClose={closeLightbox}
+            currImg={lightboxIndex}
+            onClickPrev={() => setLightboxIndex((i) => Math.max(i - 1, 0))}
+            onClickNext={() => setLightboxIndex((i) => Math.min(i + 1, allImages.length - 1))}
+            backdropCloseable
+          />
+          {/* Watermark overlay */}
+          {lightboxOpen && (
+            <MDBox
+              component="img"
+              src={logoWatermark}
+              alt="Model Cloud"
+              sx={{
+                position: "fixed",
+                bottom: 24,
+                right: 24,
+                width: 80,
+                height: "auto",
+                opacity: 0.6,
+                zIndex: 10001,
+                pointerEvents: "none",
+              }}
+            />
+          )}
+        </>
+      )}
 
       {/* Add to List Modal */}
       {canFavourite && profile && (

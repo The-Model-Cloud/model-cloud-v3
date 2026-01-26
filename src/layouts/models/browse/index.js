@@ -4,6 +4,7 @@
  */
 
 import { useEffect, useState, useCallback, useMemo } from "react";
+import { useSearchParams } from "react-router-dom";
 import { collection, getDocs, query, where } from "firebase/firestore";
 import { db } from "config/firebase";
 
@@ -19,6 +20,9 @@ import IconButton from "@mui/material/IconButton";
 import CircularProgress from "@mui/material/CircularProgress";
 import Snackbar from "@mui/material/Snackbar";
 import Alert from "@mui/material/Alert";
+import FormControl from "@mui/material/FormControl";
+import Select from "@mui/material/Select";
+import MenuItem from "@mui/material/MenuItem";
 
 // Material Dashboard components
 import MDBox from "components/MDBox";
@@ -54,19 +58,41 @@ const initialFilters = {
   city: "",
   skills: [],
   languages: [],
+  // Measurement filters
+  heightMin: "",
+  heightMax: "",
+  waistMin: "",
+  waistMax: "",
+  hipsMin: "",
+  hipsMax: "",
+  braSize: "",
+  dressSize: "",
 };
 
 function BrowseModels() {
   const { user } = useAuth();
   const { isModelFavourited, toggleQuickFavourite } = useFavourites();
   const { deleteModel, deleting, error: deleteError, clearError } = useDeleteModel();
+  const [searchParams] = useSearchParams();
+
+  // Initialize filters from URL params
+  const getInitialFilters = () => {
+    const urlCountry = searchParams.get("country") || "";
+    const urlCounty = searchParams.get("county") || "";
+    return {
+      ...initialFilters,
+      country: urlCountry,
+      county: urlCounty,
+    };
+  };
 
   const [models, setModels] = useState([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
   const [viewMode, setViewMode] = useState("card"); // "card" or "list"
-  const [showFilters, setShowFilters] = useState(false);
-  const [filters, setFilters] = useState(initialFilters);
+  const [showFilters, setShowFilters] = useState(searchParams.has("country") || searchParams.has("county"));
+  const [filters, setFilters] = useState(getInitialFilters);
+  const [sortBy, setSortBy] = useState("firstName"); // "firstName", "lastName", "location"
 
   // Add to list modal state
   const [addToListModalOpen, setAddToListModalOpen] = useState(false);
@@ -76,6 +102,9 @@ function BrowseModels() {
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [modelToDelete, setModelToDelete] = useState(null);
   const [deleteSuccess, setDeleteSuccess] = useState(false);
+
+  // Admin check - must be defined before useMemo that depends on it
+  const isAdmin = user && ["admin", "super admin"].includes(user.role);
 
   // Fetch all models
   useEffect(() => {
@@ -106,6 +135,11 @@ function BrowseModels() {
   // Filter models based on search query and filters
   const filteredModels = useMemo(() => {
     let result = [...models];
+
+    // Filter out hidden models for non-admin users
+    if (!isAdmin) {
+      result = result.filter((model) => !model.hideFromSearch);
+    }
 
     // Text search filter
     if (searchQuery.trim()) {
@@ -160,8 +194,89 @@ function BrowseModels() {
       });
     }
 
+    // Height filter (min/max in cm)
+    if (filters.heightMin) {
+      const minHeight = parseInt(filters.heightMin, 10);
+      result = result.filter((model) => {
+        const height = parseInt(model.height, 10);
+        return !isNaN(height) && height >= minHeight;
+      });
+    }
+    if (filters.heightMax) {
+      const maxHeight = parseInt(filters.heightMax, 10);
+      result = result.filter((model) => {
+        const height = parseInt(model.height, 10);
+        return !isNaN(height) && height <= maxHeight;
+      });
+    }
+
+    // Waist filter (min/max in inches)
+    if (filters.waistMin) {
+      const minWaist = parseInt(filters.waistMin, 10);
+      result = result.filter((model) => {
+        const waist = parseInt(model.waist, 10);
+        return !isNaN(waist) && waist >= minWaist;
+      });
+    }
+    if (filters.waistMax) {
+      const maxWaist = parseInt(filters.waistMax, 10);
+      result = result.filter((model) => {
+        const waist = parseInt(model.waist, 10);
+        return !isNaN(waist) && waist <= maxWaist;
+      });
+    }
+
+    // Hips filter (min/max in inches) - only for Female/Transwoman
+    if (filters.hipsMin) {
+      const minHips = parseInt(filters.hipsMin, 10);
+      result = result.filter((model) => {
+        const hips = parseInt(model.hips, 10);
+        return !isNaN(hips) && hips >= minHips;
+      });
+    }
+    if (filters.hipsMax) {
+      const maxHips = parseInt(filters.hipsMax, 10);
+      result = result.filter((model) => {
+        const hips = parseInt(model.hips, 10);
+        return !isNaN(hips) && hips <= maxHips;
+      });
+    }
+
+    // Bra Size filter
+    if (filters.braSize) {
+      result = result.filter((model) => model.braSize === filters.braSize);
+    }
+
+    // Dress Size filter
+    if (filters.dressSize) {
+      result = result.filter((model) => model.dressSize === filters.dressSize);
+    }
+
+    // Sort results
+    result.sort((a, b) => {
+      let valueA, valueB;
+
+      switch (sortBy) {
+        case "lastName":
+          valueA = (a.lastName || "").toLowerCase();
+          valueB = (b.lastName || "").toLowerCase();
+          break;
+        case "location":
+          valueA = (a.city || a.location || "").toLowerCase();
+          valueB = (b.city || b.location || "").toLowerCase();
+          break;
+        case "firstName":
+        default:
+          valueA = (a.firstName || "").toLowerCase();
+          valueB = (b.firstName || "").toLowerCase();
+          break;
+      }
+
+      return valueA.localeCompare(valueB);
+    });
+
     return result;
-  }, [models, searchQuery, filters]);
+  }, [models, searchQuery, filters, isAdmin, sortBy]);
 
   // Clear all filters
   const handleClearFilters = useCallback(() => {
@@ -191,9 +306,6 @@ function BrowseModels() {
 
   // Check if user is a client (can favourite models)
   const canFavourite = user && ["client", "account manager", "admin", "super admin"].includes(user.role);
-
-  // Check if user is an admin (can delete models)
-  const isAdmin = user && ["admin", "super admin"].includes(user.role);
 
   // Handle delete click
   const handleDeleteClick = useCallback((model) => {
@@ -263,6 +375,24 @@ function BrowseModels() {
                   }}
                   sx={{ minWidth: 200 }}
                 />
+
+                {/* Sort By */}
+                <FormControl size="small" sx={{ minWidth: 140 }}>
+                  <Select
+                    value={sortBy}
+                    onChange={(e) => setSortBy(e.target.value)}
+                    displayEmpty
+                    startAdornment={
+                      <InputAdornment position="start">
+                        <Icon fontSize="small">sort</Icon>
+                      </InputAdornment>
+                    }
+                  >
+                    <MenuItem value="firstName">First Name</MenuItem>
+                    <MenuItem value="lastName">Last Name</MenuItem>
+                    <MenuItem value="location">Location</MenuItem>
+                  </Select>
+                </FormControl>
 
                 {/* Filter Toggle Button */}
                 <IconButton
@@ -347,6 +477,7 @@ function BrowseModels() {
                       showActions={canFavourite}
                       showDeleteButton={isAdmin}
                       onDelete={isAdmin ? handleDeleteClick : null}
+                      isHidden={isAdmin && model.hideFromSearch}
                     />
                   </Grid>
                 ))}
@@ -364,6 +495,7 @@ function BrowseModels() {
                     showActions={canFavourite}
                     showDeleteButton={isAdmin}
                     onDelete={isAdmin ? handleDeleteClick : null}
+                    isHidden={isAdmin && model.hideFromSearch}
                   />
                 ))}
               </MDBox>

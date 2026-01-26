@@ -85,7 +85,7 @@ export default function App() {
     const isAuthRoute = pathname.startsWith('/authentication') || pathname === '/sign-in' || pathname === '/sign-up';
 
     // Exclude app routes from public profile detection
-    const appRoutes = ['/dashboard', '/edit-profile', '/jobs', '/models', '/admin', '/dashboards', '/pages', '/applications', '/ecommerce', '/authentication', '/sign-in', '/sign-up', '/messages'];
+    const appRoutes = ['/dashboard', '/edit-profile', '/jobs', '/models', '/admin', '/dashboards', '/pages', '/applications', '/ecommerce', '/authentication', '/sign-in', '/sign-up', '/messages', '/favourites', '/shared'];
     const isAppRoute = appRoutes.some(route => pathname.startsWith(route));
 
     // Check if it's a public profile (single segment slug, not an app route)

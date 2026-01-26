@@ -11,6 +11,7 @@ import Icon from "@mui/material/Icon";
 import IconButton from "@mui/material/IconButton";
 import Tooltip from "@mui/material/Tooltip";
 import Avatar from "@mui/material/Avatar";
+import Chip from "@mui/material/Chip";
 
 // Material Dashboard 3 PRO React components
 import MDBox from "components/MDBox";
@@ -18,6 +19,13 @@ import MDTypography from "components/MDTypography";
 
 // Default avatar placeholder
 const DEFAULT_AVATAR = "https://via.placeholder.com/100x100?text=?";
+
+// Transform Cloudinary URL to use face-cropping
+const transformCloudinary = (url, size = 56) => {
+  if (!url || !url.includes("res.cloudinary.com")) return url;
+  const parts = url.split("/upload/");
+  return `${parts[0]}/upload/c_thumb,g_face,w_${size},h_${size}/${parts[1]}`;
+};
 
 function ModelListItem({
   model,
@@ -29,6 +37,7 @@ function ModelListItem({
   onRemove,
   showDeleteButton,
   onDelete,
+  isHidden,
 }) {
   const {
     uid,
@@ -97,7 +106,7 @@ function ModelListItem({
     >
       {/* Avatar */}
       <Avatar
-        src={profileAvatar || DEFAULT_AVATAR}
+        src={transformCloudinary(profileAvatar) || DEFAULT_AVATAR}
         alt={fullName}
         sx={{
           width: 56,
@@ -108,18 +117,35 @@ function ModelListItem({
 
       {/* Model info */}
       <MDBox flex={1} minWidth={0}>
-        <MDTypography
-          variant="body1"
-          fontWeight="medium"
-          color="dark"
-          sx={{
-            overflow: "hidden",
-            textOverflow: "ellipsis",
-            whiteSpace: "nowrap",
-          }}
-        >
-          {fullName}
-        </MDTypography>
+        <MDBox display="flex" alignItems="center" gap={1}>
+          <MDTypography
+            variant="body1"
+            fontWeight="medium"
+            color="dark"
+            sx={{
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+              whiteSpace: "nowrap",
+            }}
+          >
+            {fullName}
+          </MDTypography>
+          {isHidden && (
+            <Chip
+              label="HIDDEN"
+              size="small"
+              icon={<Icon sx={{ fontSize: "14px !important" }}>visibility_off</Icon>}
+              sx={{
+                backgroundColor: "warning.main",
+                color: "white",
+                fontWeight: "bold",
+                fontSize: "0.65rem",
+                height: 22,
+                "& .MuiChip-icon": { color: "white" },
+              }}
+            />
+          )}
+        </MDBox>
 
         <MDBox display="flex" alignItems="center" mt={0.5}>
           <Icon fontSize="small" sx={{ color: "text.secondary", mr: 0.5 }}>
@@ -198,6 +224,7 @@ ModelListItem.defaultProps = {
   onRemove: null,
   showDeleteButton: false,
   onDelete: null,
+  isHidden: false,
 };
 
 ModelListItem.propTypes = {
@@ -218,6 +245,7 @@ ModelListItem.propTypes = {
   onRemove: PropTypes.func,
   showDeleteButton: PropTypes.bool,
   onDelete: PropTypes.func,
+  isHidden: PropTypes.bool,
 };
 
 export default ModelListItem;

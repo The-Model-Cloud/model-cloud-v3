@@ -15,17 +15,37 @@ import MDBox from "components/MDBox";
 import MDTypography from "components/MDTypography";
 
 import { ReactSortable } from "react-sortablejs";
+import { logAdminAction, ADMIN_ACTIONS } from "utils/adminLogs";
 
 const CLOUDINARY_URL = `https://api.cloudinary.com/v1_1/${process.env.REACT_APP_CLOUDINARY_CLOUD_NAME}/upload`;
+
+// Map fieldName to folder subfolder name
+const getImageSubfolder = (field) => {
+  const mapping = {
+    profileAvatar: "profile",
+    digitalImages: "digitals",
+    portfolioImages: "polaroids",
+  };
+  return mapping[field] || "uploads";
+};
+
+// Get user type folder based on role
+const getUserTypeFolder = (role) => {
+  const modelRoles = ["model", "talent"];
+  return modelRoles.includes(role?.toLowerCase()) ? "models" : "clients";
+};
 
 function ImageUploader({ fieldName, title, subtitle, maxFiles = 20 }) {
   const [images, setImages] = useState([]);
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState(null);
   const [uploadingFiles, setUploadingFiles] = useState([]);
+  const [userData, setUserData] = useState(null);
+  const [adminData, setAdminData] = useState(null);
   const { uid: impersonatedUid } = useParams(); // For admin impersonation
   const currentUser = auth.currentUser;
   const targetUid = impersonatedUid || currentUser?.uid;
+  const isAdminEdit = !!impersonatedUid && currentUser?.uid !== impersonatedUid;
 
   useEffect(() => {
     const fetchImages = async () => {
@@ -34,29 +54,69 @@ function ImageUploader({ fieldName, title, subtitle, maxFiles = 20 }) {
         const snap = await getDoc(ref);
         if (snap.exists()) {
           const data = snap.data();
+          // Store user data for folder path generation
+          setUserData({ uid: targetUid, ...data });
+
           let imageUrls = data[fieldName] || [];
-          
-          // 🔄 MIGRATION FALLBACK: If new field is empty but old 'portfolio' exists
+
+          // MIGRATION FALLBACK: If new field is empty but old 'portfolio' exists
           if (imageUrls.length === 0 && fieldName === "portfolioImages" && data.portfolio?.length > 0) {
-            console.log("🔄 Migrating old portfolio data to portfolioImages...");
+            console.log("Migrating old portfolio data to portfolioImages...");
             imageUrls = data.portfolio;
-            
+
             // Auto-migrate to new field
             await updateDoc(ref, {
               portfolioImages: data.portfolio,
               digitalImages: data.digitalImages || [],
             });
-            
-            console.log("✅ Migration complete!");
+
+            console.log("Migration complete!");
           }
-          
+
           const formatted = imageUrls.map((url) => ({ id: url, url }));
           setImages(formatted);
+        }
+
+        // Fetch admin data if admin is editing
+        if (isAdminEdit && currentUser) {
+          const adminRef = doc(db, "users", currentUser.uid);
+          const adminSnap = await getDoc(adminRef);
+          if (adminSnap.exists()) {
+            setAdminData({ uid: currentUser.uid, ...adminSnap.data() });
+          }
         }
       }
     };
     fetchImages();
-  }, [targetUid, fieldName]);
+  }, [targetUid, fieldName, isAdminEdit, currentUser]);
+
+  // Helper function to log admin edits
+  const logAdminEdit = async (action, details) => {
+    if (isAdminEdit && adminData && userData) {
+      await logAdminAction({
+        adminUid: adminData.uid,
+        adminEmail: adminData.email || currentUser?.email,
+        adminName: `${adminData.firstName || ""} ${adminData.lastName || ""}`.trim() || "Admin",
+        action: ADMIN_ACTIONS.EDIT_MODEL,
+        description: `${action} for model's ${fieldName}`,
+        details: {
+          modelUid: targetUid,
+          modelEmail: userData.email,
+          modelName: `${userData.firstName || ""} ${userData.lastName || ""}`.trim(),
+          field: fieldName,
+          ...details,
+        },
+      });
+    }
+  };
+
+  // Build folder path: /users/{models|clients}/{username}/{imageType}
+  const getFolderPath = () => {
+    const userType = getUserTypeFolder(userData?.role);
+    const username = userData?.username || userData?.uid || "unknown";
+    const subfolder = getImageSubfolder(fieldName);
+    return `users/${userType}/${username}/${subfolder}`;
+  };
 
   const onDrop = async (acceptedFiles, rejectedFiles) => {
     // Clear any previous errors
@@ -102,12 +162,17 @@ function ImageUploader({ fieldName, title, subtitle, maxFiles = 20 }) {
     const uploadedUrls = [];
     const uploadErrors = [];
 
+    const folderPath = getFolderPath();
+    const subfolder = getImageSubfolder(fieldName);
+
     for (let i = 0; i < acceptedFiles.length; i++) {
       const file = acceptedFiles[i];
       const formData = new FormData();
       formData.append("file", file);
       formData.append("upload_preset", process.env.REACT_APP_CLOUDINARY_UPLOAD_PRESET);
       formData.append("cloud_name", process.env.REACT_APP_CLOUDINARY_CLOUD_NAME);
+      formData.append("folder", folderPath);
+      formData.append("public_id", `${subfolder}_${Date.now()}_${i}`);
 
       try {
         // Update to show progress
@@ -156,6 +221,14 @@ function ImageUploader({ fieldName, title, subtitle, maxFiles = 20 }) {
       if (targetUid) {
         const ref = doc(db, "users", targetUid);
         await updateDoc(ref, { [fieldName]: newImages.map((img) => img.url) });
+
+        // Log admin edit
+        if (isAdminEdit) {
+          await logAdminEdit("Uploaded images", {
+            imagesAdded: uploadedUrls.length,
+            newTotalImages: newImages.length,
+          });
+        }
       }
     }
 
@@ -174,6 +247,14 @@ function ImageUploader({ fieldName, title, subtitle, maxFiles = 20 }) {
     if (targetUid) {
       const ref = doc(db, "users", targetUid);
       await updateDoc(ref, { [fieldName]: filtered.map((img) => img.url) });
+
+      // Log admin edit
+      if (isAdminEdit) {
+        await logAdminEdit("Deleted image", {
+          deletedImageUrl: url,
+          remainingImages: filtered.length,
+        });
+      }
     }
   };
 
@@ -388,21 +469,24 @@ function ImageUploader({ fieldName, title, subtitle, maxFiles = 20 }) {
               <ReactSortable
                 list={images}
                 setList={(newList) => {
-                  console.log("🔄 Images reordered, new order:", newList.length, "images");
                   setImages(newList);
-                  
+
                   // Save immediately with the new order
                   if (targetUid) {
                     const ref = doc(db, "users", targetUid);
                     const urls = newList.map((img) => img.url);
-                    
-                    console.log("💾 Saving new order immediately...");
+
                     updateDoc(ref, { [fieldName]: urls })
                       .then(() => {
-                        console.log("✅ Order saved to Firestore!");
+                        // Log admin edit for reordering
+                        if (isAdminEdit) {
+                          logAdminEdit("Reordered images", {
+                            totalImages: newList.length,
+                          });
+                        }
                       })
                       .catch((error) => {
-                        console.error("❌ Failed to save order:", error);
+                        console.error("Failed to save order:", error);
                       });
                   }
                 }}

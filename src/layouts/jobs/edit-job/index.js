@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react";
 import { useParams, useNavigate, Link } from "react-router-dom";
-import { auth, db } from "config/firebase";
+import { db } from "config/firebase";
 import { collection, doc, getDocs, query, updateDoc, where } from "firebase/firestore";
+import { useAuth } from "context/AuthContext";
 import { Formik, Form } from "formik";
 import * as Yup from "yup";
 
@@ -28,12 +29,12 @@ function getSteps() {
     return ["1. Job Info", "2. Media", "3. Requirements", "4. Payment", "5. Confirmation"];
 }
 
-function getStepContent(stepIndex, formikProps) {
+function getStepContent(stepIndex, formikProps, jobRef, user) {
     switch (stepIndex) {
         case 0:
             return <JobInfo formik={formikProps} />;
         case 1:
-            return <Media formik={formikProps} />;
+            return <Media formik={formikProps} jobRef={jobRef} user={user} />;
         case 2:
             return <Requirements formik={formikProps} />;
         case 3:
@@ -62,6 +63,7 @@ function getStepContent(stepIndex, formikProps) {
 }
 
 function EditJob() {
+    const { user } = useAuth();
     const { reference } = useParams();
     const navigate = useNavigate();
     const [activeStep, setActiveStep] = useState(0);
@@ -181,7 +183,7 @@ function EditJob() {
                                         </MDBox>
 
                                         <MDBox p={2}>
-                                            {getStepContent(activeStep, formikProps)}
+                                            {getStepContent(activeStep, formikProps, reference, user)}
                                         </MDBox>
 
                                         {!isConfirmationStep && (

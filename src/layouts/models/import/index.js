@@ -22,6 +22,8 @@ import Grid from "@mui/material/Grid";
 
 // Example CSV data for the template
 // Gender options: Woman, Man, Transwoman, Transman, Non-binary person, Other
+// Female models (Woman, Transwoman) use: bust, cup, ukDress instead of chest
+// Male models (Man, Transman) use: chest
 const EXAMPLE_CSV_DATA = [
   {
     firstName: "Jane",
@@ -29,13 +31,16 @@ const EXAMPLE_CSV_DATA = [
     email: "jane.smith@example.com",
     gender: "Woman",
     phone: "07700900123",
+    country: "United Kingdom",
     town: "London",
     county: "Greater London",
     height: "175",
-    chest: "34",
+    bust: "34",
+    cup: "C",
     waist: "26",
     hips: "36",
     shoeSize: "6",
+    ukDress: "10",
     aboutMe: "Experienced model with 5 years in fashion and commercial work.",
     instagram: "@janesmith_model",
   },
@@ -45,6 +50,7 @@ const EXAMPLE_CSV_DATA = [
     email: "john.doe@example.com",
     gender: "Man",
     phone: "07700900456",
+    country: "United Kingdom",
     town: "Manchester",
     county: "Greater Manchester",
     height: "185",
@@ -61,13 +67,16 @@ const EXAMPLE_CSV_DATA = [
     email: "sophie.taylor@example.com",
     gender: "Transwoman",
     phone: "07700900789",
+    country: "United Kingdom",
     town: "Brighton",
     county: "East Sussex",
     height: "178",
-    chest: "36",
+    bust: "36",
+    cup: "B",
     waist: "28",
     hips: "38",
     shoeSize: "8",
+    ukDress: "12",
     aboutMe: "Runway and editorial model with a passion for inclusive fashion.",
     instagram: "@sophietaylor_model",
   },
@@ -77,6 +86,7 @@ const EXAMPLE_CSV_DATA = [
     email: "alex.morgan@example.com",
     gender: "Transman",
     phone: "07700900321",
+    country: "United Kingdom",
     town: "Bristol",
     county: "Bristol",
     height: "175",
@@ -93,13 +103,17 @@ const EXAMPLE_CSV_DATA = [
     email: "jordan.lee@example.com",
     gender: "Non-binary person",
     phone: "07700900654",
+    country: "United Kingdom",
     town: "Edinburgh",
     county: "Midlothian",
     height: "170",
+    bust: "35",
+    cup: "B",
     chest: "35",
     waist: "27",
     hips: "37",
     shoeSize: "7",
+    ukDress: "10",
     aboutMe: "Androgynous model working in high fashion and editorial.",
     instagram: "@jordanlee_style",
   },
@@ -109,13 +123,17 @@ const EXAMPLE_CSV_DATA = [
     email: "sam.williams@example.com",
     gender: "Other",
     phone: "07700900987",
+    country: "United Kingdom",
     town: "Cardiff",
     county: "South Glamorgan",
     height: "168",
+    bust: "33",
+    cup: "A",
     chest: "33",
     waist: "25",
     hips: "35",
     shoeSize: "5",
+    ukDress: "8",
     aboutMe: "Creative model specialising in art and conceptual photography.",
     instagram: "@samwilliams_art",
   },
@@ -192,15 +210,24 @@ export default function ImportModels() {
               email,
               gender,
               phone,
+              country,
               town,
               county,
               height,
               chest,
+              bust,
+              cup,
               waist,
               hips,
               shoeSize,
+              ukDress,
               aboutMe,
             } = row;
+
+            const cityValue = town?.trim() ?? "";
+            const countyValue = county?.trim() ?? "";
+            // Default to United Kingdom if no country specified
+            const countryValue = country?.trim() || "United Kingdom";
 
             return {
               firstName: firstName?.trim() ?? "",
@@ -211,11 +238,19 @@ export default function ImportModels() {
               phone: phone?.trim() ?? "",
               height: height?.trim() ?? "",
               chest: chest?.trim() ?? "",
+              bust: bust?.trim() ?? "",
+              cup: cup?.trim() ?? "",
               waist: waist?.trim() ?? "",
               hips: hips?.trim() ?? "",
               shoeSize: shoeSize?.trim() ?? "",
+              ukDress: ukDress?.trim() ?? "",
               aboutMe: aboutMe?.trim() ?? "",
-              location: [town?.trim(), county?.trim()].filter(Boolean).join(", ")
+              // Store location fields separately for filtering
+              country: countryValue,
+              county: countyValue,
+              city: cityValue,
+              // Also keep combined location for display
+              location: [cityValue, countyValue, countryValue].filter(Boolean).join(", ")
             };
           });
 
@@ -312,10 +347,27 @@ export default function ImportModels() {
                 <MDTypography variant="h6" gutterBottom>
                   Optional Columns
                 </MDTypography>
+                <MDBox component="ul" sx={{ pl: 2, mb: 2 }}>
+                  <li><MDTypography variant="caption">gender, phone, country, town, county</MDTypography></li>
+                  <li><MDTypography variant="caption">height, waist, hips, shoeSize</MDTypography></li>
+                  <li><MDTypography variant="caption">aboutMe, instagram</MDTypography></li>
+                </MDBox>
+                <MDTypography variant="caption" color="text" sx={{ display: "block", mb: 2 }}>
+                  <strong>Note:</strong> If country is not specified, it defaults to "United Kingdom"
+                </MDTypography>
+
+                <MDTypography variant="h6" gutterBottom>
+                  Female Measurements (Woman, Transwoman)
+                </MDTypography>
+                <MDBox component="ul" sx={{ pl: 2, mb: 2 }}>
+                  <li><MDTypography variant="caption">bust, cup, ukDress</MDTypography></li>
+                </MDBox>
+
+                <MDTypography variant="h6" gutterBottom>
+                  Male Measurements (Man, Transman)
+                </MDTypography>
                 <MDBox component="ul" sx={{ pl: 2 }}>
-                  <li><MDTypography variant="caption">gender, phone, town, county</MDTypography></li>
-                  <li><MDTypography variant="caption">height, chest, waist, hips</MDTypography></li>
-                  <li><MDTypography variant="caption">shoeSize, aboutMe, instagram</MDTypography></li>
+                  <li><MDTypography variant="caption">chest</MDTypography></li>
                 </MDBox>
 
                 <Divider sx={{ my: 2 }} />

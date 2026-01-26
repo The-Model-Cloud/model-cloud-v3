@@ -18,6 +18,8 @@ import BookingCard from "examples/Cards/BookingCard";
 
 // Anaytics dashboard components
 import SalesByCountry from "layouts/dashboards/analytics/components/SalesByCountry";
+import ModelsByCountry from "layouts/dashboards/analytics/components/ModelsByCountry";
+import ModelsByCounty from "layouts/dashboards/analytics/components/ModelsByCounty";
 
 // Data
 import reportsBarChartData from "layouts/dashboards/analytics/data/reportsBarChartData";
@@ -70,7 +72,7 @@ function Analytics() {
             fontWeight="regular"
             sx={{ fontSize: "16px", color: "#737373" }}
           >
-            Check the sales, value and bounce rate by country.
+            View model distribution, statistics and platform analytics.
           </MDTypography>
         </MDBox>
         <MDBox>
@@ -214,6 +216,14 @@ function Analytics() {
             </Grid>
           </Grid>
         </MDBox>
+        <Grid container mt={3} spacing={3}>
+          <Grid item xs={12} lg={6}>
+            <ModelsByCountry />
+          </Grid>
+          <Grid item xs={12} lg={6}>
+            <ModelsByCounty />
+          </Grid>
+        </Grid>
         <Grid container mt={3}>
           <SalesByCountry />
         </Grid>

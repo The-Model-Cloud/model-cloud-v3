@@ -28,6 +28,9 @@ import stateCities from "state-cities";
 // Select data for gender, skills, languages
 import selectData from "layouts/pages/account/settings/components/BasicInfo/data/selectData";
 
+// Measurement options
+import measurementOptions from "components/Profile/Measurements";
+
 function ModelFilters({ filters, onFiltersChange, onClearFilters }) {
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [countries, setCountries] = useState([]);
@@ -83,6 +86,17 @@ function ModelFilters({ filters, onFiltersChange, onClearFilters }) {
       newFilters.city = "";
     }
 
+    // Clear female-specific filters when gender changes to male/non-female
+    if (field === "gender") {
+      const isFemaleGender = !value || value === "Woman" || value === "Transwoman";
+      if (!isFemaleGender) {
+        newFilters.braSize = "";
+        newFilters.dressSize = "";
+        newFilters.hipsMin = "";
+        newFilters.hipsMax = "";
+      }
+    }
+
     onFiltersChange(newFilters);
   };
 
@@ -94,7 +108,21 @@ function ModelFilters({ filters, onFiltersChange, onClearFilters }) {
   // Check if any advanced filters are active
   const hasAdvancedFilters =
     (filters.skills && filters.skills.length > 0) ||
-    (filters.languages && filters.languages.length > 0);
+    (filters.languages && filters.languages.length > 0) ||
+    filters.heightMin ||
+    filters.heightMax ||
+    filters.waistMin ||
+    filters.waistMax ||
+    filters.hipsMin ||
+    filters.hipsMax ||
+    filters.braSize ||
+    filters.dressSize;
+
+  // Check if female-specific filters should be shown
+  const showFemaleFilters =
+    !filters.gender ||
+    filters.gender === "Woman" ||
+    filters.gender === "Transwoman";
 
   return (
     <MDBox>
@@ -295,6 +323,128 @@ function ModelFilters({ filters, onFiltersChange, onClearFilters }) {
               />
             </Grid>
           </Grid>
+
+          {/* Measurement Filters */}
+          <MDBox mt={2}>
+            <MDTypography variant="button" fontWeight="medium" color="text" mb={1}>
+              Measurements
+            </MDTypography>
+          </MDBox>
+          <Grid container spacing={2} mt={0}>
+            {/* Height Range */}
+            <Grid item xs={6} sm={3} md={2}>
+              <TextField
+                label="Height Min (cm)"
+                value={filters.heightMin || ""}
+                onChange={(e) => handleFilterChange("heightMin", e.target.value)}
+                size="small"
+                type="number"
+                fullWidth
+                placeholder="e.g. 160"
+              />
+            </Grid>
+            <Grid item xs={6} sm={3} md={2}>
+              <TextField
+                label="Height Max (cm)"
+                value={filters.heightMax || ""}
+                onChange={(e) => handleFilterChange("heightMax", e.target.value)}
+                size="small"
+                type="number"
+                fullWidth
+                placeholder="e.g. 180"
+              />
+            </Grid>
+
+            {/* Waist Range */}
+            <Grid item xs={6} sm={3} md={2}>
+              <TextField
+                label="Waist Min (in)"
+                value={filters.waistMin || ""}
+                onChange={(e) => handleFilterChange("waistMin", e.target.value)}
+                size="small"
+                type="number"
+                fullWidth
+                placeholder="e.g. 24"
+              />
+            </Grid>
+            <Grid item xs={6} sm={3} md={2}>
+              <TextField
+                label="Waist Max (in)"
+                value={filters.waistMax || ""}
+                onChange={(e) => handleFilterChange("waistMax", e.target.value)}
+                size="small"
+                type="number"
+                fullWidth
+                placeholder="e.g. 32"
+              />
+            </Grid>
+
+            {/* Hips Range - Female/Transwoman only */}
+            {showFemaleFilters && (
+              <>
+                <Grid item xs={6} sm={3} md={2}>
+                  <TextField
+                    label="Hips Min (in)"
+                    value={filters.hipsMin || ""}
+                    onChange={(e) => handleFilterChange("hipsMin", e.target.value)}
+                    size="small"
+                    type="number"
+                    fullWidth
+                    placeholder="e.g. 34"
+                  />
+                </Grid>
+                <Grid item xs={6} sm={3} md={2}>
+                  <TextField
+                    label="Hips Max (in)"
+                    value={filters.hipsMax || ""}
+                    onChange={(e) => handleFilterChange("hipsMax", e.target.value)}
+                    size="small"
+                    type="number"
+                    fullWidth
+                    placeholder="e.g. 42"
+                  />
+                </Grid>
+              </>
+            )}
+
+            {/* Bra Size - Female/Transwoman only */}
+            {showFemaleFilters && (
+              <Grid item xs={12} sm={6} md={3}>
+                <Autocomplete
+                  value={filters.braSize || null}
+                  options={measurementOptions.braSizes}
+                  onChange={(_, value) => handleFilterChange("braSize", value || "")}
+                  renderInput={(params) => (
+                    <TextField
+                      {...params}
+                      label="Bra Size"
+                      placeholder="Any bra size"
+                      size="small"
+                    />
+                  )}
+                />
+              </Grid>
+            )}
+
+            {/* Dress Size - Female/Transwoman only */}
+            {showFemaleFilters && (
+              <Grid item xs={12} sm={6} md={3}>
+                <Autocomplete
+                  value={filters.dressSize || null}
+                  options={measurementOptions.dressSizes}
+                  onChange={(_, value) => handleFilterChange("dressSize", value || "")}
+                  renderInput={(params) => (
+                    <TextField
+                      {...params}
+                      label="Dress Size (UK)"
+                      placeholder="Any dress size"
+                      size="small"
+                    />
+                  )}
+                />
+              </Grid>
+            )}
+          </Grid>
         </MDBox>
       </Collapse>
     </MDBox>
@@ -309,6 +459,14 @@ ModelFilters.propTypes = {
     city: PropTypes.string,
     skills: PropTypes.arrayOf(PropTypes.string),
     languages: PropTypes.arrayOf(PropTypes.string),
+    heightMin: PropTypes.string,
+    heightMax: PropTypes.string,
+    waistMin: PropTypes.string,
+    waistMax: PropTypes.string,
+    hipsMin: PropTypes.string,
+    hipsMax: PropTypes.string,
+    braSize: PropTypes.string,
+    dressSize: PropTypes.string,
   }).isRequired,
   onFiltersChange: PropTypes.func.isRequired,
   onClearFilters: PropTypes.func.isRequired,

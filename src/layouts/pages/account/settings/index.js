@@ -1,9 +1,11 @@
 import { useState, useEffect } from "react";
-import { useParams, useSearchParams } from "react-router-dom";
+import { useParams, useSearchParams, useNavigate } from "react-router-dom";
 import Grid from "@mui/material/Grid";
 import AppBar from "@mui/material/AppBar";
 import Tabs from "@mui/material/Tabs";
 import Tab from "@mui/material/Tab";
+import Alert from "@mui/material/Alert";
+import Icon from "@mui/material/Icon";
 import InfoIcon from "@mui/icons-material/Info";
 import ImageIcon from "@mui/icons-material/Image";
 import AddAPhotoIcon from "@mui/icons-material/AddAPhoto";
@@ -15,6 +17,8 @@ import LockIcon from "@mui/icons-material/Lock";
 import DeleteIcon from "@mui/icons-material/Delete";
 
 import MDBox from "components/MDBox";
+import MDButton from "components/MDButton";
+import MDTypography from "components/MDTypography";
 import BaseLayout from "layouts/pages/account/components/BaseLayout";
 import Header from "layouts/pages/account/settings/components/Header";
 import BasicInfo from "layouts/pages/account/settings/components/BasicInfo";
@@ -44,14 +48,19 @@ const TAB_MAP = {
 
 function Settings() {
   const [searchParams] = useSearchParams();
+  const navigate = useNavigate();
   const tabParam = searchParams.get("tab");
   const initialTab = tabParam && TAB_MAP[tabParam] !== undefined ? TAB_MAP[tabParam] : 0;
 
   const [tabValue, setTabValue] = useState(initialTab);
   const [userRole, setUserRole] = useState(null);
-  const { uid } = useParams(); // ✅ check for impersonated UID
+  const [targetUserData, setTargetUserData] = useState(null); // Data of user being edited
+  const { uid } = useParams(); // check for impersonated UID
 
-  // ✅ Update tab when URL query param changes
+  const currentUser = auth.currentUser;
+  const isAdminEdit = !!uid && currentUser?.uid !== uid;
+
+  // Update tab when URL query param changes
   useEffect(() => {
     if (tabParam && TAB_MAP[tabParam] !== undefined) {
       setTabValue(TAB_MAP[tabParam]);
@@ -60,7 +69,7 @@ function Settings() {
 
   useEffect(() => {
     const fetchUserRole = async () => {
-      const userId = uid || auth.currentUser?.uid;
+      const userId = uid || currentUser?.uid;
       if (!userId) return;
 
       const ref = doc(db, "users", userId);
@@ -68,11 +77,12 @@ function Settings() {
       if (snap.exists()) {
         const data = snap.data();
         setUserRole(data.role);
+        setTargetUserData({ uid: userId, ...data });
       }
     };
 
     fetchUserRole();
-  }, [uid]);
+  }, [uid, currentUser]);
 
   const handleTabChange = (event, newValue) => setTabValue(newValue);
 
@@ -111,6 +121,41 @@ function Settings() {
     <BaseLayout>
       <MDBox mt={4}>
         <Grid container spacing={3}>
+          {/* Admin Edit Banner */}
+          {isAdminEdit && targetUserData && (
+            <Grid item xs={12}>
+              <Alert
+                severity="info"
+                icon={<Icon>admin_panel_settings</Icon>}
+                sx={{
+                  backgroundColor: "info.main",
+                  color: "white",
+                  "& .MuiAlert-icon": { color: "white" },
+                }}
+                action={
+                  targetUserData.publicSlug && (
+                    <MDButton
+                      variant="outlined"
+                      color="white"
+                      size="small"
+                      onClick={() => navigate(`/${targetUserData.publicSlug}`)}
+                      sx={{ borderColor: "white", color: "white" }}
+                    >
+                      View Profile
+                    </MDButton>
+                  )
+                }
+              >
+                <MDTypography variant="body2" color="white" fontWeight="medium">
+                  Admin Edit Mode: You are editing {targetUserData.firstName} {targetUserData.lastName}&apos;s profile ({targetUserData.email})
+                </MDTypography>
+                <MDTypography variant="caption" color="white">
+                  All changes are logged for audit purposes.
+                </MDTypography>
+              </Alert>
+            </Grid>
+          )}
+
           <Grid item xs={12}>
             <Header />
           </Grid>

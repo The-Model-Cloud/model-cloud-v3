@@ -4,7 +4,12 @@
       "Bash(npm start)",
       "Bash(npm run build:*)",
       "Bash(powershell -ExecutionPolicy Bypass -File:*)",
-      "Bash(tree:*)"
+      "Bash(tree:*)",
+      "Bash(npx eslint:*)",
+      "Bash(node --check:*)",
+      "Bash(dir \"C:\\\\Users\\\\russe\\\\Downloads\" /b)",
+      "Bash(findstr:*)",
+      "Bash(powershell -Command:*)"
     ]
   }
 }

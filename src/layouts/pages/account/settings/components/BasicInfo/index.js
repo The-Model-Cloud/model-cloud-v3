@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useParams } from "react-router-dom";
 import { auth, db } from "config/firebase";
 import { doc, getDoc, updateDoc } from "firebase/firestore";
 import Card from "@mui/material/Card";
@@ -13,6 +14,7 @@ import IconButton from "@mui/material/IconButton";
 import PhotoCamera from "@mui/icons-material/PhotoCamera";
 import ProfileAvatar from "components/Profile/ProfileAvatar";
 import { currencies, rateTypes } from "config/paymentOptions";
+import { logAdminAction, ADMIN_ACTIONS } from "utils/adminLogs";
 
 // Import countries and cities
 import { getCountries, getCities } from "countries-cities";
@@ -25,7 +27,11 @@ const CLOUDINARY_URL = `https://api.cloudinary.com/v1_1/${process.env.REACT_APP_
 function BasicInfo() {
   const [countries, setCountries] = useState([]);
   const [cities, setCities] = useState([]);
-  const user = auth.currentUser;
+  const { uid: impersonatedUid } = useParams(); // For admin editing
+  const currentUser = auth.currentUser;
+  const targetUid = impersonatedUid || currentUser?.uid;
+  const isAdminEdit = !!impersonatedUid && currentUser?.uid !== impersonatedUid;
+
   const [profile, setProfile] = useState({
     firstName: "",
     lastName: "",
@@ -41,6 +47,7 @@ function BasicInfo() {
     languages: [],
     categories: [],
     profileAvatar: "",
+    publicSlug: "",
     companyName: "",
     yearEstablished: "",
     companyNumber: "",
@@ -52,11 +59,13 @@ function BasicInfo() {
   });
 
   const [userRole, setUserRole] = useState(null);
+  const [adminData, setAdminData] = useState(null); // Store admin info for logging
 
   useEffect(() => {
     const fetchUser = async () => {
-      if (user) {
-        const ref = doc(db, "users", user.uid);
+      if (targetUid) {
+        // Fetch target user (model being edited)
+        const ref = doc(db, "users", targetUid);
         const snap = await getDoc(ref);
         if (snap.exists()) {
           const data = snap.data();
@@ -69,11 +78,12 @@ function BasicInfo() {
             state: data.state || "",
             city: data.city || "",
             aboutMe: data.aboutMe || "",
-            email: data.email || user.email || "",
+            email: data.email || "",
             phone: data.phone || "",
             languages: data.languages || [],
             categories: data.categories || [],
             profileAvatar: data.profileAvatar || "",
+            publicSlug: data.publicSlug || "",
             companyName: data.companyName || "",
             yearEstablished: data.yearEstablished || "",
             companyNumber: data.companyNumber || "",
@@ -94,11 +104,20 @@ function BasicInfo() {
             setCities((getCities(data.country) || []).sort((a, b) => a.localeCompare(b)));
           }
         }
+
+        // If admin is editing another user, fetch admin info for logging
+        if (isAdminEdit && currentUser) {
+          const adminRef = doc(db, "users", currentUser.uid);
+          const adminSnap = await getDoc(adminRef);
+          if (adminSnap.exists()) {
+            setAdminData({ uid: currentUser.uid, ...adminSnap.data() });
+          }
+        }
       }
     };
 
     fetchUser();
-  }, [user]);
+  }, [targetUid, isAdminEdit, currentUser]);
 
   useEffect(() => {
     const allCountries = getCountries();
@@ -110,30 +129,65 @@ function BasicInfo() {
   }, []);
 
 
+  // Helper function to log admin edits
+  const logAdminEdit = async (field, oldValue, newValue) => {
+    if (isAdminEdit && adminData) {
+      await logAdminAction({
+        adminUid: adminData.uid,
+        adminEmail: adminData.email || currentUser?.email,
+        adminName: `${adminData.firstName || ""} ${adminData.lastName || ""}`.trim() || "Admin",
+        action: ADMIN_ACTIONS.EDIT_MODEL,
+        description: `Edited model profile field: ${field}`,
+        details: {
+          modelUid: targetUid,
+          modelEmail: profile.email,
+          modelName: `${profile.firstName} ${profile.lastName}`.trim(),
+          field,
+          oldValue,
+          newValue,
+        },
+      });
+    }
+  };
+
   const handleChange = (field) => async (e) => {
     const value = e.target.value;
+    const oldValue = profile[field];
     setProfile((prev) => ({ ...prev, [field]: value }));
-    if (user) {
-      const ref = doc(db, "users", user.uid);
+    if (targetUid) {
+      const ref = doc(db, "users", targetUid);
       await updateDoc(ref, { [field]: value });
+      // Log admin edit
+      if (isAdminEdit && oldValue !== value) {
+        await logAdminEdit(field, oldValue, value);
+      }
     }
   };
 
   const handleAutocompleteChange = (field) => async (event, value) => {
+    const oldValue = profile[field];
     setProfile((prev) => ({ ...prev, [field]: value }));
-    if (user) {
-      const ref = doc(db, "users", user.uid);
+    if (targetUid) {
+      const ref = doc(db, "users", targetUid);
       await updateDoc(ref, { [field]: value });
+      // Log admin edit
+      if (isAdminEdit && JSON.stringify(oldValue) !== JSON.stringify(value)) {
+        await logAdminEdit(field, oldValue, value);
+      }
     }
   };
 
   const handleCountryChange = async (event, value) => {
+    const oldCountry = profile.country;
     if (!value) {
       setProfile((prev) => ({ ...prev, country: "", city: "" }));
       setCities([]);
-      if (user) {
-        const ref = doc(db, "users", user.uid);
+      if (targetUid) {
+        const ref = doc(db, "users", targetUid);
         await updateDoc(ref, { country: "", city: "" });
+        if (isAdminEdit && oldCountry) {
+          await logAdminEdit("country", oldCountry, "");
+        }
       }
       return;
     }
@@ -150,38 +204,53 @@ function BasicInfo() {
     setProfile((prev) => ({ ...prev, country: value, city: "", county: "", state: "" }));
     setCities(citiesList);
 
-    if (user) {
-      const ref = doc(db, "users", user.uid);
+    if (targetUid) {
+      const ref = doc(db, "users", targetUid);
       await updateDoc(ref, { country: value, city: "", county: "", state: "" });
+      if (isAdminEdit && oldCountry !== value) {
+        await logAdminEdit("country", oldCountry, value);
+      }
     }
   };
 
   const handleStateChange = async (event, value) => {
+    const oldState = profile.state;
     const citiesList = (stateCities.getCities(value) || []).sort((a, b) => a.localeCompare(b));
     setProfile((prev) => ({ ...prev, state: value, city: "" }));
     setCities(citiesList);
 
-    if (user) {
-      const ref = doc(db, "users", user.uid);
+    if (targetUid) {
+      const ref = doc(db, "users", targetUid);
       await updateDoc(ref, { state: value, city: "" });
+      if (isAdminEdit && oldState !== value) {
+        await logAdminEdit("state", oldState, value);
+      }
     }
   };
 
   const handleCountyChange = async (event, value) => {
+    const oldCounty = profile.county;
     setProfile((prev) => ({ ...prev, county: value }));
     setCities(ukCounties[value] || []); // Populate towns based on county
 
-    if (user) {
-      const ref = doc(db, "users", user.uid);
+    if (targetUid) {
+      const ref = doc(db, "users", targetUid);
       await updateDoc(ref, { county: value });
+      if (isAdminEdit && oldCounty !== value) {
+        await logAdminEdit("county", oldCounty, value);
+      }
     }
   };
 
   const handleCityChange = async (event, value) => {
+    const oldCity = profile.city;
     setProfile((prev) => ({ ...prev, city: value }));
-    if (user) {
-      const ref = doc(db, "users", user.uid);
+    if (targetUid) {
+      const ref = doc(db, "users", targetUid);
       await updateDoc(ref, { city: value });
+      if (isAdminEdit && oldCity !== value) {
+        await logAdminEdit("city", oldCity, value);
+      }
     }
   };
 
@@ -211,10 +280,17 @@ function BasicInfo() {
                       const file = e.target.files[0];
                       if (!file) return;
 
+                      // Build folder path: /users/{models|clients}/{username}/profile
+                      const userType = ["model", "talent"].includes(userRole?.toLowerCase()) ? "models" : "clients";
+                      const username = profile.publicSlug || profile.firstName?.toLowerCase() || targetUid || "unknown";
+                      const folderPath = `users/${userType}/${username}/profile`;
+
                       const formData = new FormData();
                       formData.append("file", file);
                       formData.append("upload_preset", process.env.REACT_APP_CLOUDINARY_UPLOAD_PRESET);
                       formData.append("cloud_name", process.env.REACT_APP_CLOUDINARY_CLOUD_NAME);
+                      formData.append("folder", folderPath);
+                      formData.append("public_id", `profile_${Date.now()}`);
 
                       const res = await fetch(`https://api.cloudinary.com/v1_1/${process.env.REACT_APP_CLOUDINARY_CLOUD_NAME}/upload`, {
                         method: "POST",
@@ -223,15 +299,20 @@ function BasicInfo() {
 
                       const data = await res.json();
 
-                      if (data.secure_url && auth.currentUser) {
-                        const uid = auth.currentUser.uid;
-                        const ref = doc(db, "users", uid);
+                      if (data.secure_url && targetUid) {
+                        const oldAvatar = profile.profileAvatar;
+                        const ref = doc(db, "users", targetUid);
                         await updateDoc(ref, { profileAvatar: data.secure_url });
 
                         setProfile((prev) => ({
                           ...prev,
                           profileAvatar: data.secure_url,
                         }));
+
+                        // Log admin edit
+                        if (isAdminEdit) {
+                          await logAdminEdit("profileAvatar", oldAvatar, data.secure_url);
+                        }
                       }
                     }}
                   />
@@ -457,6 +538,14 @@ function BasicInfo() {
         </Grid>
         {userRole === "client" || userRole === "super admin" || userRole === "admin" ? (
           <Grid container mt={1} spacing={3}>
+            <Grid item xs={12} sm={6}>
+              <FormField
+                label="Phone Number"
+                placeholder="+44 7777 123456"
+                value={profile.phone}
+                onChange={handleChange("phone")}
+              />
+            </Grid>
             <Grid item xs={12} sm={6}>
               <FormField label="Company Name" value={profile.companyName} onChange={handleChange("companyName")} />
             </Grid>

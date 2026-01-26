@@ -243,3 +243,196 @@ export const deleteUserAuth = async (userUid) => {
     return { success: false, error: error.message };
   }
 };
+
+/**
+ * Get orphaned Firebase Authentication accounts (Super Admin only)
+ * Returns accounts that exist in Firebase Auth but not in Firestore
+ * @returns {Promise<{success: boolean, orphanedAccounts: Array, totalFirestoreUsers: number, totalOrphaned: number}>}
+ */
+export const getOrphanedAuthAccounts = async () => {
+  try {
+    const result = await callCloudFunction("getOrphanedAuthAccounts", {});
+
+    if (result.error && !result.success) {
+      throw new Error(result.error);
+    }
+
+    return result;
+  } catch (error) {
+    console.error("Failed to get orphaned auth accounts:", error);
+    throw error;
+  }
+};
+
+/**
+ * Delete orphaned Firebase Authentication accounts (Super Admin only)
+ * @param {string[]} uids - Array of UIDs to delete
+ * @returns {Promise<{success: boolean, deletedCount: number, failedCount: number, results: Array}>}
+ */
+export const deleteOrphanedAuthAccounts = async (uids) => {
+  try {
+    const result = await callCloudFunction("deleteOrphanedAuthAccounts", { uids });
+
+    if (result.error && !result.success) {
+      throw new Error(result.error);
+    }
+
+    return result;
+  } catch (error) {
+    console.error("Failed to delete orphaned auth accounts:", error);
+    throw error;
+  }
+};
+
+/**
+ * Get orphaned Cloudinary folders (Super Admin only)
+ * Returns folders in users/models/ and users/clients/ that don't have corresponding Firestore users
+ * @returns {Promise<{success: boolean, orphanedFolders: Array, totalOrphaned: number, totalValidUsers: number}>}
+ */
+export const getOrphanedCloudinaryFolders = async () => {
+  try {
+    const result = await callCloudFunction("getOrphanedCloudinaryFolders", {});
+
+    if (result.error && !result.success) {
+      throw new Error(result.error);
+    }
+
+    return result;
+  } catch (error) {
+    console.error("Failed to get orphaned Cloudinary folders:", error);
+    throw error;
+  }
+};
+
+/**
+ * Delete orphaned Cloudinary folders (Super Admin only)
+ * @param {string[]} folders - Array of folder paths to delete
+ * @returns {Promise<{success: boolean, deletedResourcesCount: number, deletedFoldersCount: number, failedCount: number, results: Array}>}
+ */
+export const deleteOrphanedCloudinaryFolders = async (folders) => {
+  try {
+    const result = await callCloudFunction("deleteOrphanedCloudinaryFolders", { folders });
+
+    if (result.error && !result.success) {
+      throw new Error(result.error);
+    }
+
+    return result;
+  } catch (error) {
+    console.error("Failed to delete orphaned Cloudinary folders:", error);
+    throw error;
+  }
+};
+
+
+// ============================================================================
+// ADMIN USER MANAGEMENT API FUNCTIONS
+// ============================================================================
+
+/**
+ * Reset a user's password (Admin only)
+ * @param {string} userUid - The user's UID
+ * @param {string} newPassword - The new password to set
+ * @param {boolean} sendEmail - Whether to send the new password to the user via email
+ * @returns {Promise<{success: boolean, emailSent?: boolean}>}
+ */
+export const adminResetUserPassword = async (userUid, newPassword, sendEmail = false) => {
+  try {
+    const result = await callCloudFunction("adminResetUserPassword", {
+      userUid,
+      newPassword,
+      sendEmail,
+    });
+
+    if (result.error && !result.success) {
+      throw new Error(result.error);
+    }
+
+    return result;
+  } catch (error) {
+    console.error("Failed to reset user password:", error);
+    throw error;
+  }
+};
+
+/**
+ * Update a user's email address (Admin only)
+ * @param {string} userUid - The user's UID
+ * @param {string} newEmail - The new email address
+ * @returns {Promise<{success: boolean, oldEmail?: string, newEmail?: string}>}
+ */
+export const adminUpdateUserEmail = async (userUid, newEmail) => {
+  try {
+    const result = await callCloudFunction("adminUpdateUserEmail", {
+      userUid,
+      newEmail,
+    });
+
+    if (result.error && !result.success) {
+      throw new Error(result.error);
+    }
+
+    return result;
+  } catch (error) {
+    console.error("Failed to update user email:", error);
+    throw error;
+  }
+};
+
+
+// ============================================================================
+// IMAGE OPTIMIZATION API FUNCTIONS
+// ============================================================================
+
+/**
+ * Get models with their image statistics for optimization (Admin only)
+ * Returns models with profile, portfolio, and digital images along with file sizes
+ * @param {string[]} modelUids - Optional array of specific model UIDs to check
+ * @returns {Promise<{success: boolean, models: Array, summary: Object}>}
+ */
+export const getModelsImageStats = async (modelUids = null) => {
+  try {
+    const result = await callCloudFunction("getModelsImageStats", { modelUids });
+
+    if (result.error && !result.success) {
+      throw new Error(result.error);
+    }
+
+    return result;
+  } catch (error) {
+    console.error("Failed to get models image stats:", error);
+    throw error;
+  }
+};
+
+/**
+ * Optimize images for specified models (Admin only)
+ * Applies Cloudinary transformations to reduce file size while maintaining quality
+ * @param {Object} options - Optimization options
+ * @param {string[]} options.modelUids - Model UIDs to optimize
+ * @param {boolean} options.optimizeProfile - Optimize profile avatars (default: true)
+ * @param {boolean} options.optimizePortfolio - Optimize portfolio images (default: true)
+ * @param {boolean} options.optimizeDigitals - Optimize digital images (default: true)
+ * @param {string} options.quality - Quality setting (default: "auto:good")
+ * @param {number} options.maxProfileWidth - Max profile image width (default: 800)
+ * @param {number} options.maxProfileHeight - Max profile image height (default: 800)
+ * @param {number} options.maxPortfolioWidth - Max portfolio image width (default: 2000)
+ * @param {number} options.maxPortfolioHeight - Max portfolio image height (default: 2000)
+ * @param {number} options.maxDigitalWidth - Max digital image width (default: 1600)
+ * @param {number} options.maxDigitalHeight - Max digital image height (default: 1600)
+ * @returns {Promise<{success: boolean, modelsProcessed: number, totalSavedBytes: number, ...}>}
+ */
+export const optimizeModelImages = async (options) => {
+  try {
+    const result = await callCloudFunction("optimizeModelImages", options);
+
+    if (result.error && !result.success) {
+      throw new Error(result.error);
+    }
+
+    return result;
+  } catch (error) {
+    console.error("Failed to optimize model images:", error);
+    throw error;
+  }
+};

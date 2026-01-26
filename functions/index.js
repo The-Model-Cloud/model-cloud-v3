@@ -854,6 +854,250 @@ exports.deleteUserAuth = onCall(async (request) => {
 
 
 // ============================================================================
+// ADMIN USER MANAGEMENT FUNCTIONS
+// ============================================================================
+
+/**
+ * Reset a user's password (Admin only)
+ * Sets a new password for the user in Firebase Authentication
+ * @param {string} userUid - The user's UID
+ * @param {string} newPassword - The new password to set
+ * @param {boolean} sendEmail - Whether to send the new password to the user via email
+ * @returns {Object} - Success status
+ */
+exports.adminResetUserPassword = onCall(async (request) => {
+  // 1. Verify authentication
+  if (!request.auth) {
+    throw new HttpsError("unauthenticated", "User must be logged in");
+  }
+
+  const callerUid = request.auth.uid;
+  const { userUid, newPassword, sendEmail } = request.data;
+
+  if (!userUid || !newPassword) {
+    throw new HttpsError("invalid-argument", "User UID and new password are required");
+  }
+
+  if (newPassword.length < 6) {
+    throw new HttpsError("invalid-argument", "Password must be at least 6 characters");
+  }
+
+  // 2. Verify caller is an admin
+  const callerDoc = await db.collection("users").doc(callerUid).get();
+  if (!callerDoc.exists) {
+    throw new HttpsError("permission-denied", "Caller user not found");
+  }
+
+  const callerData = callerDoc.data();
+  const callerRole = callerData.role;
+  const ADMIN_ROLES = ["admin", "super admin"];
+
+  if (!ADMIN_ROLES.includes(callerRole)) {
+    throw new HttpsError("permission-denied", "Only admins can reset user passwords");
+  }
+
+  // 3. Get target user info
+  const userDoc = await db.collection("users").doc(userUid).get();
+  if (!userDoc.exists) {
+    throw new HttpsError("not-found", "User not found");
+  }
+
+  const userData = userDoc.data();
+  const userName = `${userData.firstName || ""} ${userData.lastName || ""}`.trim();
+  const userEmail = userData.email;
+
+  console.log(`Admin ${callerData.email} resetting password for user: ${userEmail}`);
+
+  // 4. Update password in Firebase Auth
+  try {
+    await admin.auth().updateUser(userUid, { password: newPassword });
+    console.log(`Password updated for user ${userUid}`);
+  } catch (authError) {
+    console.error("Error updating password:", authError);
+    throw new HttpsError("internal", `Failed to update password: ${authError.message}`);
+  }
+
+  // 5. Send email with new password if requested
+  if (sendEmail && userEmail && sendgridApiKey) {
+    try {
+      const msg = {
+        to: userEmail,
+        from: sendgridFromEmail,
+        subject: "Your Password Has Been Reset - The Model Cloud",
+        html: `
+          <h2>Password Reset</h2>
+          <p>Hi ${userName || "there"},</p>
+          <p>Your password for The Model Cloud has been reset by an administrator.</p>
+          <p>Your new password is: <strong>${newPassword}</strong></p>
+          <p>Please log in and change your password as soon as possible.</p>
+          <p>
+            <a href="https://themodel.cloud/sign-in"
+               style="background-color: #1976d2; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; display: inline-block;">
+              Log In Now
+            </a>
+          </p>
+          <p style="color: #666; font-size: 12px; margin-top: 24px;">
+            If you did not expect this password reset, please contact support immediately.
+          </p>
+        `
+      };
+      await sgMail.send(msg);
+      console.log(`Password reset email sent to ${userEmail}`);
+    } catch (emailError) {
+      console.error("Error sending password email:", emailError);
+      // Don't fail the operation if email fails
+    }
+  }
+
+  // 6. Log admin action
+  try {
+    await db.collection("adminLogs").add({
+      adminUid: callerUid,
+      adminEmail: callerData.email,
+      adminName: `${callerData.firstName || ""} ${callerData.lastName || ""}`.trim(),
+      action: "RESET_USER_PASSWORD",
+      description: `Reset password for user: ${userEmail}`,
+      details: {
+        userUid,
+        userEmail,
+        userName,
+        userRole: userData.role,
+        emailSent: sendEmail && !!userEmail,
+      },
+      createdAt: admin.firestore.FieldValue.serverTimestamp(),
+      timestamp: new Date().toISOString(),
+    });
+  } catch (logError) {
+    console.error("Failed to log admin action:", logError);
+  }
+
+  return {
+    success: true,
+    userUid,
+    userEmail,
+    emailSent: sendEmail && !!userEmail && !!sendgridApiKey,
+  };
+});
+
+
+/**
+ * Update a user's email address (Admin only)
+ * Updates email in Firebase Auth and all Firestore locations
+ * @param {string} userUid - The user's UID
+ * @param {string} newEmail - The new email address
+ * @returns {Object} - Success status
+ */
+exports.adminUpdateUserEmail = onCall(async (request) => {
+  // 1. Verify authentication
+  if (!request.auth) {
+    throw new HttpsError("unauthenticated", "User must be logged in");
+  }
+
+  const callerUid = request.auth.uid;
+  const { userUid, newEmail } = request.data;
+
+  if (!userUid || !newEmail) {
+    throw new HttpsError("invalid-argument", "User UID and new email are required");
+  }
+
+  // Basic email validation
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  if (!emailRegex.test(newEmail)) {
+    throw new HttpsError("invalid-argument", "Invalid email format");
+  }
+
+  // 2. Verify caller is an admin
+  const callerDoc = await db.collection("users").doc(callerUid).get();
+  if (!callerDoc.exists) {
+    throw new HttpsError("permission-denied", "Caller user not found");
+  }
+
+  const callerData = callerDoc.data();
+  const callerRole = callerData.role;
+  const ADMIN_ROLES = ["admin", "super admin"];
+
+  if (!ADMIN_ROLES.includes(callerRole)) {
+    throw new HttpsError("permission-denied", "Only admins can update user emails");
+  }
+
+  // 3. Get target user info
+  const userDoc = await db.collection("users").doc(userUid).get();
+  if (!userDoc.exists) {
+    throw new HttpsError("not-found", "User not found");
+  }
+
+  const userData = userDoc.data();
+  const oldEmail = userData.email;
+  const userName = `${userData.firstName || ""} ${userData.lastName || ""}`.trim();
+
+  if (oldEmail === newEmail) {
+    return { success: true, message: "Email is the same, no changes made" };
+  }
+
+  console.log(`Admin ${callerData.email} updating email for user: ${oldEmail} -> ${newEmail}`);
+
+  // 4. Update email in Firebase Auth
+  try {
+    await admin.auth().updateUser(userUid, { email: newEmail });
+    console.log(`Auth email updated for user ${userUid}`);
+  } catch (authError) {
+    console.error("Error updating auth email:", authError);
+    if (authError.code === "auth/email-already-exists") {
+      throw new HttpsError("already-exists", "This email is already in use by another account");
+    }
+    throw new HttpsError("internal", `Failed to update email: ${authError.message}`);
+  }
+
+  // 5. Update email in Firestore user document
+  try {
+    await db.collection("users").doc(userUid).update({
+      email: newEmail,
+      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+    });
+    console.log(`Firestore email updated for user ${userUid}`);
+  } catch (firestoreError) {
+    console.error("Error updating Firestore email:", firestoreError);
+    // Try to rollback Auth change
+    try {
+      await admin.auth().updateUser(userUid, { email: oldEmail });
+    } catch (rollbackError) {
+      console.error("Failed to rollback auth email:", rollbackError);
+    }
+    throw new HttpsError("internal", "Failed to update email in database");
+  }
+
+  // 6. Log admin action
+  try {
+    await db.collection("adminLogs").add({
+      adminUid: callerUid,
+      adminEmail: callerData.email,
+      adminName: `${callerData.firstName || ""} ${callerData.lastName || ""}`.trim(),
+      action: "UPDATE_USER_EMAIL",
+      description: `Updated email for user: ${oldEmail} -> ${newEmail}`,
+      details: {
+        userUid,
+        oldEmail,
+        newEmail,
+        userName,
+        userRole: userData.role,
+      },
+      createdAt: admin.firestore.FieldValue.serverTimestamp(),
+      timestamp: new Date().toISOString(),
+    });
+  } catch (logError) {
+    console.error("Failed to log admin action:", logError);
+  }
+
+  return {
+    success: true,
+    userUid,
+    oldEmail,
+    newEmail,
+  };
+});
+
+
+// ============================================================================
 // MODEL IMPORT FUNCTIONS
 // ============================================================================
 
@@ -863,7 +1107,7 @@ exports.deleteUserAuth = onCall(async (request) => {
  * @param {Array} models - Array of model objects with email, firstName, lastName, etc.
  * @returns {Object} - Results for each model (created, updated, or error)
  */
-exports.importModels = onCall(async (request) => {
+exports.importModels = onCall({ timeoutSeconds: 540 }, async (request) => {
   // 1. Verify authentication
   if (!request.auth) {
     throw new HttpsError("unauthenticated", "User must be logged in");
@@ -892,16 +1136,15 @@ exports.importModels = onCall(async (request) => {
 
   console.log(`Admin ${callerData.email} starting import of ${models.length} models`);
 
-  const results = [];
   const defaultPassword = "Model123!";
+  const BATCH_SIZE = 10; // Process 10 models in parallel at a time
 
-  // 3. Process each model
-  for (const model of models) {
+  // Helper function to process a single model
+  const processModel = async (model) => {
     const email = model.email?.toLowerCase()?.trim();
 
     if (!email) {
-      results.push({ email: "(missing)", status: "error", message: "Missing email address" });
-      continue;
+      return { email: "(missing)", status: "error", message: "Missing email address" };
     }
 
     // Generate public slug
@@ -911,6 +1154,71 @@ exports.importModels = onCall(async (request) => {
     const lastInitial = lastName.charAt(0).toLowerCase();
     const publicSlug = `${firstNameLower}.${lastInitial}`;
 
+    // Convert height from feet/inches to cm (e.g., "5'6''" or "5'3"" -> "168")
+    let heightCm = "";
+    const heightValue = (model.height || "").trim();
+    if (heightValue) {
+      // Match patterns like: 5'6'', 5'6", 5' 6", 5ft 6in, 5'6, etc.
+      const feetInchesPattern = /(\d+)\s*[''′ft]*\s*(\d+)?\s*["''″in]*/i;
+      const match = heightValue.match(feetInchesPattern);
+      if (match) {
+        const feet = parseInt(match[1], 10) || 0;
+        const inches = parseInt(match[2], 10) || 0;
+        // Convert to cm: 1 foot = 30.48 cm, 1 inch = 2.54 cm
+        const totalCm = Math.round((feet * 30.48) + (inches * 2.54));
+        heightCm = String(totalCm);
+      } else if (/^\d+$/.test(heightValue)) {
+        // Already a number (could be cm), keep as-is
+        heightCm = heightValue;
+      }
+    }
+
+    // Combine bust and cup into braSize (e.g., "32" + "DD" = "32DD")
+    // If bust is an odd number, round up to the next even number
+    let braSize = "";
+    const bustValue = (model.bust || "").trim();
+    const cupValue = (model.cup || "").trim();
+    if (bustValue && cupValue) {
+      let bustNumber = parseInt(bustValue, 10);
+      if (!isNaN(bustNumber)) {
+        // Round odd numbers up to the next even number
+        if (bustNumber % 2 !== 0) {
+          bustNumber += 1;
+        }
+        braSize = `${bustNumber}${cupValue}`;
+      }
+    }
+
+    // Convert waist from inches to cm (1 inch = 2.54 cm)
+    let waistCm = "";
+    const waistValue = (model.waist || "").trim();
+    if (waistValue) {
+      const waistNumber = parseFloat(waistValue);
+      if (!isNaN(waistNumber)) {
+        waistCm = String(Math.round(waistNumber * 2.54));
+      }
+    }
+
+    // Convert chest from inches to cm (1 inch = 2.54 cm)
+    let chestCm = "";
+    const chestValue = (model.chest || "").trim();
+    if (chestValue) {
+      const chestNumber = parseFloat(chestValue);
+      if (!isNaN(chestNumber)) {
+        chestCm = String(Math.round(chestNumber * 2.54));
+      }
+    }
+
+    // Convert hips from inches to cm (1 inch = 2.54 cm)
+    let hipsCm = "";
+    const hipsValue = (model.hips || "").trim();
+    if (hipsValue) {
+      const hipsNumber = parseFloat(hipsValue);
+      if (!isNaN(hipsNumber)) {
+        hipsCm = String(Math.round(hipsNumber * 2.54));
+      }
+    }
+
     const modelData = {
       firstName,
       lastName,
@@ -918,13 +1226,25 @@ exports.importModels = onCall(async (request) => {
       instagram: model.instagram || "",
       gender: model.gender || "",
       phone: model.phone || "",
-      height: model.height || "",
-      chest: model.chest || "",
-      waist: model.waist || "",
-      hips: model.hips || "",
+      height: heightCm, // Converted to cm from feet/inches
+      heightOriginal: heightValue, // Original value from CSV (e.g., "5'6''") for imperial display
+      chest: chestCm, // Converted to cm from inches
+      chestOriginal: chestValue, // Original value in inches
+      bust: model.bust || "",
+      cup: model.cup || "",
+      braSize, // Combined bra size (e.g., "32DD")
+      waist: waistCm, // Converted to cm from inches
+      waistOriginal: waistValue, // Original value in inches
+      hips: hipsCm, // Converted to cm from inches
+      hipsOriginal: hipsValue, // Original value in inches
       shoeSize: model.shoeSize || "",
+      ukDress: model.ukDress || "",
       aboutMe: model.aboutMe || "",
-      location: model.location || "",
+      // Location fields - stored separately for filtering
+      country: model.country || "",
+      county: model.county || "",
+      city: model.city || "",
+      location: model.location || "", // Combined display string
       role: "model",
       publicSlug,
       updatedAt: new Date().toISOString(),
@@ -944,12 +1264,11 @@ exports.importModels = onCall(async (request) => {
             status: "imported",
           });
           console.log(`Updated existing Firestore user: ${email}`);
-          results.push({ email, status: "updated", message: "Existing Firestore user updated" });
+          return { email, status: "updated", message: "Existing Firestore user updated" };
         } catch (updateError) {
           console.error(`Failed to update ${email}:`, updateError);
-          results.push({ email, status: "error", message: `Update failed: ${updateError.message}` });
+          return { email, status: "error", message: `Update failed: ${updateError.message}` };
         }
-        continue;
       }
 
       // User doesn't exist in Firestore - check if they exist in Auth
@@ -974,12 +1293,10 @@ exports.importModels = onCall(async (request) => {
             uid = newAuthUser.uid;
             console.log(`Created new Auth user for ${email}: ${uid}`);
           } catch (createError) {
-            results.push({ email, status: "error", message: `Auth creation failed: ${createError.message}` });
-            continue;
+            return { email, status: "error", message: `Auth creation failed: ${createError.message}` };
           }
         } else {
-          results.push({ email, status: "error", message: `Auth lookup failed: ${authError.message}` });
-          continue;
+          return { email, status: "error", message: `Auth lookup failed: ${authError.message}` };
         }
       }
 
@@ -992,15 +1309,24 @@ exports.importModels = onCall(async (request) => {
       });
 
       if (authUserExisted) {
-        results.push({ email, status: "linked", message: "Linked to existing Auth user" });
+        return { email, status: "linked", message: "Linked to existing Auth user" };
       } else {
-        results.push({ email, status: "created", message: "New user created" });
+        return { email, status: "created", message: "New user created" };
       }
 
     } catch (err) {
       console.error(`Error processing ${email}:`, err);
-      results.push({ email, status: "error", message: err.message });
+      return { email, status: "error", message: err.message };
     }
+  };
+
+  // 3. Process models in parallel batches
+  const results = [];
+  for (let i = 0; i < models.length; i += BATCH_SIZE) {
+    const batch = models.slice(i, i + BATCH_SIZE);
+    const batchResults = await Promise.all(batch.map(processModel));
+    results.push(...batchResults);
+    console.log(`Processed batch ${Math.floor(i / BATCH_SIZE) + 1}/${Math.ceil(models.length / BATCH_SIZE)}`);
   }
 
   // 4. Summary
@@ -1037,4 +1363,1061 @@ exports.importModels = onCall(async (request) => {
   }
 
   return { success: true, results, summary };
+});
+
+
+/**
+ * Get orphaned Firebase Authentication accounts (Super Admin only)
+ * Returns accounts that exist in Firebase Auth but not in Firestore
+ * @returns {Object} - List of orphaned auth accounts
+ */
+exports.getOrphanedAuthAccounts = onCall(async (request) => {
+  // 1. Verify authentication
+  if (!request.auth) {
+    throw new HttpsError("unauthenticated", "User must be logged in");
+  }
+
+  const callerUid = request.auth.uid;
+
+  // 2. Verify caller is a super admin
+  const callerDoc = await db.collection("users").doc(callerUid).get();
+  if (!callerDoc.exists) {
+    throw new HttpsError("permission-denied", "Caller user not found");
+  }
+
+  const callerData = callerDoc.data();
+  if (callerData.role !== "super admin") {
+    throw new HttpsError("permission-denied", "Only super admins can access this function");
+  }
+
+  console.log(`Super admin ${callerData.email} checking for orphaned auth accounts`);
+
+  try {
+    // 3. Get all users from Firestore
+    const firestoreUsers = new Set();
+    const usersSnapshot = await db.collection("users").get();
+    usersSnapshot.docs.forEach(doc => {
+      firestoreUsers.add(doc.id);
+    });
+
+    console.log(`Found ${firestoreUsers.size} users in Firestore`);
+
+    // 4. Get all users from Firebase Auth
+    const orphanedAccounts = [];
+    let nextPageToken;
+
+    do {
+      const listResult = await admin.auth().listUsers(1000, nextPageToken);
+
+      for (const authUser of listResult.users) {
+        // Check if this auth user exists in Firestore
+        if (!firestoreUsers.has(authUser.uid)) {
+          orphanedAccounts.push({
+            uid: authUser.uid,
+            email: authUser.email || "No email",
+            displayName: authUser.displayName || "",
+            createdAt: authUser.metadata.creationTime,
+            lastSignIn: authUser.metadata.lastSignInTime,
+            disabled: authUser.disabled,
+          });
+        }
+      }
+
+      nextPageToken = listResult.pageToken;
+    } while (nextPageToken);
+
+    console.log(`Found ${orphanedAccounts.length} orphaned auth accounts`);
+
+    return {
+      success: true,
+      orphanedAccounts,
+      totalFirestoreUsers: firestoreUsers.size,
+      totalOrphaned: orphanedAccounts.length,
+    };
+  } catch (error) {
+    console.error("Error getting orphaned accounts:", error);
+    throw new HttpsError("internal", `Failed to get orphaned accounts: ${error.message}`);
+  }
+});
+
+
+/**
+ * Delete orphaned Firebase Authentication accounts (Super Admin only)
+ * Deletes auth accounts that don't have corresponding Firestore documents
+ * @param {Array} uids - Array of UIDs to delete
+ * @returns {Object} - Results of deletion
+ */
+exports.deleteOrphanedAuthAccounts = onCall(async (request) => {
+  // 1. Verify authentication
+  if (!request.auth) {
+    throw new HttpsError("unauthenticated", "User must be logged in");
+  }
+
+  const callerUid = request.auth.uid;
+  const { uids } = request.data;
+
+  if (!uids || !Array.isArray(uids) || uids.length === 0) {
+    throw new HttpsError("invalid-argument", "UIDs array is required");
+  }
+
+  // 2. Verify caller is a super admin
+  const callerDoc = await db.collection("users").doc(callerUid).get();
+  if (!callerDoc.exists) {
+    throw new HttpsError("permission-denied", "Caller user not found");
+  }
+
+  const callerData = callerDoc.data();
+  if (callerData.role !== "super admin") {
+    throw new HttpsError("permission-denied", "Only super admins can delete auth accounts");
+  }
+
+  console.log(`Super admin ${callerData.email} deleting ${uids.length} orphaned auth accounts`);
+
+  const results = [];
+  let deletedCount = 0;
+  let failedCount = 0;
+
+  // 3. Delete each auth account
+  for (const uid of uids) {
+    try {
+      // Double-check that this user doesn't exist in Firestore
+      const userDoc = await db.collection("users").doc(uid).get();
+      if (userDoc.exists) {
+        results.push({
+          uid,
+          status: "skipped",
+          message: "User exists in Firestore - not orphaned",
+        });
+        continue;
+      }
+
+      // Get user info before deleting
+      let userInfo = { email: "Unknown", displayName: "" };
+      try {
+        const authUser = await admin.auth().getUser(uid);
+        userInfo = {
+          email: authUser.email || "No email",
+          displayName: authUser.displayName || "",
+        };
+      } catch (getUserErr) {
+        // User might already be deleted, continue anyway
+      }
+
+      // Delete the auth account
+      await admin.auth().deleteUser(uid);
+      deletedCount++;
+      results.push({
+        uid,
+        email: userInfo.email,
+        displayName: userInfo.displayName,
+        status: "deleted",
+      });
+    } catch (error) {
+      failedCount++;
+      if (error.code === "auth/user-not-found") {
+        results.push({
+          uid,
+          status: "not_found",
+          message: "User not found in Auth",
+        });
+      } else {
+        results.push({
+          uid,
+          status: "failed",
+          message: error.message,
+        });
+      }
+    }
+  }
+
+  // 4. Log admin action
+  try {
+    await db.collection("adminLogs").add({
+      adminUid: callerUid,
+      adminEmail: callerData.email,
+      adminName: `${callerData.firstName || ""} ${callerData.lastName || ""}`.trim(),
+      action: "DELETE_ORPHANED_AUTH_ACCOUNTS",
+      description: `Deleted ${deletedCount} orphaned auth accounts`,
+      details: {
+        totalRequested: uids.length,
+        deletedCount,
+        failedCount,
+        results,
+      },
+      createdAt: admin.firestore.FieldValue.serverTimestamp(),
+      timestamp: new Date().toISOString(),
+    });
+  } catch (logError) {
+    console.error("Failed to log admin action:", logError);
+  }
+
+  console.log(`Orphaned auth deletion complete: ${deletedCount} deleted, ${failedCount} failed`);
+
+  return {
+    success: true,
+    deletedCount,
+    failedCount,
+    results,
+  };
+});
+
+
+// ============================================================================
+// CLOUDINARY CLEANUP FUNCTIONS
+// ============================================================================
+
+/**
+ * Get orphaned Cloudinary folders (Super Admin only)
+ * Returns folders in users/models/ and users/clients/ that don't have corresponding Firestore users
+ * @returns {Object} - List of orphaned folders with resource counts
+ */
+exports.getOrphanedCloudinaryFolders = onCall(async (request) => {
+  // 1. Verify authentication
+  if (!request.auth) {
+    throw new HttpsError("unauthenticated", "User must be logged in");
+  }
+
+  const callerUid = request.auth.uid;
+
+  // 2. Verify caller is a super admin
+  const callerDoc = await db.collection("users").doc(callerUid).get();
+  if (!callerDoc.exists) {
+    throw new HttpsError("permission-denied", "Caller user not found");
+  }
+
+  const callerData = callerDoc.data();
+  if (callerData.role !== "super admin") {
+    throw new HttpsError("permission-denied", "Only super admins can access this function");
+  }
+
+  // 3. Verify Cloudinary is configured
+  if (!process.env.CLOUDINARY_API_KEY) {
+    throw new HttpsError("failed-precondition", "Cloudinary is not configured");
+  }
+
+  console.log(`Super admin ${callerData.email} checking for orphaned Cloudinary folders`);
+
+  try {
+    // 4. Get all usernames/publicSlugs from Firestore
+    const validUsernames = new Set();
+    const usersSnapshot = await db.collection("users").get();
+    usersSnapshot.docs.forEach(doc => {
+      const data = doc.data();
+      // Add all possible identifiers that could be used as folder names
+      if (data.publicSlug) validUsernames.add(data.publicSlug.toLowerCase());
+      if (data.username) validUsernames.add(data.username.toLowerCase());
+      validUsernames.add(doc.id); // UID as fallback
+      // Also add firstName_lastName pattern used during signup
+      if (data.firstName && data.lastName) {
+        const signupPattern = `${data.firstName}_${data.lastName}`.toLowerCase().replace(/[^a-z0-9_]/g, "_");
+        validUsernames.add(signupPattern);
+      }
+    });
+
+    console.log(`Found ${validUsernames.size} valid usernames in Firestore`);
+
+    // 5. Get all valid job references from Firestore
+    const validJobRefs = new Set();
+    const jobsSnapshot = await db.collection("jobs").get();
+    jobsSnapshot.docs.forEach(doc => {
+      const data = doc.data();
+      if (data.reference) validJobRefs.add(data.reference);
+      validJobRefs.add(doc.id); // Also add doc ID as fallback
+    });
+
+    console.log(`Found ${validJobRefs.size} valid job references in Firestore`);
+
+    // 6. Get all folders from Cloudinary
+    const orphanedFolders = [];
+    const foldersToCheck = ["users/models", "users/clients"];
+
+    for (const parentFolder of foldersToCheck) {
+      try {
+        const subFoldersResult = await cloudinary.api.sub_folders(parentFolder);
+        const subFolders = subFoldersResult.folders || [];
+
+        for (const folder of subFolders) {
+          const folderName = folder.name.toLowerCase();
+          const fullPath = folder.path;
+
+          // Check if this folder corresponds to a valid user
+          if (!validUsernames.has(folderName)) {
+            // Get resource count for this folder
+            let resourceCount = 0;
+            try {
+              const resources = await cloudinary.api.resources({
+                type: "upload",
+                prefix: fullPath,
+                max_results: 500,
+              });
+              resourceCount = resources.resources?.length || 0;
+            } catch (countErr) {
+              console.warn(`Could not count resources in ${fullPath}:`, countErr.message);
+            }
+
+            orphanedFolders.push({
+              folderName: folder.name,
+              fullPath,
+              parentFolder,
+              resourceCount,
+              type: "user",
+            });
+          } else if (parentFolder === "users/clients") {
+            // For valid client folders, check their jobs subfolders
+            try {
+              const jobsFolderPath = `${fullPath}/jobs`;
+              const jobSubFolders = await cloudinary.api.sub_folders(jobsFolderPath);
+
+              for (const jobFolder of (jobSubFolders.folders || [])) {
+                const jobRef = jobFolder.name;
+                // Check if this job reference exists in Firestore
+                if (!validJobRefs.has(jobRef)) {
+                  let resourceCount = 0;
+                  try {
+                    const resources = await cloudinary.api.resources({
+                      type: "upload",
+                      prefix: jobFolder.path,
+                      max_results: 500,
+                    });
+                    resourceCount = resources.resources?.length || 0;
+                  } catch (countErr) {
+                    console.warn(`Could not count resources in ${jobFolder.path}:`, countErr.message);
+                  }
+
+                  orphanedFolders.push({
+                    folderName: jobRef,
+                    fullPath: jobFolder.path,
+                    parentFolder: jobsFolderPath,
+                    resourceCount,
+                    type: "job",
+                    ownerFolder: folder.name,
+                  });
+                }
+              }
+            } catch (jobsErr) {
+              // No jobs folder or error accessing it - that's fine
+            }
+          }
+        }
+      } catch (folderErr) {
+        console.warn(`Could not list folders in ${parentFolder}:`, folderErr.message);
+        // Continue with other folders
+      }
+    }
+
+    // Also check the legacy "users/imported" folder
+    try {
+      const importedResources = await cloudinary.api.resources({
+        type: "upload",
+        prefix: "users/imported",
+        max_results: 500,
+      });
+
+      if (importedResources.resources?.length > 0) {
+        // Check each resource to see if its user still exists
+        const orphanedImported = [];
+        for (const resource of importedResources.resources) {
+          // Extract UID from public_id like "users/imported/user_ABC123_profile"
+          const match = resource.public_id.match(/user_([^_]+)_/);
+          if (match) {
+            const uid = match[1];
+            const userDoc = await db.collection("users").doc(uid).get();
+            if (!userDoc.exists) {
+              orphanedImported.push({
+                publicId: resource.public_id,
+                url: resource.secure_url,
+                createdAt: resource.created_at,
+              });
+            }
+          }
+        }
+
+        if (orphanedImported.length > 0) {
+          orphanedFolders.push({
+            folderName: "imported (legacy)",
+            fullPath: "users/imported",
+            parentFolder: "users",
+            resourceCount: orphanedImported.length,
+            orphanedResources: orphanedImported,
+            type: "legacy",
+          });
+        }
+      }
+    } catch (importedErr) {
+      console.warn("Could not check users/imported folder:", importedErr.message);
+    }
+
+    console.log(`Found ${orphanedFolders.length} orphaned Cloudinary folders`);
+
+    // Count by type for summary
+    const userFolders = orphanedFolders.filter(f => f.type === "user").length;
+    const jobFolders = orphanedFolders.filter(f => f.type === "job").length;
+    const legacyFolders = orphanedFolders.filter(f => f.type === "legacy").length;
+
+    return {
+      success: true,
+      orphanedFolders,
+      totalOrphaned: orphanedFolders.length,
+      totalValidUsers: validUsernames.size,
+      totalValidJobs: validJobRefs.size,
+      summary: {
+        orphanedUserFolders: userFolders,
+        orphanedJobFolders: jobFolders,
+        legacyFolders: legacyFolders,
+      },
+    };
+  } catch (error) {
+    console.error("Error getting orphaned Cloudinary folders:", error);
+    throw new HttpsError("internal", `Failed to get orphaned folders: ${error.message}`);
+  }
+});
+
+
+/**
+ * Delete orphaned Cloudinary folders (Super Admin only)
+ * Deletes all resources in the specified folders and then the folders themselves
+ * @param {Array} folders - Array of folder paths to delete
+ * @returns {Object} - Results of deletion
+ */
+exports.deleteOrphanedCloudinaryFolders = onCall(async (request) => {
+  // 1. Verify authentication
+  if (!request.auth) {
+    throw new HttpsError("unauthenticated", "User must be logged in");
+  }
+
+  const callerUid = request.auth.uid;
+  const { folders } = request.data;
+
+  if (!folders || !Array.isArray(folders) || folders.length === 0) {
+    throw new HttpsError("invalid-argument", "Folders array is required");
+  }
+
+  // 2. Verify caller is a super admin
+  const callerDoc = await db.collection("users").doc(callerUid).get();
+  if (!callerDoc.exists) {
+    throw new HttpsError("permission-denied", "Caller user not found");
+  }
+
+  const callerData = callerDoc.data();
+  if (callerData.role !== "super admin") {
+    throw new HttpsError("permission-denied", "Only super admins can delete Cloudinary folders");
+  }
+
+  // 3. Verify Cloudinary is configured
+  if (!process.env.CLOUDINARY_API_KEY) {
+    throw new HttpsError("failed-precondition", "Cloudinary is not configured");
+  }
+
+  console.log(`Super admin ${callerData.email} deleting ${folders.length} orphaned Cloudinary folders`);
+
+  const results = [];
+  let deletedResourcesCount = 0;
+  let deletedFoldersCount = 0;
+  let failedCount = 0;
+
+  // 4. Delete each folder
+  for (const folderPath of folders) {
+    try {
+      // Delete all resources in the folder (and subfolders)
+      const deleteResult = await cloudinary.api.delete_resources_by_prefix(folderPath);
+      const deletedCount = Object.keys(deleteResult.deleted || {}).length;
+      deletedResourcesCount += deletedCount;
+
+      // Try to delete the folder itself (will only work if empty)
+      try {
+        await cloudinary.api.delete_folder(folderPath);
+        deletedFoldersCount++;
+      } catch (folderErr) {
+        // Folder might have subfolders, try to delete them recursively
+        try {
+          const subFolders = await cloudinary.api.sub_folders(folderPath);
+          for (const sub of (subFolders.folders || [])) {
+            await cloudinary.api.delete_resources_by_prefix(sub.path);
+            await cloudinary.api.delete_folder(sub.path);
+          }
+          // Try again to delete the parent folder
+          await cloudinary.api.delete_folder(folderPath);
+          deletedFoldersCount++;
+        } catch (subErr) {
+          console.warn(`Could not fully delete folder ${folderPath}:`, subErr.message);
+        }
+      }
+
+      results.push({
+        folderPath,
+        status: "deleted",
+        resourcesDeleted: deletedCount,
+      });
+    } catch (error) {
+      failedCount++;
+      results.push({
+        folderPath,
+        status: "failed",
+        message: error.message,
+      });
+      console.error(`Failed to delete folder ${folderPath}:`, error.message);
+    }
+  }
+
+  // 5. Log admin action
+  try {
+    await db.collection("adminLogs").add({
+      adminUid: callerUid,
+      adminEmail: callerData.email,
+      adminName: `${callerData.firstName || ""} ${callerData.lastName || ""}`.trim(),
+      action: "CLEANUP_CLOUDINARY",
+      description: `Deleted ${deletedResourcesCount} Cloudinary resources from ${deletedFoldersCount} folders`,
+      details: {
+        totalFoldersRequested: folders.length,
+        deletedFoldersCount,
+        deletedResourcesCount,
+        failedCount,
+        results,
+      },
+      createdAt: admin.firestore.FieldValue.serverTimestamp(),
+      timestamp: new Date().toISOString(),
+    });
+  } catch (logError) {
+    console.error("Failed to log admin action:", logError);
+  }
+
+  console.log(`Cloudinary cleanup complete: ${deletedResourcesCount} resources, ${deletedFoldersCount} folders deleted`);
+
+  return {
+    success: true,
+    deletedResourcesCount,
+    deletedFoldersCount,
+    failedCount,
+    results,
+  };
+});
+
+
+// ============================================================================
+// IMAGE OPTIMIZATION FUNCTIONS
+// ============================================================================
+
+/**
+ * Helper function to extract Cloudinary public_id from URL
+ * @param {string} url - Cloudinary URL
+ * @returns {string|null} - Public ID or null
+ */
+function extractPublicIdFromUrl(url) {
+  if (!url) return null;
+
+  try {
+    // Handle Cloudinary URLs like:
+    // https://res.cloudinary.com/{cloud}/image/upload/v{version}/{public_id}.{format}
+    // https://res.cloudinary.com/{cloud}/image/upload/{transformations}/v{version}/{public_id}.{format}
+
+    const cloudinaryPattern = /cloudinary\.com\/[^/]+\/image\/upload(?:\/[^/]+)*\/(?:v\d+\/)?(.+?)(?:\.[a-z]+)?$/i;
+    const match = url.match(cloudinaryPattern);
+
+    if (match && match[1]) {
+      // Remove file extension if present
+      let publicId = match[1];
+      return publicId;
+    }
+
+    return null;
+  } catch (error) {
+    console.warn("Error extracting public_id from URL:", url, error);
+    return null;
+  }
+}
+
+
+/**
+ * Helper function to optimize a single image
+ * @param {string} imageUrl - Original image URL
+ * @param {string} quality - Quality setting
+ * @param {number} maxWidth - Maximum width
+ * @param {number} maxHeight - Maximum height
+ * @returns {Object} - Optimization result
+ */
+async function optimizeImage(imageUrl, quality, maxWidth, maxHeight) {
+  try {
+    const publicId = extractPublicIdFromUrl(imageUrl);
+    if (!publicId) {
+      return { success: false, error: "Could not extract public_id from URL" };
+    }
+
+    // Get original image info
+    let originalInfo;
+    try {
+      originalInfo = await cloudinary.api.resource(publicId);
+    } catch (err) {
+      return { success: false, error: `Image not found: ${err.message}` };
+    }
+
+    const originalSize = originalInfo.bytes || 0;
+    const originalWidth = originalInfo.width || 0;
+    const originalHeight = originalInfo.height || 0;
+
+    // Check if optimization is needed
+    const needsResize = originalWidth > maxWidth || originalHeight > maxHeight;
+    const needsQualityOptimization = originalSize > 500000; // > 500KB
+
+    if (!needsResize && !needsQualityOptimization) {
+      // Image is already optimized
+      return {
+        success: true,
+        optimizedUrl: imageUrl,
+        originalSize,
+        newSize: originalSize,
+        savedBytes: 0,
+        skipped: true,
+      };
+    }
+
+    // Build transformation string
+    const transformations = [];
+
+    // Add quality optimization
+    transformations.push(`q_${quality}`);
+
+    // Add format optimization (auto-select best format)
+    transformations.push("f_auto");
+
+    // Add resize if needed (maintain aspect ratio)
+    if (needsResize) {
+      transformations.push(`c_limit,w_${maxWidth},h_${maxHeight}`);
+    }
+
+    // Use explicit to apply eager transformation and create derived version
+    const result = await cloudinary.uploader.explicit(publicId, {
+      type: "upload",
+      eager: [{ transformation: transformations.join(",") }],
+      eager_async: false,
+    });
+
+    if (result.eager && result.eager[0]) {
+      const optimizedVersion = result.eager[0];
+      const newSize = optimizedVersion.bytes || originalSize;
+      const savedBytes = Math.max(0, originalSize - newSize);
+
+      return {
+        success: true,
+        optimizedUrl: optimizedVersion.secure_url,
+        originalSize,
+        newSize,
+        savedBytes,
+        width: optimizedVersion.width,
+        height: optimizedVersion.height,
+      };
+    }
+
+    return { success: false, error: "Optimization did not produce a result" };
+  } catch (error) {
+    console.error("Error optimizing image:", error);
+    return { success: false, error: error.message };
+  }
+}
+
+
+/**
+ * Get models with their image statistics for optimization
+ * Returns models with their profile, portfolio, and digital images
+ * Fast mode (default): Only reads from Firestore, no Cloudinary API calls
+ * Detailed mode: Fetches actual file sizes from Cloudinary (slower, use for specific models)
+ * @param {Object} options - Filter options
+ * @param {string[]} options.modelUids - Optional array of specific model UIDs to check
+ * @param {boolean} options.fetchCloudinaryDetails - Whether to fetch actual sizes from Cloudinary (slower)
+ * @returns {Object} - Models with image statistics
+ */
+exports.getModelsImageStats = onCall({ timeoutSeconds: 300 }, async (request) => {
+  // 1. Verify authentication
+  if (!request.auth) {
+    throw new HttpsError("unauthenticated", "User must be logged in");
+  }
+
+  const callerUid = request.auth.uid;
+  const { modelUids, fetchCloudinaryDetails = false } = request.data || {};
+
+  // 2. Verify caller is an admin
+  const callerDoc = await db.collection("users").doc(callerUid).get();
+  if (!callerDoc.exists) {
+    throw new HttpsError("permission-denied", "Caller user not found");
+  }
+
+  const callerData = callerDoc.data();
+  const ADMIN_ROLES = ["admin", "super admin"];
+
+  if (!ADMIN_ROLES.includes(callerData.role)) {
+    throw new HttpsError("permission-denied", "Only admins can access image stats");
+  }
+
+  console.log(`Admin ${callerData.email} fetching image stats (detailed: ${fetchCloudinaryDetails})`);
+
+  try {
+    // 3. Get models from Firestore
+    let modelsQuery;
+    if (modelUids && modelUids.length > 0) {
+      // Get specific models
+      const modelDocs = await Promise.all(
+        modelUids.map(uid => db.collection("users").doc(uid).get())
+      );
+      modelsQuery = { docs: modelDocs.filter(doc => doc.exists) };
+    } else {
+      // Get all models
+      modelsQuery = await db.collection("users")
+        .where("role", "==", "model")
+        .get();
+    }
+
+    const modelsWithStats = [];
+    let totalProfileCount = 0;
+    let totalPortfolioCount = 0;
+    let totalDigitalCount = 0;
+
+    // 4. Process each model (fast mode - just read from Firestore)
+    for (const doc of modelsQuery.docs) {
+      const modelData = doc.data();
+
+      const portfolioImages = modelData.portfolioImages || modelData.portfolio || [];
+      const digitalImages = modelData.digitalImages || [];
+      const hasProfileAvatar = !!modelData.profileAvatar;
+      const portfolioCount = Array.isArray(portfolioImages) ? portfolioImages.length : 0;
+      const digitalCount = Array.isArray(digitalImages) ? digitalImages.length : 0;
+
+      // Skip models with no images
+      if (!hasProfileAvatar && portfolioCount === 0 && digitalCount === 0) {
+        continue;
+      }
+
+      const modelStats = {
+        uid: doc.id,
+        firstName: modelData.firstName || "",
+        lastName: modelData.lastName || "",
+        email: modelData.email || "",
+        publicSlug: modelData.publicSlug || "",
+        profileAvatar: {
+          url: modelData.profileAvatar || null,
+          hasImage: hasProfileAvatar,
+        },
+        portfolioImages: {
+          count: portfolioCount,
+          urls: portfolioImages,
+        },
+        digitalImages: {
+          count: digitalCount,
+          urls: digitalImages,
+        },
+      };
+
+      if (hasProfileAvatar) totalProfileCount++;
+      totalPortfolioCount += portfolioCount;
+      totalDigitalCount += digitalCount;
+
+      // If detailed mode requested and we have specific models, fetch Cloudinary info
+      if (fetchCloudinaryDetails && modelUids && modelUids.length > 0 && process.env.CLOUDINARY_API_KEY) {
+        // Fetch profile image details
+        if (modelData.profileAvatar) {
+          try {
+            const publicId = extractPublicIdFromUrl(modelData.profileAvatar);
+            if (publicId) {
+              const resourceInfo = await cloudinary.api.resource(publicId);
+              modelStats.profileAvatar.size = resourceInfo.bytes || 0;
+              modelStats.profileAvatar.width = resourceInfo.width;
+              modelStats.profileAvatar.height = resourceInfo.height;
+              modelStats.profileAvatar.format = resourceInfo.format;
+              modelStats.profileAvatar.needsOptimization =
+                resourceInfo.bytes > 500000 ||
+                resourceInfo.width > 1200 ||
+                resourceInfo.height > 1200;
+            }
+          } catch (err) {
+            console.warn(`Could not get profile image info for ${doc.id}:`, err.message);
+          }
+        }
+
+        // Fetch portfolio image details (limit to first 5 for speed)
+        modelStats.portfolioImages.totalSize = 0;
+        modelStats.portfolioImages.needsOptimization = false;
+        const portfolioToCheck = portfolioImages.slice(0, 5);
+        for (const imageUrl of portfolioToCheck) {
+          try {
+            const publicId = extractPublicIdFromUrl(imageUrl);
+            if (publicId) {
+              const resourceInfo = await cloudinary.api.resource(publicId);
+              modelStats.portfolioImages.totalSize += resourceInfo.bytes || 0;
+              if (resourceInfo.bytes > 1000000 || resourceInfo.width > 2400 || resourceInfo.height > 2400) {
+                modelStats.portfolioImages.needsOptimization = true;
+              }
+            }
+          } catch (err) {
+            // Skip
+          }
+        }
+        // Estimate total size based on sample
+        if (portfolioToCheck.length > 0 && portfolioCount > portfolioToCheck.length) {
+          const avgSize = modelStats.portfolioImages.totalSize / portfolioToCheck.length;
+          modelStats.portfolioImages.estimatedTotalSize = Math.round(avgSize * portfolioCount);
+        }
+
+        // Fetch digital image details (limit to first 5 for speed)
+        modelStats.digitalImages.totalSize = 0;
+        modelStats.digitalImages.needsOptimization = false;
+        const digitalsToCheck = digitalImages.slice(0, 5);
+        for (const imageUrl of digitalsToCheck) {
+          try {
+            const publicId = extractPublicIdFromUrl(imageUrl);
+            if (publicId) {
+              const resourceInfo = await cloudinary.api.resource(publicId);
+              modelStats.digitalImages.totalSize += resourceInfo.bytes || 0;
+              if (resourceInfo.bytes > 1000000 || resourceInfo.width > 2400 || resourceInfo.height > 2400) {
+                modelStats.digitalImages.needsOptimization = true;
+              }
+            }
+          } catch (err) {
+            // Skip
+          }
+        }
+        // Estimate total size based on sample
+        if (digitalsToCheck.length > 0 && digitalCount > digitalsToCheck.length) {
+          const avgSize = modelStats.digitalImages.totalSize / digitalsToCheck.length;
+          modelStats.digitalImages.estimatedTotalSize = Math.round(avgSize * digitalCount);
+        }
+      }
+
+      modelsWithStats.push(modelStats);
+    }
+
+    // Sort by total image count descending (most images first)
+    modelsWithStats.sort((a, b) => {
+      const countA = (a.profileAvatar.hasImage ? 1 : 0) + a.portfolioImages.count + a.digitalImages.count;
+      const countB = (b.profileAvatar.hasImage ? 1 : 0) + b.portfolioImages.count + b.digitalImages.count;
+      return countB - countA;
+    });
+
+    return {
+      success: true,
+      models: modelsWithStats,
+      summary: {
+        totalModels: modelsWithStats.length,
+        totalProfileImages: totalProfileCount,
+        totalPortfolioImages: totalPortfolioCount,
+        totalDigitalImages: totalDigitalCount,
+        totalImages: totalProfileCount + totalPortfolioCount + totalDigitalCount,
+      },
+    };
+  } catch (error) {
+    console.error("Error getting image stats:", error);
+    throw new HttpsError("internal", `Failed to get image stats: ${error.message}`);
+  }
+});
+
+
+/**
+ * Optimize images for specified models
+ * Applies Cloudinary transformations to reduce file size while maintaining quality
+ * @param {Object} options - Optimization options
+ * @param {string[]} options.modelUids - Model UIDs to optimize
+ * @param {boolean} options.optimizeProfile - Optimize profile avatars
+ * @param {boolean} options.optimizePortfolio - Optimize portfolio images
+ * @param {boolean} options.optimizeDigitals - Optimize digital images
+ * @param {string} options.quality - Quality setting: "auto", "auto:good", "auto:best", "auto:low"
+ * @param {number} options.maxWidth - Maximum width for images
+ * @param {number} options.maxHeight - Maximum height for images
+ * @returns {Object} - Optimization results
+ */
+exports.optimizeModelImages = onCall({ timeoutSeconds: 540 }, async (request) => {
+  // 1. Verify authentication
+  if (!request.auth) {
+    throw new HttpsError("unauthenticated", "User must be logged in");
+  }
+
+  const callerUid = request.auth.uid;
+  const {
+    modelUids,
+    optimizeProfile = true,
+    optimizePortfolio = true,
+    optimizeDigitals = true,
+    quality = "auto:good",
+    maxProfileWidth = 800,
+    maxProfileHeight = 800,
+    maxPortfolioWidth = 2000,
+    maxPortfolioHeight = 2000,
+    maxDigitalWidth = 1600,
+    maxDigitalHeight = 1600,
+  } = request.data || {};
+
+  if (!modelUids || !Array.isArray(modelUids) || modelUids.length === 0) {
+    throw new HttpsError("invalid-argument", "Model UIDs array is required");
+  }
+
+  // 2. Verify caller is an admin
+  const callerDoc = await db.collection("users").doc(callerUid).get();
+  if (!callerDoc.exists) {
+    throw new HttpsError("permission-denied", "Caller user not found");
+  }
+
+  const callerData = callerDoc.data();
+  const ADMIN_ROLES = ["admin", "super admin"];
+
+  if (!ADMIN_ROLES.includes(callerData.role)) {
+    throw new HttpsError("permission-denied", "Only admins can optimize images");
+  }
+
+  // 3. Verify Cloudinary is configured
+  if (!process.env.CLOUDINARY_API_KEY) {
+    throw new HttpsError("failed-precondition", "Cloudinary is not configured");
+  }
+
+  console.log(`Admin ${callerData.email} optimizing images for ${modelUids.length} models`);
+
+  const results = {
+    modelsProcessed: 0,
+    profileImages: { optimized: 0, failed: 0, savedBytes: 0 },
+    portfolioImages: { optimized: 0, failed: 0, savedBytes: 0 },
+    digitalImages: { optimized: 0, failed: 0, savedBytes: 0 },
+    errors: [],
+    details: [],
+  };
+
+  // 4. Process each model
+  for (const modelUid of modelUids) {
+    try {
+      const modelDoc = await db.collection("users").doc(modelUid).get();
+      if (!modelDoc.exists) {
+        results.errors.push({ modelUid, error: "Model not found" });
+        continue;
+      }
+
+      const modelData = modelDoc.data();
+      const modelDetail = {
+        uid: modelUid,
+        name: `${modelData.firstName || ""} ${modelData.lastName || ""}`.trim(),
+        profile: null,
+        portfolio: [],
+        digitals: [],
+      };
+
+      // Optimize profile avatar
+      if (optimizeProfile && modelData.profileAvatar) {
+        const result = await optimizeImage(
+          modelData.profileAvatar,
+          quality,
+          maxProfileWidth,
+          maxProfileHeight
+        );
+        if (result.success) {
+          // Update Firestore with optimized URL
+          await modelDoc.ref.update({ profileAvatar: result.optimizedUrl });
+          results.profileImages.optimized++;
+          results.profileImages.savedBytes += result.savedBytes;
+          modelDetail.profile = {
+            originalSize: result.originalSize,
+            newSize: result.newSize,
+            savedBytes: result.savedBytes,
+          };
+        } else {
+          results.profileImages.failed++;
+          results.errors.push({ modelUid, type: "profile", error: result.error });
+        }
+      }
+
+      // Optimize portfolio images
+      if (optimizePortfolio) {
+        const portfolioImages = modelData.portfolioImages || modelData.portfolio || [];
+        if (Array.isArray(portfolioImages) && portfolioImages.length > 0) {
+          const optimizedUrls = [];
+          for (const imageUrl of portfolioImages) {
+            const result = await optimizeImage(
+              imageUrl,
+              quality,
+              maxPortfolioWidth,
+              maxPortfolioHeight
+            );
+            if (result.success) {
+              optimizedUrls.push(result.optimizedUrl);
+              results.portfolioImages.optimized++;
+              results.portfolioImages.savedBytes += result.savedBytes;
+              modelDetail.portfolio.push({
+                originalSize: result.originalSize,
+                newSize: result.newSize,
+                savedBytes: result.savedBytes,
+              });
+            } else {
+              optimizedUrls.push(imageUrl); // Keep original if optimization fails
+              results.portfolioImages.failed++;
+            }
+          }
+          // Update Firestore with optimized URLs
+          const updateField = modelData.portfolioImages ? "portfolioImages" : "portfolio";
+          await modelDoc.ref.update({ [updateField]: optimizedUrls });
+        }
+      }
+
+      // Optimize digital images
+      if (optimizeDigitals && modelData.digitalImages) {
+        const digitalImages = modelData.digitalImages || [];
+        if (Array.isArray(digitalImages) && digitalImages.length > 0) {
+          const optimizedUrls = [];
+          for (const imageUrl of digitalImages) {
+            const result = await optimizeImage(
+              imageUrl,
+              quality,
+              maxDigitalWidth,
+              maxDigitalHeight
+            );
+            if (result.success) {
+              optimizedUrls.push(result.optimizedUrl);
+              results.digitalImages.optimized++;
+              results.digitalImages.savedBytes += result.savedBytes;
+              modelDetail.digitals.push({
+                originalSize: result.originalSize,
+                newSize: result.newSize,
+                savedBytes: result.savedBytes,
+              });
+            } else {
+              optimizedUrls.push(imageUrl); // Keep original if optimization fails
+              results.digitalImages.failed++;
+            }
+          }
+          // Update Firestore with optimized URLs
+          await modelDoc.ref.update({ digitalImages: optimizedUrls });
+        }
+      }
+
+      results.modelsProcessed++;
+      results.details.push(modelDetail);
+    } catch (error) {
+      console.error(`Error optimizing images for model ${modelUid}:`, error);
+      results.errors.push({ modelUid, error: error.message });
+    }
+  }
+
+  // 5. Log admin action
+  try {
+    await db.collection("adminLogs").add({
+      adminUid: callerUid,
+      adminEmail: callerData.email,
+      adminName: `${callerData.firstName || ""} ${callerData.lastName || ""}`.trim(),
+      action: "OPTIMIZE_IMAGES",
+      description: `Optimized images for ${results.modelsProcessed} models`,
+      details: {
+        modelsRequested: modelUids.length,
+        modelsProcessed: results.modelsProcessed,
+        profileImages: results.profileImages,
+        portfolioImages: results.portfolioImages,
+        digitalImages: results.digitalImages,
+        totalSavedBytes: results.profileImages.savedBytes + results.portfolioImages.savedBytes + results.digitalImages.savedBytes,
+        quality,
+      },
+      createdAt: admin.firestore.FieldValue.serverTimestamp(),
+      timestamp: new Date().toISOString(),
+    });
+  } catch (logError) {
+    console.error("Failed to log admin action:", logError);
+  }
+
+  results.totalSavedBytes = results.profileImages.savedBytes + results.portfolioImages.savedBytes + results.digitalImages.savedBytes;
+
+  console.log(`Image optimization complete: ${results.modelsProcessed} models, ${results.totalSavedBytes} bytes saved`);
+
+  return {
+    success: true,
+    ...results,
+  };
 });

@@ -36,18 +36,29 @@ import Calendar from "layouts/applications/calendar";
 import SignInIllustration from "layouts/authentication/sign-in/illustration";
 import SignUpIllustration from "layouts/authentication/sign-up/illustration";
 import ResetCover from "layouts/authentication/reset-password/cover";
+import TermsAndConditions from "layouts/pages/terms";
 import NewJob from "layouts/jobs/new-job";
 import MyJobs from "layouts/jobs/my-jobs";
 import JobSearch from "layouts/jobs/search";
 import ImportModels from "layouts/models/import";
 import ImportModelImages from "layouts/models/import-images";
+import ImportPortfolioImages from "layouts/models/import-portfolio-images";
 import AddUser from "layouts/admin/add-user";
 import DeleteAllModels from "layouts/admin/delete-data/DeleteAllModels";
 import DeleteAllClients from "layouts/admin/delete-data/DeleteAllClients";
 import DeleteAllJobs from "layouts/admin/delete-data/DeleteAllJobs";
+import DeleteOrphanedAuthAccounts from "layouts/admin/delete-data/DeleteOrphanedAuthAccounts";
+import CleanupCloudinary from "layouts/admin/delete-data/CleanupCloudinary";
+import OptimizeImages from "layouts/admin/optimize-images";
+import ModelData from "layouts/admin/model-data";
+import AdminLogs from "layouts/admin/logs";
 import AllModels from "layouts/models/all";
 import BrowseModels from "layouts/models/browse";
 import ModelSettingsProxy from "layouts/pages/account/settings/ModelSettingsProxy";
+import AllUsers from "layouts/admin/users/all";
+import AllClients from "layouts/admin/users/clients";
+import AllAdmins from "layouts/admin/users/admins";
+import AllAccountManagers from "layouts/admin/users/account-managers";
 
 // Favourites layouts
 import FavouritesOverview from "layouts/favourites/overview";
@@ -189,40 +200,9 @@ const routes = [
     key: "models",
     icon: <Icon fontSize="small">face</Icon>,
     roles: [...CLIENT_ROLES, ...ADMIN_ROLES], // Clients and admins can browse models
-    collapse: [
-      {
-        name: "Browse Models",
-        key: "browse-models",
-        route: "/models/browse",
-        component: <BrowseModels />,
-        roles: CLIENT_ROLES, // Clients use the card/list view
-        icon: <Icon fontSize="small">people</Icon>,
-      },
-      {
-        name: "All Models",
-        key: "all-models-admin",
-        route: "/models/all",
-        component: <AllModels />,
-        roles: ADMIN_ROLES, // Admins use the table view
-        icon: <Icon fontSize="small">table_view</Icon>,
-      },
-      {
-        name: "Import Models",
-        key: "import-models",
-        route: "/models/import",
-        component: <ImportModels />,
-        roles: ADMIN_ROLES, // Only admins can import
-        icon: <Icon fontSize="small">cloud_upload</Icon>,
-      },
-      {
-        name: "Import Images",
-        key: "import-model-images",
-        route: "/models/import-images",
-        component: <ImportModelImages />,
-        roles: ["super admin"], // Only super admins can import images
-        icon: <Icon fontSize="small">add_photo_alternate</Icon>,
-      },
-    ],
+    noCollapse: true,
+    route: "/models/browse",
+    component: <BrowseModels />,
   },
 
   // ============================================================
@@ -317,6 +297,13 @@ const routes = [
     roles: ADMIN_ROLES,
     collapse: [
       {
+        name: "All Users",
+        key: "admin-all-users",
+        route: "/admin/users/all",
+        component: <AllUsers />,
+        icon: <Icon fontSize="small">group</Icon>,
+      },
+      {
         name: "Models",
         key: "admin-models",
         route: "/admin/users/models",
@@ -327,14 +314,21 @@ const routes = [
         name: "Clients",
         key: "admin-clients",
         route: "/admin/users/clients",
-        component: <DataTables />, // Placeholder
+        component: <AllClients />,
         icon: <Icon fontSize="small">business</Icon>,
+      },
+      {
+        name: "Account Managers",
+        key: "admin-account-managers",
+        route: "/admin/users/account-managers",
+        component: <AllAccountManagers />,
+        icon: <Icon fontSize="small">manage_accounts</Icon>,
       },
       {
         name: "Admins",
         key: "admin-admins",
         route: "/admin/users/admins",
-        component: <DataTables />, // Placeholder
+        component: <AllAdmins />,
         roles: ["super admin"], // Only super admin can manage admins
         icon: <Icon fontSize="small">admin_panel_settings</Icon>,
       },
@@ -485,30 +479,70 @@ const routes = [
     roles: ADMIN_ROLES,
     collapse: [
       {
-        name: "Impersonate User",
-        key: "impersonate",
-        route: "/admin/impersonate",
-        component: <DataTables />, // Placeholder
-        icon: <Icon fontSize="small">switch_account</Icon>,
+        name: "Model Data",
+        key: "model-data",
+        route: "/admin/model-data",
+        component: <ModelData />,
+        icon: <Icon fontSize="small">assessment</Icon>,
+      },
+      {
+        name: "Optimize Images",
+        key: "optimize-images",
+        route: "/admin/optimize-images",
+        component: <OptimizeImages />,
+        icon: <Icon fontSize="small">photo_size_select_large</Icon>,
+      },
+      {
+        name: "Admin Logs",
+        key: "admin-logs",
+        route: "/admin/logs",
+        component: <AdminLogs />,
+        roles: ["super admin"],
+        icon: <Icon fontSize="small">history</Icon>,
       },
     ],
   },
 
   // ============================================================
-  // DATA MANAGEMENT SECTION (Super Admin Only)
+  // DATA MANAGEMENT SECTION (Admins)
   // ============================================================
   {
     type: "collapse",
     name: "Data Management",
     key: "data-management",
-    icon: <Icon fontSize="small">delete_sweep</Icon>,
-    roles: ["super admin"],
+    icon: <Icon fontSize="small">storage</Icon>,
+    roles: ADMIN_ROLES,
     collapse: [
+      {
+        name: "Import Models",
+        key: "import-models",
+        route: "/models/import",
+        component: <ImportModels />,
+        roles: ADMIN_ROLES,
+        icon: <Icon fontSize="small">cloud_upload</Icon>,
+      },
+      {
+        name: "Import Headshots",
+        key: "import-model-images",
+        route: "/models/import-images",
+        component: <ImportModelImages />,
+        roles: ["super admin"],
+        icon: <Icon fontSize="small">add_photo_alternate</Icon>,
+      },
+      {
+        name: "Import Portfolio Images",
+        key: "import-portfolio-images",
+        route: "/models/import-portfolio-images",
+        component: <ImportPortfolioImages />,
+        roles: ["super admin"],
+        icon: <Icon fontSize="small">collections</Icon>,
+      },
       {
         name: "Delete All Models",
         key: "delete-all-models",
         route: "/admin/delete/models",
         component: <DeleteAllModels />,
+        roles: ["super admin"],
         icon: <Icon fontSize="small">person_remove</Icon>,
       },
       {
@@ -516,6 +550,7 @@ const routes = [
         key: "delete-all-jobs",
         route: "/admin/delete/jobs",
         component: <DeleteAllJobs />,
+        roles: ["super admin"],
         icon: <Icon fontSize="small">work_off</Icon>,
       },
       {
@@ -523,7 +558,24 @@ const routes = [
         key: "delete-all-clients",
         route: "/admin/delete/clients",
         component: <DeleteAllClients />,
+        roles: ["super admin"],
         icon: <Icon fontSize="small">business_center</Icon>,
+      },
+      {
+        name: "Delete Authentication Accounts",
+        key: "delete-orphaned-auth",
+        route: "/admin/delete/auth-accounts",
+        component: <DeleteOrphanedAuthAccounts />,
+        roles: ["super admin"],
+        icon: <Icon fontSize="small">manage_accounts</Icon>,
+      },
+      {
+        name: "Cleanup Cloudinary",
+        key: "cleanup-cloudinary",
+        route: "/admin/delete/cloudinary",
+        component: <CleanupCloudinary />,
+        roles: ["super admin"],
+        icon: <Icon fontSize="small">cloud_off</Icon>,
       },
     ],
   },
@@ -644,6 +696,12 @@ const routes = [
         key: "reset-password",
         route: "/authentication/reset-password/cover",
         component: <ResetCover />,
+      },
+      {
+        name: "Terms and Conditions",
+        key: "terms",
+        route: "/terms",
+        component: <TermsAndConditions />,
       },
     ],
   },

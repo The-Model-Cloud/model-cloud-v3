@@ -1,7 +1,8 @@
 import { Link } from "react-router-dom";
-import { useState } from "react";
-import { auth, db } from "config/firebase";
+import { useState, useMemo } from "react";
+import { db } from "config/firebase";
 import { collection, addDoc, updateDoc, doc, arrayUnion } from "firebase/firestore";
+import { useAuth } from "context/AuthContext";
 import { Formik, Form } from "formik";
 import * as Yup from "yup";
 
@@ -39,12 +40,12 @@ const generateJobReference = () => {
   return `TMC-${formattedDate}-${hours}${minutes}${random}`;
 };
 
-function getStepContent(stepIndex, formikProps, jobRef) {
+function getStepContent(stepIndex, formikProps, jobRef, user) {
   switch (stepIndex) {
     case 0:
       return <JobInfo formik={formikProps} />;
     case 1:
-      return <Media formik={formikProps} />;
+      return <Media formik={formikProps} jobRef={jobRef} user={user} />;
     case 2:
       return <Requirements formik={formikProps} />;
     case 3:
@@ -76,9 +77,12 @@ function getStepContent(stepIndex, formikProps, jobRef) {
 }
 
 function NewJob() {
+  const { user } = useAuth();
   const [activeStep, setActiveStep] = useState(0);
-  const [jobRef, setJobRef] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  // Generate job reference once when component mounts (used for media folder path)
+  const jobRef = useMemo(() => generateJobReference(), []);
 
   const steps = getSteps();
   const isConfirmationStep = activeStep === steps.length - 1;
@@ -127,7 +131,6 @@ function NewJob() {
   });
 
   const handleSubmit = async (values, actions) => {
-    const user = auth.currentUser;
     console.log("👤 Current user:", user);
     console.log("📝 Form values on submit:", values);
 
@@ -140,15 +143,13 @@ function NewJob() {
     actions.setSubmitting(true);
 
     try {
-      const generatedRef = generateJobReference();
-      setJobRef(generatedRef);
-      console.log("🔧 Generated Job Ref:", generatedRef);
+      console.log("🔧 Using Job Ref:", jobRef);
 
       const jobData = {
         ...values,
         createdAt: new Date().toISOString(),
         userId: user.uid,
-        reference: generatedRef,
+        reference: jobRef,
         media: values.media || [],
       };
 
@@ -159,7 +160,7 @@ function NewJob() {
 
       const userRef = doc(db, "users", user.uid);
       await updateDoc(userRef, {
-        jobs: arrayUnion(generatedRef),
+        jobs: arrayUnion(jobRef),
       });
       console.log("🧾 Added job ref to user doc");
 
@@ -210,7 +211,7 @@ function NewJob() {
                     </MDBox>
 
                     <MDBox p={2}>
-                      {getStepContent(activeStep, formikProps, jobRef)}
+                      {getStepContent(activeStep, formikProps, jobRef, user)}
                     </MDBox>
 
                     {!isConfirmationStep && (

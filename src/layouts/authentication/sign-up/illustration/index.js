@@ -51,10 +51,17 @@ function SignUpIllustration() {
         const file = e.target.files[0];
         if (!file) return;
 
+        // Build folder path: /users/{models|clients}/{username}/profile
+        const userType = role === "model" ? "models" : "clients";
+        const sanitizedName = `${firstName || "user"}_${lastName || "new"}`.toLowerCase().replace(/[^a-z0-9_]/g, "_");
+        const folderPath = `users/${userType}/${sanitizedName}/profile`;
+
         const formData = new FormData();
         formData.append("file", file);
         formData.append("upload_preset", process.env.REACT_APP_CLOUDINARY_UPLOAD_PRESET);
         formData.append("cloud_name", process.env.REACT_APP_CLOUDINARY_CLOUD_NAME);
+        formData.append("folder", folderPath);
+        formData.append("public_id", `profile_${Date.now()}`);
 
         const res = await fetch(`https://api.cloudinary.com/v1_1/${process.env.REACT_APP_CLOUDINARY_CLOUD_NAME}/upload`, {
             method: "POST",
@@ -254,8 +261,8 @@ function SignUpIllustration() {
                         &nbsp;&nbsp;I agree to the&nbsp;
                     </MDTypography>
                     <MDTypography
-                        component="a"
-                        href="#"
+                        component={Link}
+                        to="/terms"
                         variant="button"
                         fontWeight="bold"
                         color="info"

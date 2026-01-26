@@ -36,12 +36,19 @@ export const FavouritesProvider = ({ children }) => {
 
     // Listen to user document for quick favourites
     const userRef = doc(db, "users", user.uid);
-    const unsubscribeUser = onSnapshot(userRef, (docSnap) => {
-      if (docSnap.exists()) {
-        const data = docSnap.data();
-        setFavouriteModelIds(data.favouriteModelIds || []);
+    const unsubscribeUser = onSnapshot(
+      userRef,
+      (docSnap) => {
+        if (docSnap.exists()) {
+          const data = docSnap.data();
+          setFavouriteModelIds(data.favouriteModelIds || []);
+        }
+      },
+      (error) => {
+        console.error("Error listening to user favourites:", error);
+        setFavouriteModelIds([]);
       }
-    });
+    );
 
     // Listen to favourite lists
     const listsQuery = query(
@@ -50,14 +57,28 @@ export const FavouritesProvider = ({ children }) => {
       orderBy("createdAt", "desc")
     );
 
-    const unsubscribeLists = onSnapshot(listsQuery, (snapshot) => {
-      const lists = snapshot.docs.map((doc) => ({
-        id: doc.id,
-        ...doc.data(),
-      }));
-      setFavouriteLists(lists);
-      setLoading(false);
-    });
+    const unsubscribeLists = onSnapshot(
+      listsQuery,
+      (snapshot) => {
+        const lists = snapshot.docs.map((doc) => ({
+          id: doc.id,
+          ...doc.data(),
+        }));
+        setFavouriteLists(lists);
+        setLoading(false);
+      },
+      (error) => {
+        console.error("Error listening to favourite lists:", error);
+        // If there's an index error, the message will include a link to create it
+        if (error.message?.includes("index")) {
+          console.error(
+            "Firestore composite index required. Check the console for a link to create it."
+          );
+        }
+        setFavouriteLists([]);
+        setLoading(false);
+      }
+    );
 
     return () => {
       unsubscribeUser();
