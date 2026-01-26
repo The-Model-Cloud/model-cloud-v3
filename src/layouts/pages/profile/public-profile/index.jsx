@@ -260,6 +260,31 @@ function PublicProfile() {
                   </MDTypography>
                 </Grid>
               )}
+
+              {/* Instagram Follower Count - Admin Only */}
+              {isAdmin && profile.instagram && profile.instagramFollowerCount && (
+                <Grid item xs={12} mt={2}>
+                  <MDBox
+                    display="flex"
+                    alignItems="center"
+                    gap={1}
+                    p={1.5}
+                    borderRadius="lg"
+                    sx={{ backgroundColor: "grey.100" }}
+                  >
+                    <Icon sx={{ color: "#E1306C" }}>photo_camera</Icon>
+                    <MDTypography variant="body2">
+                      <strong>Instagram:</strong>{" "}
+                      {profile.instagramFollowerCount >= 1000000
+                        ? `${(profile.instagramFollowerCount / 1000000).toFixed(1)}M`
+                        : profile.instagramFollowerCount >= 1000
+                        ? `${(profile.instagramFollowerCount / 1000).toFixed(1)}K`
+                        : profile.instagramFollowerCount.toLocaleString()}{" "}
+                      followers
+                    </MDTypography>
+                  </MDBox>
+                </Grid>
+              )}
             </Grid>
           </Grid>
         </MDBox>

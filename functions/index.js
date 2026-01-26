@@ -4,7 +4,16 @@ const functions = require("firebase-functions");
 const { onDocumentCreated } = require("firebase-functions/v2/firestore");
 const { onCall, HttpsError } = require("firebase-functions/v2/https");
 const admin = require("firebase-admin");
-const { getFollowerCount, getIgSessionIg } = require("follower-count");
+let getFollowerCount, getIgSessionIg;
+
+// Dynamic import for ES module compatibility
+const loadFollowerCount = async () => {
+  if (!getFollowerCount) {
+    const module = await import("follower-count");
+    getFollowerCount = module.getFollowerCount;
+    getIgSessionIg = module.getIgSessionIg;
+  }
+};
 const sgMail = require("@sendgrid/mail");
 const cloudinary = require("cloudinary").v2;
 
@@ -43,6 +52,9 @@ exports.updateInstagramFollowerCount = onCall(async (request) => {
   }
 
   try {
+    // Load the ES module
+    await loadFollowerCount();
+
     // Get session ID using Instagram credentials from environment variables
     const sessionId = await getIgSessionIg(
       process.env.INSTAGRAM_USERNAME,

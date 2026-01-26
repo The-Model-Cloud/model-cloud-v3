@@ -1,18 +1,22 @@
 import { useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
-import { auth, db } from "config/firebase";
+import { auth, db, functions } from "config/firebase";
 import { doc, getDoc, updateDoc } from "firebase/firestore";
+import { httpsCallable } from "firebase/functions";
 
 import Grid from "@mui/material/Grid";
 import Card from "@mui/material/Card";
+import CircularProgress from "@mui/material/CircularProgress";
 
 import MDBox from "components/MDBox";
 import MDTypography from "components/MDTypography";
 import MDInput from "components/MDInput";
+import MDButton from "components/MDButton";
 
 import InstagramIcon from "@mui/icons-material/Instagram";
 import YouTubeIcon from "@mui/icons-material/YouTube";
 import MusicVideoIcon from "@mui/icons-material/MusicVideo"; // TikTok
+import RefreshIcon from "@mui/icons-material/Refresh";
 import { logAdminAction, ADMIN_ACTIONS } from "utils/adminLogs";
 
 function SocialMedia() {
@@ -26,6 +30,10 @@ function SocialMedia() {
     tiktok: "",
     youtube: "",
   });
+  const [instagramFollowerCount, setInstagramFollowerCount] = useState(null);
+  const [instagramLastChecked, setInstagramLastChecked] = useState(null);
+  const [fetchingFollowers, setFetchingFollowers] = useState(false);
+  const [followerError, setFollowerError] = useState(null);
   const [adminData, setAdminData] = useState(null);
   const [modelData, setModelData] = useState(null);
 
@@ -41,7 +49,22 @@ function SocialMedia() {
             tiktok: data.tiktok || "",
             youtube: data.youtube || "",
           });
+          setInstagramFollowerCount(data.instagramFollowerCount || null);
+          const lastChecked = data.instagramLastChecked?.toDate() || null;
+          setInstagramLastChecked(lastChecked);
           setModelData({ uid: targetUid, ...data });
+
+          // Auto-fetch Instagram followers if admin editing and has Instagram handle
+          if (isAdminEdit && data.instagram) {
+            const hoursSinceLastCheck = lastChecked
+              ? (Date.now() - lastChecked.getTime()) / (1000 * 60 * 60)
+              : Infinity;
+
+            // Fetch if never checked or last check was more than 24 hours ago
+            if (hoursSinceLastCheck > 24) {
+              fetchInstagramFollowersAuto(targetUid, data.instagram);
+            }
+          }
         }
 
         // Fetch admin data if admin is editing
@@ -56,6 +79,27 @@ function SocialMedia() {
     };
     fetchSocial();
   }, [targetUid, isAdminEdit, currentUser]);
+
+  // Auto-fetch function (doesn't log admin action since it's automatic)
+  const fetchInstagramFollowersAuto = async (uid, instagramUsername) => {
+    setFetchingFollowers(true);
+    setFollowerError(null);
+
+    try {
+      const updateFollowerCount = httpsCallable(functions, "updateInstagramFollowerCount");
+      const result = await updateFollowerCount({ uid, instagramUsername });
+
+      if (result.data.success) {
+        setInstagramFollowerCount(result.data.count);
+        setInstagramLastChecked(new Date());
+      }
+    } catch (error) {
+      console.error("Error fetching follower count:", error);
+      setFollowerError(error.message || "Failed to fetch follower count");
+    } finally {
+      setFetchingFollowers(false);
+    }
+  };
 
   // Helper function to log admin edits
   const logAdminEdit = async (field, oldValue, newValue) => {
@@ -136,6 +180,13 @@ function SocialMedia() {
       </MDTypography>
     );
 
+  const formatFollowers = (count) => {
+    if (!count && count !== 0) return "";
+    if (count >= 1000000) return `${(count / 1000000).toFixed(1)}M`;
+    if (count >= 1000) return `${(count / 1000).toFixed(1)}K`;
+    return count.toLocaleString();
+  };
+
   return (
     <Card>
       <MDBox p={3}>
@@ -157,6 +208,60 @@ function SocialMedia() {
             </Grid>
           ))}
         </Grid>
+
+        {/* Instagram Follower Count - Admin Only */}
+        {isAdminEdit && links.instagram && (
+          <MDBox mt={4}>
+            <MDTypography variant="h6" mb={2}>
+              Instagram Statistics
+            </MDTypography>
+            <MDBox display="flex" alignItems="center" gap={2} flexWrap="wrap">
+              <InstagramIcon sx={{ color: "#E1306C", fontSize: 28 }} />
+
+              {fetchingFollowers ? (
+                <MDBox display="flex" alignItems="center" gap={1}>
+                  <CircularProgress size={16} />
+                  <MDTypography variant="body2" color="text">
+                    Fetching follower count...
+                  </MDTypography>
+                </MDBox>
+              ) : instagramFollowerCount !== null ? (
+                <MDTypography variant="body2" fontWeight="medium">
+                  {formatFollowers(instagramFollowerCount)} followers
+                </MDTypography>
+              ) : (
+                <MDTypography variant="body2" color="text">
+                  No follower data
+                </MDTypography>
+              )}
+
+              {instagramLastChecked && !fetchingFollowers && (
+                <MDTypography variant="caption" color="text">
+                  (Updated: {instagramLastChecked.toLocaleDateString()})
+                </MDTypography>
+              )}
+
+              {!fetchingFollowers && (
+                <MDButton
+                  variant="text"
+                  color="info"
+                  size="small"
+                  onClick={() => fetchInstagramFollowersAuto(targetUid, links.instagram)}
+                  startIcon={<RefreshIcon />}
+                  sx={{ minWidth: "auto", p: 0.5 }}
+                >
+                  Refresh
+                </MDButton>
+              )}
+            </MDBox>
+
+            {followerError && (
+              <MDTypography variant="caption" color="error" mt={1}>
+                {followerError}
+              </MDTypography>
+            )}
+          </MDBox>
+        )}
       </MDBox>
     </Card>
   );
