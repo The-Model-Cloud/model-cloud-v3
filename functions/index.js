@@ -4,14 +4,63 @@ const functions = require("firebase-functions");
 const { onDocumentCreated } = require("firebase-functions/v2/firestore");
 const { onCall, HttpsError } = require("firebase-functions/v2/https");
 const admin = require("firebase-admin");
-let getFollowerCount, getIgSessionIg;
+const axios = require("axios");
 
-// Dynamic import for ES module compatibility
-const loadFollowerCount = async () => {
-  if (!getFollowerCount) {
-    const module = await import("follower-count");
-    getFollowerCount = module.getFollowerCount;
-    getIgSessionIg = module.getIgSessionIg;
+// Simple Instagram follower count fetcher using public web data
+const getInstagramFollowerCount = async (username) => {
+  try {
+    // Try the public Instagram API endpoint
+    const response = await axios.get(
+      `https://www.instagram.com/api/v1/users/web_profile_info/?username=${username}`,
+      {
+        headers: {
+          "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+          "X-IG-App-ID": "936619743392459",
+        },
+      }
+    );
+
+    const followerCount = response.data?.data?.user?.edge_followed_by?.count;
+    if (typeof followerCount === "number") {
+      return followerCount;
+    }
+    throw new Error("Could not parse follower count from response");
+  } catch (error) {
+    // Fallback: try scraping the HTML page
+    try {
+      const htmlResponse = await axios.get(`https://www.instagram.com/${username}/`, {
+        headers: {
+          "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        },
+      });
+
+      // Try to extract from meta tags or JSON in the page
+      const html = htmlResponse.data;
+
+      // Look for follower count in meta description or JSON data
+      const followerMatch = html.match(/"edge_followed_by":\s*{\s*"count":\s*(\d+)/);
+      if (followerMatch) {
+        return parseInt(followerMatch[1], 10);
+      }
+
+      // Alternative pattern
+      const altMatch = html.match(/(\d+(?:,\d+)*(?:\.\d+)?[KMB]?)\s*[Ff]ollowers/);
+      if (altMatch) {
+        let count = altMatch[1].replace(/,/g, "");
+        if (count.endsWith("K")) {
+          return Math.round(parseFloat(count) * 1000);
+        } else if (count.endsWith("M")) {
+          return Math.round(parseFloat(count) * 1000000);
+        } else if (count.endsWith("B")) {
+          return Math.round(parseFloat(count) * 1000000000);
+        }
+        return parseInt(count, 10);
+      }
+
+      throw new Error("Could not find follower count in page");
+    } catch (fallbackError) {
+      throw new Error(`Instagram API unavailable: ${error.message}`);
+    }
   }
 };
 const sgMail = require("@sendgrid/mail");
@@ -52,21 +101,8 @@ exports.updateInstagramFollowerCount = onCall(async (request) => {
   }
 
   try {
-    // Load the ES module
-    await loadFollowerCount();
-
-    // Get session ID using Instagram credentials from environment variables
-    const sessionId = await getIgSessionIg(
-      process.env.INSTAGRAM_USERNAME,
-      process.env.INSTAGRAM_PASSWORD
-    );
-
-    // Fetch the Instagram follower count
-    const count = await getFollowerCount({
-      type: "instagram",
-      username: instagramUsername,
-      sessionId: sessionId,
-    });
+    // Fetch the Instagram follower count using the public web scraper
+    const count = await getInstagramFollowerCount(instagramUsername);
 
     if (typeof count !== "number") {
       throw new Error("Follower count not found.");
@@ -144,6 +180,55 @@ exports.sendModelApplicationConfirmation = onCall(async (request) => {
       <p>Your application for <strong>${jobTitle}</strong> has been submitted.</p>
       <p>Reference: ${jobReference}</p>
       <p><a href="https://themodel.cloud/jobs/${jobReference}">View job</a></p>
+    `
+  };
+
+  await sgMail.send(msg);
+
+  return { success: true };
+});
+
+
+// HTTP endpoint for sending job invitation email to model
+exports.sendJobInvitationEmail = onCall(async (request) => {
+  if (!request.auth) {
+    throw new HttpsError("unauthenticated", "User must be logged in");
+  }
+
+  if (!sendgridApiKey) {
+    console.warn("SendGrid not configured");
+    return { success: false, skipped: true };
+  }
+
+  const { to, modelName, clientName, companyName, jobTitle, jobReference } = request.data;
+
+  if (!to || !modelName || !jobTitle || !jobReference) {
+    throw new HttpsError("invalid-argument", "Missing required fields");
+  }
+
+  const senderName = companyName || clientName || "A client";
+
+  const msg = {
+    to,
+    from: sendgridFromEmail,
+    subject: `You've Been Invited to Apply – ${jobTitle}`,
+    text: `Hi ${modelName},\n\n${senderName} has invited you to apply for the job "${jobTitle}".\n\nView the job and apply here: https://themodel.cloud/jobs/${jobReference}\n\nGood luck!\n\nThe Model Cloud Team`,
+    html: `
+      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+        <h2 style="color: #1976d2;">You've Been Invited!</h2>
+        <p>Hi ${modelName},</p>
+        <p><strong>${senderName}</strong> has invited you to apply for the following job:</p>
+        <div style="background-color: #f5f5f5; padding: 20px; border-radius: 8px; margin: 20px 0;">
+          <h3 style="margin: 0 0 10px 0; color: #333;">${jobTitle}</h3>
+          <p style="margin: 0; color: #666;">Reference: ${jobReference}</p>
+        </div>
+        <p>This invitation means the client thinks you'd be a great fit for this job. Don't miss this opportunity!</p>
+        <p style="margin: 30px 0;">
+          <a href="https://themodel.cloud/jobs/${jobReference}" style="background-color: #1976d2; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; font-weight: bold;">View Job & Apply</a>
+        </p>
+        <p style="color: #666; font-size: 14px;">Good luck!</p>
+        <p style="color: #666; font-size: 14px;">The Model Cloud Team</p>
+      </div>
     `
   };
 
@@ -565,6 +650,69 @@ exports.sendShareListEmail = onCall(async (request) => {
     return { success: true };
   } catch (error) {
     console.error("Failed to send share list email:", error.message);
+    throw new HttpsError("internal", "Failed to send email");
+  }
+});
+
+
+/**
+ * Send a Z-Card share email
+ * Called when user shares a Z-Card via the ShareZCardModal
+ * Uses v2 callable functions API for proper auth handling
+ */
+exports.sendZCardEmail = onCall(async (request) => {
+  if (!request.auth) {
+    throw new HttpsError("unauthenticated", "User must be logged in");
+  }
+
+  if (!sendgridApiKey) {
+    console.warn("SendGrid not configured");
+    return { success: false, skipped: true };
+  }
+
+  const { to, modelName, shareUrl, senderName, senderContact } = request.data;
+
+  if (!to || !modelName || !shareUrl) {
+    throw new HttpsError("invalid-argument", "Missing required fields: to, modelName, shareUrl");
+  }
+
+  const msg = {
+    to,
+    from: sendgridFromEmail,
+    subject: `${senderName || "Someone"} shared a Z-Card for ${modelName}`,
+    html: `
+      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+        <h2 style="color: #333;">Z-Card for ${modelName}</h2>
+        <p style="color: #666;">A professional comp card has been shared with you.</p>
+
+        <div style="margin: 24px 0;">
+          <a href="${shareUrl}"
+             style="background-color: #E91E63; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; display: inline-block; font-weight: bold;">
+            View Z-Card
+          </a>
+        </div>
+
+        ${senderContact ? `
+        <p style="color: #666;">
+          <strong>Contact:</strong> ${senderContact}
+        </p>
+        ` : ""}
+
+        <p style="color: #999; font-size: 12px; margin-top: 32px; border-top: 1px solid #eee; padding-top: 16px;">
+          This Z-Card was shared via The Model Cloud.
+          <br>
+          <a href="https://themodel.cloud" style="color: #E91E63;">Visit The Model Cloud</a>
+        </p>
+      </div>
+    `
+  };
+
+  try {
+    await sgMail.send(msg);
+    console.log(`Z-Card email sent to ${to} for model: ${modelName}`);
+    return { success: true };
+  } catch (error) {
+    console.error("Failed to send Z-Card email:", error.message);
     throw new HttpsError("internal", "Failed to send email");
   }
 });

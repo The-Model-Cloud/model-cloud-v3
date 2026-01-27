@@ -31,3 +31,7 @@ model-cloud-v3.code-workspace
 src/config/firebase.js
 .gitignore
 src/config/firebase.min.js
+firebase.json
+.claude/settings.local.json
+firestore.rules
+firestore.indexes.json

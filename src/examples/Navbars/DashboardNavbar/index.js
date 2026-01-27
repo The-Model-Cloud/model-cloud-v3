@@ -59,9 +59,13 @@ import {
   setOpenConfigurator,
 } from "context";
 
+// Notifications context
+import { useNotifications } from "context/NotificationsContext";
+
 function DashboardNavbar({ absolute, light, isMini }) {
   const [navbarType, setNavbarType] = useState();
   const [controller, dispatch] = useMaterialUIController();
+  const { unreadCount: notificationCount } = useNotifications();
   const navigate = useNavigate();
   const {
     miniSidenav,
@@ -231,7 +235,7 @@ function DashboardNavbar({ absolute, light, isMini }) {
                 variant="contained"
                 onClick={handleOpenMenu}
               >
-                <MDBadge badgeContent={9} color="error" size="xs" circular>
+                <MDBadge badgeContent={notificationCount} color="error" size="xs" circular invisible={notificationCount === 0}>
                   <Icon sx={iconsStyle}>notifications</Icon>
                 </MDBadge>
               </IconButton>

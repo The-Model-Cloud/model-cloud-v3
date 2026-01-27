@@ -4,10 +4,12 @@ import { doc, getDoc } from "firebase/firestore";
 import { Link } from "react-router-dom";
 
 import Card from "@mui/material/Card";
+import Grid from "@mui/material/Grid";
 import LinearProgress from "@mui/material/LinearProgress";
 import Icon from "@mui/material/Icon";
 import IconButton from "@mui/material/IconButton";
 import Collapse from "@mui/material/Collapse";
+import Tooltip from "@mui/material/Tooltip";
 import CheckCircleIcon from "@mui/icons-material/CheckCircle";
 import WarningIcon from "@mui/icons-material/Warning";
 import CancelIcon from "@mui/icons-material/Cancel";
@@ -237,7 +239,7 @@ function ProfileCompletion() {
     return (
         <Card>
             <MDBox
-                p={3}
+                p={2}
                 display="flex"
                 justifyContent="space-between"
                 alignItems="center"
@@ -245,11 +247,11 @@ function ProfileCompletion() {
                 onClick={handleToggle}
             >
                 <MDBox flex={1}>
-                    <MDBox display="flex" justifyContent="space-between" alignItems="center" mb={1}>
-                        <MDTypography variant="h5" fontWeight="medium">
+                    <MDBox display="flex" justifyContent="space-between" alignItems="center" mb={0.5}>
+                        <MDTypography variant="h6" fontWeight="medium">
                             Profile Completion
                         </MDTypography>
-                        <MDTypography variant="h4" fontWeight="bold" color={getProgressColor(completionData.percentage)}>
+                        <MDTypography variant="h5" fontWeight="bold" color={getProgressColor(completionData.percentage)}>
                             {completionData.percentage}%
                         </MDTypography>
                     </MDBox>
@@ -257,86 +259,96 @@ function ProfileCompletion() {
                         variant="determinate"
                         value={completionData.percentage}
                         color={getProgressColor(completionData.percentage)}
-                        sx={{ height: 8, borderRadius: 2 }}
+                        sx={{ height: 6, borderRadius: 2 }}
                     />
                 </MDBox>
 
                 <IconButton
                     onClick={handleToggle}
-                    sx={{ ml: 2 }}
+                    size="small"
+                    sx={{ ml: 1.5 }}
                 >
-                    {isOpen ? <ExpandLessIcon /> : <ExpandMoreIcon />}
+                    {isOpen ? <ExpandLessIcon fontSize="small" /> : <ExpandMoreIcon fontSize="small" />}
                 </IconButton>
             </MDBox>
 
             <Collapse in={isOpen} timeout="auto">
-                <MDBox px={3} pb={3}>
-                    <MDBox mt={2}>
+                <MDBox px={2} pb={2}>
+                    <Grid container spacing={1} mt={0.5}>
                         {completionData.items.map((item, index) => (
-                            <MDBox
-                                key={index}
-                                display="flex"
-                                alignItems="flex-start"
-                                mb={2}
-                                p={1.5}
-                                borderRadius="lg"
-                                sx={{
-                                    backgroundColor: item.completed ? "transparent" : "grey.100",
-                                    transition: "all 0.2s",
-                                    "&:hover": {
-                                        backgroundColor: "grey.200",
-                                    }
-                                }}
-                            >
-                                <MDBox mt={0.25} mr={1.5}>
-                                    {getStatusIcon(item.icon)}
-                                </MDBox>
-                                <MDBox flex={1}>
-                                    <MDTypography variant="button" fontWeight="medium" color="text">
-                                        {item.label}
-                                        {item.required && (
-                                            <MDTypography
-                                                component="span"
-                                                variant="caption"
-                                                color="error"
-                                                fontWeight="bold"
-                                                ml={0.5}
-                                            >
-                                                *
-                                            </MDTypography>
-                                        )}
-                                    </MDTypography>
-                                    {item.detail && (
-                                        <MDTypography variant="caption" color="text" display="block" mt={0.5}>
-                                            {item.detail}
-                                        </MDTypography>
-                                    )}
-                                </MDBox>
-                                {!item.completed && (
-                                    <MDButton
-                                        component={Link}
-                                        to={item.link}
-                                        variant="text"
-                                        color="info"
-                                        size="small"
-                                        sx={{ minWidth: "auto", p: 0.5 }}
+                            <Grid item xs={4} sm={3} md={2} lg={1.2} key={index}>
+                                <Tooltip title={item.detail || item.label} placement="top" arrow>
+                                    <MDBox
+                                        component={!item.completed ? Link : "div"}
+                                        to={!item.completed ? item.link : undefined}
+                                        p={1}
+                                        borderRadius="md"
+                                        textAlign="center"
+                                        sx={{
+                                            backgroundColor: item.completed
+                                                ? "transparent"
+                                                : item.icon === "warning"
+                                                    ? "warning.light"
+                                                    : "grey.100",
+                                            border: "1px solid",
+                                            borderColor: item.completed
+                                                ? "success.light"
+                                                : item.icon === "warning"
+                                                    ? "warning.main"
+                                                    : "grey.300",
+                                            transition: "all 0.2s",
+                                            cursor: !item.completed ? "pointer" : "default",
+                                            textDecoration: "none",
+                                            display: "block",
+                                            minHeight: 56,
+                                            "&:hover": {
+                                                backgroundColor: !item.completed ? "grey.200" : "transparent",
+                                                transform: !item.completed ? "translateY(-1px)" : "none",
+                                                boxShadow: !item.completed ? 1 : 0,
+                                            }
+                                        }}
                                         onClick={(e) => e.stopPropagation()}
                                     >
-                                        <Icon>edit</Icon>
-                                    </MDButton>
-                                )}
-                            </MDBox>
+                                        <MDBox mb={0.25}>
+                                            {getStatusIcon(item.icon)}
+                                        </MDBox>
+                                        <MDTypography
+                                            variant="caption"
+                                            fontWeight="medium"
+                                            color="text"
+                                            sx={{
+                                                fontSize: "0.65rem",
+                                                lineHeight: 1.1,
+                                                display: "block"
+                                            }}
+                                        >
+                                            {item.label}
+                                            {item.required && (
+                                                <MDTypography
+                                                    component="span"
+                                                    variant="caption"
+                                                    color="error"
+                                                    fontWeight="bold"
+                                                    sx={{ fontSize: "0.55rem" }}
+                                                >
+                                                    *
+                                                </MDTypography>
+                                            )}
+                                        </MDTypography>
+                                    </MDBox>
+                                </Tooltip>
+                            </Grid>
                         ))}
-                    </MDBox>
+                    </Grid>
 
                     {completionData.percentage < 100 && (
-                        <MDBox mt={3} textAlign="center">
+                        <MDBox mt={2} textAlign="center">
                             <MDButton
                                 component={Link}
                                 to="/edit-profile"
                                 variant="gradient"
                                 color="info"
-                                fullWidth
+                                size="small"
                                 onClick={(e) => e.stopPropagation()}
                             >
                                 Complete My Profile
@@ -345,16 +357,16 @@ function ProfileCompletion() {
                     )}
 
                     {completionData.percentage === 100 && (
-                        <MDBox mt={3} p={2} borderRadius="lg" bgcolor="success.light" textAlign="center">
-                            <MDTypography variant="button" color="success" fontWeight="bold">
-                                🎉 Your profile is 100% complete!
+                        <MDBox mt={2} p={1.5} borderRadius="lg" bgcolor="success.light" textAlign="center">
+                            <MDTypography variant="caption" color="success" fontWeight="bold">
+                                🎉 Profile 100% complete!
                             </MDTypography>
                         </MDBox>
                     )}
 
-                    <MDBox mt={2}>
-                        <MDTypography variant="caption" color="text" textAlign="center" display="block">
-                            * Required fields for profile visibility
+                    <MDBox mt={1.5}>
+                        <MDTypography variant="caption" color="text" textAlign="center" display="block" sx={{ fontSize: "0.65rem" }}>
+                            * Required for visibility
                         </MDTypography>
                     </MDBox>
                 </MDBox>

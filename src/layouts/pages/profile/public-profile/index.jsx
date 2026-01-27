@@ -6,33 +6,65 @@ import ImgsViewer from "react-images-viewer";
 import logoWatermark from "assets/images/logo-rectangle-white.svg";
 
 // MUI components
+import Box from "@mui/material/Box";
 import Container from "@mui/material/Container";
 import Grid from "@mui/material/Grid";
-import Card from "@mui/material/Card";
 import Icon from "@mui/material/Icon";
 import Switch from "@mui/material/Switch";
 import Tooltip from "@mui/material/Tooltip";
+import Divider from "@mui/material/Divider";
+import Fade from "@mui/material/Fade";
 import MDButton from "components/MDButton";
 import MDBox from "components/MDBox";
 import MDTypography from "components/MDTypography";
-import ProfileAvatar from "components/Profile/ProfileAvatar";
 
 // Favourites
 import { useFavourites } from "context/FavouritesContext";
 import { useAuth } from "context/AuthContext";
+import { useMaterialUIController } from "context";
 import AddToListModal from "components/Favourites/AddToListModal";
+
+// Stat item component for clean display
+function StatItem({ label, value, unit }) {
+  if (!value) return null;
+  return (
+    <MDBox textAlign="center" px={2} py={1.5}>
+      <MDTypography
+        variant="h4"
+        fontWeight="medium"
+        sx={{ letterSpacing: "0.5px" }}
+      >
+        {value}{unit && <MDTypography component="span" variant="body2" fontWeight="light" ml={0.5}>{unit}</MDTypography>}
+      </MDTypography>
+      <MDTypography
+        variant="caption"
+        color="text"
+        textTransform="uppercase"
+        sx={{ letterSpacing: "2px", fontSize: "0.65rem" }}
+      >
+        {label}
+      </MDTypography>
+    </MDBox>
+  );
+}
 
 function PublicProfile() {
   const { slug } = useParams();
   const navigate = useNavigate();
   const { user } = useAuth();
   const { isModelFavourited, toggleQuickFavourite } = useFavourites();
+  const [controller] = useMaterialUIController();
+  const { darkMode } = controller;
+
+  // Use dark mode only when logged in, otherwise default to light
+  const effectiveDarkMode = user ? darkMode : false;
 
   const [profile, setProfile] = useState(null);
   const [profileUid, setProfileUid] = useState(null);
   const [addToListModalOpen, setAddToListModalOpen] = useState(false);
   const [lightboxOpen, setLightboxOpen] = useState(false);
   const [lightboxIndex, setLightboxIndex] = useState(0);
+  const [loaded, setLoaded] = useState(false);
 
   useEffect(() => {
     fetchUser();
@@ -45,6 +77,7 @@ function PublicProfile() {
       const docData = snapshot.docs[0];
       setProfile({ uid: docData.id, ...docData.data() });
       setProfileUid(docData.id);
+      setTimeout(() => setLoaded(true), 100);
     }
   };
 
@@ -99,182 +132,264 @@ function PublicProfile() {
 
   const closeLightbox = () => setLightboxOpen(false);
 
-  if (!profile) return <MDBox p={4}>Loading profile...</MDBox>;
+  // Get the hero image (profile avatar is the main image)
+  const heroImage = profile?.profileAvatar;
+
+  if (!profile) {
+    return (
+      <MDBox
+        minHeight="100vh"
+        display="flex"
+        alignItems="center"
+        justifyContent="center"
+        sx={{ backgroundColor: effectiveDarkMode ? "#1a2035" : "#fafafa" }}
+      >
+        <MDTypography variant="h5" fontWeight="light" sx={{ letterSpacing: "3px" }}>
+          LOADING...
+        </MDTypography>
+      </MDBox>
+    );
+  }
 
   return (
-    <Container maxWidth="lg">
-      <Card>
-        {/* Admin Controls - Edit Model & Visibility Toggle */}
-        {(isAdmin || canToggleVisibility) && (
-          <MDBox
-            px={3}
-            py={1.5}
-            display="flex"
-            alignItems="center"
-            justifyContent="space-between"
-            sx={{
-              backgroundColor: profile.hideFromSearch ? "warning.main" : "transparent",
-              borderBottom: profile.hideFromSearch ? "none" : "1px solid",
-              borderColor: "grey.200",
-            }}
-          >
-            {/* Edit Model Button - Admin/Super Admin Only */}
-            {isAdmin && profileUid && (
-              <MDButton
-                variant="gradient"
-                color="info"
-                size="small"
-                onClick={() => navigate(`/admin/model/${profileUid}/settings`)}
-                startIcon={<Icon>edit</Icon>}
+    <MDBox sx={{ backgroundColor: effectiveDarkMode ? "#1a2035" : "#fff", minHeight: "100vh" }}>
+      {/* Admin Controls Bar */}
+      {(isAdmin || canToggleVisibility) && (
+        <MDBox
+          px={3}
+          py={1.5}
+          display="flex"
+          alignItems="center"
+          justifyContent="space-between"
+          sx={{
+            backgroundColor: profile.hideFromSearch ? "warning.main" : "#f5f5f5",
+            position: "sticky",
+            top: 0,
+            zIndex: 100,
+          }}
+        >
+          {isAdmin && profileUid && (
+            <MDButton
+              variant="gradient"
+              color="dark"
+              size="small"
+              onClick={() => navigate(`/admin/model/${profileUid}/settings`)}
+              startIcon={<Icon>edit</Icon>}
+            >
+              Edit Model
+            </MDButton>
+          )}
+          {!isAdmin && <MDBox />}
+
+          {canToggleVisibility && (
+            <Tooltip title={profile.hideFromSearch ? "Profile is hidden from search" : "Profile is visible in search"}>
+              <MDBox display="flex" alignItems="center" gap={1}>
+                <Icon sx={{ color: profile.hideFromSearch ? "white" : "text.secondary" }}>
+                  {profile.hideFromSearch ? "visibility_off" : "visibility"}
+                </Icon>
+                <MDTypography variant="button" fontWeight="medium" color={profile.hideFromSearch ? "white" : "text"}>
+                  {profile.hideFromSearch ? "Hidden" : "Visible"}
+                </MDTypography>
+                <Switch
+                  checked={!profile.hideFromSearch}
+                  onChange={handleVisibilityToggle}
+                  color="default"
+                />
+              </MDBox>
+            </Tooltip>
+          )}
+        </MDBox>
+      )}
+
+      {/* Hero Section */}
+      <Fade in={loaded} timeout={800}>
+        <MDBox>
+          <Grid container>
+            {/* Hero Image - Left Side */}
+            <Grid item xs={12} lg={7}>
+              <MDBox
+                sx={{
+                  height: { xs: "60vh", md: "85vh" },
+                  position: "relative",
+                  overflow: "hidden",
+                }}
               >
-                Edit Model
-              </MDButton>
-            )}
-            {!isAdmin && <MDBox />}
+                <Box
+                  component="img"
+                  src={heroImage}
+                  alt={`${profile.firstName} ${profile.lastName}`}
+                  sx={{
+                    width: "100%",
+                    height: "100%",
+                    objectFit: "cover",
+                    objectPosition: "top center",
+                  }}
+                />
+              </MDBox>
+            </Grid>
 
-            {/* Visibility Toggle */}
-            {canToggleVisibility && (
-              <Tooltip title={profile.hideFromSearch ? "Profile is hidden from search and Browse Models" : "Profile is visible in search and Browse Models"}>
-                <MDBox display="flex" alignItems="center" gap={1}>
-                  <Icon sx={{ color: profile.hideFromSearch ? "white" : "text.secondary" }}>
-                    {profile.hideFromSearch ? "visibility_off" : "visibility"}
-                  </Icon>
-                  <MDTypography variant="button" fontWeight="medium" color={profile.hideFromSearch ? "white" : "text"}>
-                    {profile.hideFromSearch ? "Hidden from Search" : "Visible in Search"}
-                  </MDTypography>
-                  <Switch
-                    checked={!profile.hideFromSearch}
-                    onChange={handleVisibilityToggle}
-                    color="default"
+            {/* Model Info - Right Side */}
+            <Grid item xs={12} lg={5}>
+              <MDBox
+                display="flex"
+                flexDirection="column"
+                justifyContent="center"
+                height="100%"
+                px={{ xs: 4, md: 6, lg: 8 }}
+                py={{ xs: 6, lg: 0 }}
+                sx={{ minHeight: { lg: "85vh" } }}
+              >
+                {/* Model Name */}
+                <MDBox mb={4}>
+                  <MDTypography
+                    variant="h1"
+                    fontWeight="light"
                     sx={{
-                      "& .MuiSwitch-switchBase.Mui-checked": {
-                        color: "success.main",
-                      },
-                      "& .MuiSwitch-switchBase.Mui-checked + .MuiSwitch-track": {
-                        backgroundColor: "success.main",
-                      },
+                      fontSize: { xs: "2.5rem", md: "3.5rem", lg: "4rem" },
+                      letterSpacing: "4px",
+                      lineHeight: 1.1,
+                      textTransform: "uppercase",
                     }}
-                  />
-                </MDBox>
-              </Tooltip>
-            )}
-          </MDBox>
-        )}
-
-        <MDBox p={4}>
-          <Grid container spacing={4} alignItems="center">
-            <Grid item xs={4}>
-              <ProfileAvatar src={profile.profileAvatar} size={350} borderRadius="0" />
-            </Grid>
-
-            <Grid item xs={4}>
-              <MDTypography variant="h1" fontWeight="light">
-                {profile.firstName} {profile.lastName?.charAt(0)}.
-              </MDTypography>
-
-              <Grid item xs={12} mt={2}>
-                {user && user.uid === profileUid ? null : user ? (
-                  <>
-                    <MDTypography variant="h6" color="info">
-                      Book this Model
-                    </MDTypography>
-                    <MDButton variant="gradient" color="info" size="medium">
-                      Book Model
-                    </MDButton>
-                    {canFavourite && user.uid !== profileUid && (
-                      <MDBox display="flex" gap={1} mt={2}>
-                        <MDButton
-                          variant={isFavourited ? "gradient" : "outlined"}
-                          color={isFavourited ? "error" : "dark"}
-                          size="medium"
-                          onClick={handleFavouriteToggle}
-                          startIcon={<Icon>{isFavourited ? "favorite" : "favorite_border"}</Icon>}
-                        >
-                          {isFavourited ? "Favourited" : "Favourite"}
-                        </MDButton>
-                        <MDButton
-                          variant="outlined"
-                          color="info"
-                          size="medium"
-                          onClick={handleAddToList}
-                          startIcon={<Icon>playlist_add</Icon>}
-                        >
-                          Add to List
-                        </MDButton>
-                      </MDBox>
-                    )}
-                  </>
-                ) : (
-                  <MDButton
-                    variant="outlined"
-                    color="info"
-                    size="medium"
-                    href="/sign-in"
                   >
-                    Log in to Book Model
-                  </MDButton>
-                )}
-              </Grid>
-            </Grid>
-
-            <Grid item xs={4}>
-              {[
-                ["Height", profile.height, "cm"],
-                ["Weight", profile.weight, "kg"],
-                ["Waist", profile.waist, "cm"],
-                ["Chest", profile.chest, "cm"],
-                ["Inside Leg", profile.insideLeg, "cm"],
-                ["Collar", profile.collar, "cm"],
-                ["Shoe Size", profile.shoeSize],
-                ["Eye Colour", profile.eyeColour],
-                ["Hair Colour", profile.hairColour],
-              ].map(([label, value, unit]) =>
-                value ? (
-                  <Grid item xs={12} mt={1} key={label}>
-                    <MDTypography textTransform="uppercase" variant="body2">
-                      <strong>{label}:</strong> {value} {unit || ""}
-                    </MDTypography>
-                  </Grid>
-                ) : null
-              )}
-
-              {profile.gender !== "Man" &&
-                [
-                  ["Hips", profile.hips, "cm"],
-                  ["Dress Size", profile.dressSize],
-                  ["Bra Size", profile.braSize],
-                ].map(([label, value, unit]) =>
-                  value ? (
-                    <Grid item xs={12} mt={1} key={label}>
-                      <MDTypography textTransform="uppercase" variant="body2">
-                        <strong>{label}:</strong> {value} {unit || ""}
-                      </MDTypography>
-                    </Grid>
-                  ) : null
-                )}
-
-              {profile.location && (
-                <Grid item xs={12} mt={1}>
-                  <MDTypography textTransform="uppercase" variant="body2">
-                    <strong>Location:</strong> {profile.location}
+                    {profile.firstName} {profile.lastName?.charAt(0)}.
                   </MDTypography>
-                </Grid>
-              )}
+                </MDBox>
 
-              {/* Instagram Follower Count - Admin Only */}
-              {isAdmin && profile.instagram && profile.instagramFollowerCount && (
-                <Grid item xs={12} mt={2}>
-                  <MDBox
-                    display="flex"
-                    alignItems="center"
-                    gap={1}
-                    p={1.5}
-                    borderRadius="lg"
-                    sx={{ backgroundColor: "grey.100" }}
-                  >
+                {/* Location */}
+                {profile.location && (
+                  <MDBox mb={4} display="flex" alignItems="center" gap={1}>
+                    <Icon sx={{ fontSize: "1rem", color: "text.secondary" }}>location_on</Icon>
+                    <MDTypography
+                      variant="body2"
+                      color="text"
+                      sx={{ letterSpacing: "2px", textTransform: "uppercase" }}
+                    >
+                      {profile.location}
+                    </MDTypography>
+                  </MDBox>
+                )}
+
+                {/* Key Stats - Horizontal Layout */}
+                <MDBox mb={4}>
+                  <Grid container spacing={0}>
+                    {profile.height && (
+                      <Grid item xs={4}>
+                        <StatItem label="Height" value={profile.height} unit="cm" />
+                      </Grid>
+                    )}
+                    {profile.chest && (
+                      <Grid item xs={4}>
+                        <StatItem label="Chest" value={profile.chest} unit="cm" />
+                      </Grid>
+                    )}
+                    {profile.waist && (
+                      <Grid item xs={4}>
+                        <StatItem label="Waist" value={profile.waist} unit="cm" />
+                      </Grid>
+                    )}
+                  </Grid>
+                  <Grid container spacing={0} mt={1}>
+                    {profile.hips && profile.gender !== "Man" && (
+                      <Grid item xs={4}>
+                        <StatItem label="Hips" value={profile.hips} unit="cm" />
+                      </Grid>
+                    )}
+                    {profile.shoeSize && (
+                      <Grid item xs={4}>
+                        <StatItem label="Shoe" value={profile.shoeSize} />
+                      </Grid>
+                    )}
+                    {profile.eyeColour && (
+                      <Grid item xs={4}>
+                        <StatItem label="Eyes" value={profile.eyeColour} />
+                      </Grid>
+                    )}
+                  </Grid>
+                </MDBox>
+
+                <Divider sx={{ mb: 4 }} />
+
+                {/* Action Buttons */}
+                <MDBox>
+                  {user && user.uid === profileUid ? null : user ? (
+                    <>
+                      <MDButton
+                        variant="contained"
+                        color="dark"
+                        size="large"
+                        fullWidth
+                        sx={{
+                          py: 1.5,
+                          letterSpacing: "2px",
+                          fontWeight: 500,
+                          mb: 2,
+                        }}
+                      >
+                        Book Model
+                      </MDButton>
+                      {canFavourite && user.uid !== profileUid && (
+                        <MDBox display="flex" gap={1}>
+                          <MDButton
+                            variant={isFavourited ? "contained" : "outlined"}
+                            color={isFavourited ? "error" : "dark"}
+                            fullWidth
+                            onClick={handleFavouriteToggle}
+                            startIcon={<Icon>{isFavourited ? "favorite" : "favorite_border"}</Icon>}
+                            sx={{ letterSpacing: "1px" }}
+                          >
+                            {isFavourited ? "Saved" : "Save"}
+                          </MDButton>
+                          <MDButton
+                            variant="outlined"
+                            color="dark"
+                            fullWidth
+                            onClick={handleAddToList}
+                            startIcon={<Icon>playlist_add</Icon>}
+                            sx={{ letterSpacing: "1px" }}
+                          >
+                            Add to List
+                          </MDButton>
+                        </MDBox>
+                      )}
+                    </>
+                  ) : (
+                    <MDButton
+                      variant="outlined"
+                      color="dark"
+                      size="large"
+                      fullWidth
+                      href="/sign-in"
+                      sx={{ py: 1.5, letterSpacing: "2px" }}
+                    >
+                      Sign In to Book
+                    </MDButton>
+                  )}
+                </MDBox>
+
+                {/* Z-Card Download - Admin, Super Admin, Client */}
+                {profile.zCard && user && ["admin", "super admin", "client"].includes(user.role) && (
+                  <MDBox mt={3}>
+                    <MDButton
+                      variant="outlined"
+                      color="dark"
+                      fullWidth
+                      href={profile.zCard}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      download
+                      startIcon={<Icon>download</Icon>}
+                      sx={{ letterSpacing: "1px" }}
+                    >
+                      Download Z-Card
+                    </MDButton>
+                  </MDBox>
+                )}
+
+                {/* Instagram - Admin Only */}
+                {isAdmin && profile.instagram && profile.instagramFollowerCount && (
+                  <MDBox mt={4} display="flex" alignItems="center" gap={1.5}>
                     <Icon sx={{ color: "#E1306C" }}>photo_camera</Icon>
-                    <MDTypography variant="body2">
-                      <strong>Instagram:</strong>{" "}
+                    <MDTypography variant="body2" color="text">
                       {profile.instagramFollowerCount >= 1000000
                         ? `${(profile.instagramFollowerCount / 1000000).toFixed(1)}M`
                         : profile.instagramFollowerCount >= 1000
@@ -283,113 +398,288 @@ function PublicProfile() {
                       followers
                     </MDTypography>
                   </MDBox>
-                </Grid>
-              )}
+                )}
+              </MDBox>
             </Grid>
           </Grid>
         </MDBox>
-        <MDBox p={4}>
-          {/* Portfolio Images */}
-          {profile.portfolioImages?.length > 0 && (
-            <>
-              <MDTypography variant="h4" mb={2}>
-                Portfolio
-              </MDTypography>
-              <Grid container spacing={2}>
-                {profile.portfolioImages.map((url, index) => (
-                  <Grid item xs={12} sm={6} md={4} lg={3} key={`portfolio-${index}`}>
-                    <MDBox
-                      component="img"
-                      src={url}
-                      alt={`Portfolio ${index + 1}`}
-                      width="100%"
-                      height="300px"
-                      borderRadius="lg"
-                      onClick={() => openLightbox(index)}
-                      sx={{
-                        objectFit: "cover",
-                        cursor: "pointer",
-                        transition: "transform 0.2s",
-                        "&:hover": {
-                          transform: "scale(1.02)"
-                        }
-                      }}
-                    />
-                  </Grid>
-                ))}
-              </Grid>
-            </>
-          )}
+      </Fade>
 
-          {/* Digitals Images */}
-          {profile.digitalImages?.length > 0 && (
-            <>
-              <MDTypography variant="h4" mt={4} mb={2}>
-                Digitals
-              </MDTypography>
-              <Grid container spacing={2}>
-                {profile.digitalImages.map((url, index) => {
-                  // Offset by portfolio images count for correct lightbox index
-                  const lightboxIdx = (profile.portfolioImages?.length || 0) + index;
-                  return (
-                    <Grid item xs={12} sm={6} md={4} lg={3} key={`digital-${index}`}>
+      {/* Full Measurements Section */}
+      <MDBox py={6} sx={{ backgroundColor: effectiveDarkMode ? "#111827" : "#fafafa" }}>
+        <Container maxWidth="lg">
+          <MDTypography
+            variant="overline"
+            sx={{
+              letterSpacing: "4px",
+              display: "block",
+              textAlign: "center",
+              mb: 4,
+              color: "text.secondary",
+            }}
+          >
+            Measurements
+          </MDTypography>
+          <Grid container justifyContent="center" spacing={2}>
+            {[
+              ["Height", profile.height, "cm"],
+              ["Weight", profile.weight, "kg"],
+              ["Chest", profile.chest, "cm"],
+              ["Waist", profile.waist, "cm"],
+              ["Inside Leg", profile.insideLeg, "cm"],
+              ["Collar", profile.collar, "cm"],
+              ["Shoe Size", profile.shoeSize],
+              ["Eye Colour", profile.eyeColour],
+              ["Hair Colour", profile.hairColour],
+            ]
+              .concat(
+                profile.gender !== "Man"
+                  ? [
+                      ["Hips", profile.hips, "cm"],
+                      ["Dress Size", profile.dressSize],
+                      ["Bra Size", profile.braSize],
+                    ]
+                  : []
+              )
+              .filter(([, value]) => value)
+              .map(([label, value, unit]) => (
+                <Grid item xs={6} sm={4} md={3} lg={2} key={label}>
+                  <MDBox
+                    textAlign="center"
+                    py={2}
+                    px={1}
+                    sx={{
+                      backgroundColor: effectiveDarkMode ? "#1a2035" : "#fff",
+                      borderRadius: 2,
+                    }}
+                  >
+                    <MDTypography variant="h5" fontWeight="medium">
+                      {value}{unit && <MDTypography component="span" variant="caption" ml={0.5}>{unit}</MDTypography>}
+                    </MDTypography>
+                    <MDTypography
+                      variant="caption"
+                      color="text"
+                      sx={{ letterSpacing: "1.5px", textTransform: "uppercase", fontSize: "0.6rem" }}
+                    >
+                      {label}
+                    </MDTypography>
+                  </MDBox>
+                </Grid>
+              ))}
+          </Grid>
+        </Container>
+      </MDBox>
+
+      {/* Portfolio Gallery */}
+      {profile.portfolioImages?.length > 0 && (
+        <MDBox py={8}>
+          <Container maxWidth="xl">
+            <MDTypography
+              variant="overline"
+              sx={{
+                letterSpacing: "4px",
+                display: "block",
+                textAlign: "center",
+                mb: 6,
+                color: "text.secondary",
+              }}
+            >
+              Portfolio
+            </MDTypography>
+            <Grid container spacing={2}>
+              {profile.portfolioImages.map((url, index) => {
+                // Create varied grid sizes for editorial look
+                const sizes = [
+                  { xs: 12, sm: 6, md: 4 },
+                  { xs: 12, sm: 6, md: 4 },
+                  { xs: 12, sm: 6, md: 4 },
+                  { xs: 12, sm: 6, md: 6 },
+                  { xs: 12, sm: 6, md: 6 },
+                  { xs: 12, sm: 6, md: 4 },
+                ];
+                const sizeIndex = index % sizes.length;
+                const gridSize = sizes[sizeIndex];
+                const heights = ["450px", "400px", "420px", "500px", "480px", "380px"];
+                const height = heights[sizeIndex];
+
+                return (
+                  <Grid item {...gridSize} key={`portfolio-${index}`}>
+                    <Fade in={loaded} timeout={600 + index * 100}>
                       <MDBox
-                        component="img"
-                        src={url}
-                        alt={`Digital ${index + 1}`}
-                        width="100%"
-                        height="300px"
-                        borderRadius="lg"
+                        onClick={() => openLightbox(index)}
+                        sx={{
+                          position: "relative",
+                          overflow: "hidden",
+                          cursor: "pointer",
+                          height: { xs: "350px", md: height },
+                          "&:hover img": {
+                            transform: "scale(1.03)",
+                          },
+                          "&:hover .overlay": {
+                            opacity: 1,
+                          },
+                        }}
+                      >
+                        <Box
+                          component="img"
+                          src={url}
+                          alt={`Portfolio ${index + 1}`}
+                          sx={{
+                            width: "100%",
+                            height: "100%",
+                            objectFit: "cover",
+                            transition: "transform 0.6s ease",
+                          }}
+                        />
+                        <MDBox
+                          className="overlay"
+                          sx={{
+                            position: "absolute",
+                            inset: 0,
+                            backgroundColor: "rgba(0,0,0,0.2)",
+                            opacity: 0,
+                            transition: "opacity 0.3s ease",
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                          }}
+                        >
+                          <Icon sx={{ color: "#fff", fontSize: "2rem" }}>zoom_in</Icon>
+                        </MDBox>
+                      </MDBox>
+                    </Fade>
+                  </Grid>
+                );
+              })}
+            </Grid>
+          </Container>
+        </MDBox>
+      )}
+
+      {/* Digitals Gallery */}
+      {profile.digitalImages?.length > 0 && (
+        <MDBox py={8} sx={{ backgroundColor: effectiveDarkMode ? "#111827" : "#fafafa" }}>
+          <Container maxWidth="xl">
+            <MDTypography
+              variant="overline"
+              sx={{
+                letterSpacing: "4px",
+                display: "block",
+                textAlign: "center",
+                mb: 6,
+                color: "text.secondary",
+              }}
+            >
+              Digitals
+            </MDTypography>
+            <Grid container spacing={2} justifyContent="center">
+              {profile.digitalImages.map((url, index) => {
+                const lightboxIdx = (profile.portfolioImages?.length || 0) + index;
+                return (
+                  <Grid item xs={6} sm={4} md={3} key={`digital-${index}`}>
+                    <Fade in={loaded} timeout={600 + index * 100}>
+                      <MDBox
                         onClick={() => openLightbox(lightboxIdx)}
                         sx={{
-                          objectFit: "cover",
+                          position: "relative",
+                          overflow: "hidden",
                           cursor: "pointer",
-                          transition: "transform 0.2s",
-                          "&:hover": {
-                            transform: "scale(1.02)"
-                          }
+                          height: { xs: "280px", md: "380px" },
+                          "&:hover img": {
+                            transform: "scale(1.03)",
+                          },
+                          "&:hover .overlay": {
+                            opacity: 1,
+                          },
                         }}
-                      />
-                    </Grid>
-                  );
-                })}
-              </Grid>
-            </>
-          )}
+                      >
+                        <Box
+                          component="img"
+                          src={url}
+                          alt={`Digital ${index + 1}`}
+                          sx={{
+                            width: "100%",
+                            height: "100%",
+                            objectFit: "cover",
+                            transition: "transform 0.6s ease",
+                          }}
+                        />
+                        <MDBox
+                          className="overlay"
+                          sx={{
+                            position: "absolute",
+                            inset: 0,
+                            backgroundColor: "rgba(0,0,0,0.2)",
+                            opacity: 0,
+                            transition: "opacity 0.3s ease",
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                          }}
+                        >
+                          <Icon sx={{ color: "#fff", fontSize: "2rem" }}>zoom_in</Icon>
+                        </MDBox>
+                      </MDBox>
+                    </Fade>
+                  </Grid>
+                );
+              })}
+            </Grid>
+          </Container>
+        </MDBox>
+      )}
 
-          {/* Fallback for legacy 'portfolio' field */}
-          {!profile.portfolioImages && !profile.digitalImages && profile.portfolio?.length > 0 && (
-            <>
-              <MDTypography variant="h4" mb={2}>
-                Portfolio
-              </MDTypography>
-              <Grid container spacing={2}>
-                {profile.portfolio.map((url, index) => (
-                  <Grid item xs={12} sm={6} md={4} lg={3} key={`legacy-${index}`}>
+      {/* Fallback for legacy 'portfolio' field */}
+      {!profile.portfolioImages && !profile.digitalImages && profile.portfolio?.length > 0 && (
+        <MDBox py={8}>
+          <Container maxWidth="xl">
+            <MDTypography
+              variant="overline"
+              sx={{
+                letterSpacing: "4px",
+                display: "block",
+                textAlign: "center",
+                mb: 6,
+                color: "text.secondary",
+              }}
+            >
+              Portfolio
+            </MDTypography>
+            <Grid container spacing={2}>
+              {profile.portfolio.map((url, index) => (
+                <Grid item xs={12} sm={6} md={4} key={`legacy-${index}`}>
+                  <Fade in={loaded} timeout={600 + index * 100}>
                     <MDBox
-                      component="img"
-                      src={url}
-                      alt={`Portfolio ${index + 1}`}
-                      width="100%"
-                      height="300px"
-                      borderRadius="lg"
                       onClick={() => openLightbox(index)}
                       sx={{
-                        objectFit: "cover",
+                        position: "relative",
+                        overflow: "hidden",
                         cursor: "pointer",
-                        transition: "transform 0.2s",
-                        "&:hover": {
-                          transform: "scale(1.02)"
-                        }
+                        height: { xs: "350px", md: "420px" },
+                        "&:hover img": {
+                          transform: "scale(1.03)",
+                        },
                       }}
-                    />
-                  </Grid>
-                ))}
-              </Grid>
-            </>
-          )}
+                    >
+                      <Box
+                        component="img"
+                        src={url}
+                        alt={`Portfolio ${index + 1}`}
+                        sx={{
+                          width: "100%",
+                          height: "100%",
+                          objectFit: "cover",
+                          transition: "transform 0.6s ease",
+                        }}
+                      />
+                    </MDBox>
+                  </Fade>
+                </Grid>
+              ))}
+            </Grid>
+          </Container>
         </MDBox>
-      </Card>
+      )}
 
       {/* Lightbox for image carousel */}
       {allImages.length > 0 && (
@@ -432,7 +722,7 @@ function PublicProfile() {
           model={profile}
         />
       )}
-    </Container>
+    </MDBox>
   );
 }
 

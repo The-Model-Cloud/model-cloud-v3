@@ -36,6 +36,9 @@ function BasicInfo() {
     firstName: "",
     lastName: "",
     gender: "",
+    dayOfBirth: "",
+    monthOfBirth: "",
+    yearOfBirth: "",
     country: "",
     county: "",
     state: "",
@@ -73,6 +76,9 @@ function BasicInfo() {
             firstName: data.firstName || "",
             lastName: data.lastName || "",
             gender: data.gender || "",
+            dayOfBirth: data.dayOfBirth || "",
+            monthOfBirth: data.monthOfBirth || "",
+            yearOfBirth: data.yearOfBirth || "",
             country: data.country || "",
             county: data.county || "",
             state: data.state || "",
@@ -364,8 +370,7 @@ function BasicInfo() {
                   <Grid container spacing={3}>
                     <Grid item xs={12} sm={1}>
                       <Autocomplete
-                        defaultValue="1"
-                        value={profile.dayOfBirth}
+                        value={profile.dayOfBirth || null}
                         options={selectData.days}
                         renderInput={(params) => (
                           <FormField {...params}
@@ -377,8 +382,7 @@ function BasicInfo() {
                     </Grid>
                     <Grid item xs={12} sm={2}>
                       <Autocomplete
-                        defaultValue="February"
-                        value={profile.monthOfBirth}
+                        value={profile.monthOfBirth || null}
                         options={selectData.birthDate}
                         renderInput={(params) => (
                           <FormField {...params} InputLabelProps={{ shrink: true }}
@@ -389,7 +393,7 @@ function BasicInfo() {
                     </Grid>
                     <Grid item xs={12} sm={1}>
                       <Autocomplete
-                        value={profile.yearOfBirth || (new Date().getFullYear() - 21).toString()} // Default to 21 years ago
+                        value={profile.yearOfBirth || null}
                         options={selectData.years}
                         renderInput={(params) => (
                           <FormField {...params} label="Birth Year" InputLabelProps={{ shrink: true }} />

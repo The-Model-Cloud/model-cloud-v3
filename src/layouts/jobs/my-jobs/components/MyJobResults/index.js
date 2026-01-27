@@ -9,33 +9,35 @@ import InputLabel from "@mui/material/InputLabel";
 import MDBox from "components/MDBox";
 import MDTypography from "components/MDTypography";
 import MDInput from "components/MDInput";
-import JobCard from "../JobCard";
+import MyJobCard from "../MyJobCard";
 
-function JobSearchResults({ results, loading }) {
+function MyJobResults({ jobs, loading }) {
   const [page, setPage] = useState(1);
-  const [perPage, setPerPage] = useState(8);
+  const [perPage, setPerPage] = useState(9);
   const [searchTerm, setSearchTerm] = useState("");
 
-  // Filter results by search term
-  const filteredResults = results.filter((job) => {
+  // Filter by search term
+  const filteredJobs = jobs.filter((job) => {
     if (!searchTerm) return true;
     const search = searchTerm.toLowerCase();
     return (
       job.title?.toLowerCase().includes(search) ||
       job.location?.toLowerCase().includes(search) ||
       job.reference?.toLowerCase().includes(search) ||
+      job.city?.toLowerCase().includes(search) ||
+      job.country?.toLowerCase().includes(search) ||
       job.categories?.some(c => c.toLowerCase().includes(search))
     );
   });
 
   // Calculate pagination
-  const totalPages = Math.ceil(filteredResults.length / perPage);
+  const totalPages = Math.ceil(filteredJobs.length / perPage);
   const startIndex = (page - 1) * perPage;
-  const paginatedResults = filteredResults.slice(startIndex, startIndex + perPage);
+  const paginatedJobs = filteredJobs.slice(startIndex, startIndex + perPage);
 
-  // Count matches
-  const matchCount = results.filter(job => job.isMatch).length;
-  const noMatchCount = results.filter(job => !job.isMatch).length;
+  // Count by type
+  const ownedCount = jobs.filter(job => job.isOwner).length;
+  const appliedCount = jobs.filter(job => !job.isOwner).length;
 
   const handlePageChange = (_, value) => {
     setPage(value);
@@ -55,7 +57,7 @@ function JobSearchResults({ results, loading }) {
           hourglass_empty
         </Icon>
         <MDTypography variant="h6" color="text" mt={2}>
-          Searching for jobs...
+          Loading your jobs...
         </MDTypography>
         <style>
           {`@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`}
@@ -64,7 +66,7 @@ function JobSearchResults({ results, loading }) {
     );
   }
 
-  if (!results || results.length === 0) {
+  if (!jobs || jobs.length === 0) {
     return (
       <MDBox
         display="flex"
@@ -78,7 +80,7 @@ function JobSearchResults({ results, loading }) {
           No jobs found
         </MDTypography>
         <MDTypography variant="body2" color="text" textAlign="center" mt={1}>
-          Try adjusting your filters or click "Search Jobs" to see available positions
+          You haven't created or applied to any jobs yet
         </MDTypography>
       </MDBox>
     );
@@ -98,7 +100,7 @@ function JobSearchResults({ results, loading }) {
         {/* Stats */}
         <MDBox display="flex" alignItems="center" gap={3}>
           <MDTypography variant="h6" fontWeight="medium" color="dark">
-            {filteredResults.length} {filteredResults.length === 1 ? "Job" : "Jobs"} Found
+            {filteredJobs.length} {filteredJobs.length === 1 ? "Job" : "Jobs"}
           </MDTypography>
           <MDBox display="flex" gap={2}>
             <MDBox display="flex" alignItems="center" gap={0.5}>
@@ -106,10 +108,10 @@ function JobSearchResults({ results, loading }) {
                 width={10}
                 height={10}
                 borderRadius="50%"
-                sx={{ background: "linear-gradient(135deg, #11998e 0%, #38ef7d 100%)" }}
+                sx={{ background: "linear-gradient(135deg, #667eea 0%, #764ba2 100%)" }}
               />
               <MDTypography variant="caption" color="text">
-                {matchCount} {matchCount === 1 ? "Match" : "Matches"}
+                {ownedCount} Created
               </MDTypography>
             </MDBox>
             <MDBox display="flex" alignItems="center" gap={0.5}>
@@ -117,10 +119,10 @@ function JobSearchResults({ results, loading }) {
                 width={10}
                 height={10}
                 borderRadius="50%"
-                sx={{ background: "linear-gradient(135deg, #eb3349 0%, #f45c43 100%)" }}
+                sx={{ background: "linear-gradient(135deg, #f093fb 0%, #f5576c 100%)" }}
               />
               <MDTypography variant="caption" color="text">
-                {noMatchCount} No Match
+                {appliedCount} Applied
               </MDTypography>
             </MDBox>
           </MDBox>
@@ -151,20 +153,20 @@ function JobSearchResults({ results, loading }) {
                 setPage(1);
               }}
             >
-              <MenuItem value={4}>4</MenuItem>
-              <MenuItem value={8}>8</MenuItem>
+              <MenuItem value={6}>6</MenuItem>
+              <MenuItem value={9}>9</MenuItem>
               <MenuItem value={12}>12</MenuItem>
-              <MenuItem value={16}>16</MenuItem>
+              <MenuItem value={24}>24</MenuItem>
             </Select>
           </FormControl>
         </MDBox>
       </MDBox>
 
       {/* Job Cards Grid */}
-      <Grid container spacing={6}>
-        {paginatedResults.map((job, index) => (
-          <Grid item xs={12} md={6} xl={3} key={job.reference || index}>
-            <JobCard job={job} isMatch={job.isMatch} />
+      <Grid container spacing={3}>
+        {paginatedJobs.map((job, index) => (
+          <Grid item xs={12} sm={6} lg={4} key={job.reference || index}>
+            <MyJobCard job={job} />
           </Grid>
         ))}
       </Grid>
@@ -187,11 +189,11 @@ function JobSearchResults({ results, loading }) {
       {/* Results info */}
       <MDBox textAlign="center" mt={2}>
         <MDTypography variant="caption" color="text">
-          Showing {startIndex + 1} - {Math.min(startIndex + perPage, filteredResults.length)} of {filteredResults.length} jobs
+          Showing {startIndex + 1} - {Math.min(startIndex + perPage, filteredJobs.length)} of {filteredJobs.length} jobs
         </MDTypography>
       </MDBox>
     </MDBox>
   );
 }
 
-export default JobSearchResults;
+export default MyJobResults;

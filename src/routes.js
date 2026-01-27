@@ -65,6 +65,10 @@ import FavouritesOverview from "layouts/favourites/overview";
 import FavouriteListDetail from "layouts/favourites/list-detail";
 import SharedListView from "layouts/favourites/shared";
 
+// Z-Card layouts
+import ZCardBuilder from "layouts/zcard";
+import ZCardView from "layouts/zcard/view";
+
 // Material Dashboard 3 PRO React components
 import MDAvatar from "components/MDAvatar";
 
@@ -257,6 +261,20 @@ const routes = [
         icon: <Icon fontSize="small">add_a_photo</Icon>,
       },
     ],
+  },
+
+  // ============================================================
+  // Z-CARD SECTION (For Models, Admins, Super Admins)
+  // ============================================================
+  {
+    type: "collapse",
+    name: "Z-Card",
+    key: "zcard",
+    icon: <Icon fontSize="small">badge</Icon>,
+    roles: ["model", "admin", "super admin"],
+    noCollapse: true,
+    route: "/zcard",
+    component: <ZCardBuilder />,
   },
 
   // ============================================================
@@ -668,6 +686,15 @@ const routes = [
     invisible: true,
     // No roles - access controlled by list visibility setting
   },
+  {
+    type: "collapse",
+    name: "Z-Card View",
+    key: "zcard-view",
+    route: "/zcard/view/:shareToken",
+    component: <ZCardView />,
+    invisible: true,
+    // No roles - access controlled by Z-Card visibility setting
+  },
 
   // ============================================================
   // AUTHENTICATION ROUTES (public, no role required)
@@ -721,10 +748,14 @@ export const hasAccess = (userRole, allowedRoles) => {
   // If no roles specified, allow all authenticated users
   if (!allowedRoles || allowedRoles.length === 0) return true;
 
-  // Super admin has access to everything
-  if (userRole === "super admin") return true;
+  // Normalize role for comparison (handle case variations)
+  const normalizedRole = userRole?.toLowerCase();
 
-  return allowedRoles.includes(userRole);
+  // Super admin has access to everything
+  if (normalizedRole === "super admin") return true;
+
+  // Check if user's role is in the allowed roles array
+  return allowedRoles.some(role => role.toLowerCase() === normalizedRole);
 };
 
 /**

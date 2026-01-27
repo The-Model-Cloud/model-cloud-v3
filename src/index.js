@@ -4,6 +4,7 @@ import { BrowserRouter } from "react-router-dom";
 import App from "App";
 import { AuthProvider } from "context/AuthContext";
 import { MessagingProvider } from "context/MessagingContext";
+import { NotificationsProvider } from "context/NotificationsContext";
 import { FavouritesProvider } from "context/FavouritesContext";
 
 // Material Dashboard 3 PRO React Context Provider
@@ -15,13 +16,15 @@ const root = createRoot(container);
 root.render(
   <AuthProvider>
     <MessagingProvider>
-      <FavouritesProvider>
-        <BrowserRouter>
-          <MaterialUIControllerProvider>
-            <App />
-          </MaterialUIControllerProvider>
-        </BrowserRouter>
-      </FavouritesProvider>
+      <NotificationsProvider>
+        <FavouritesProvider>
+          <BrowserRouter>
+            <MaterialUIControllerProvider>
+              <App />
+            </MaterialUIControllerProvider>
+          </BrowserRouter>
+        </FavouritesProvider>
+      </NotificationsProvider>
     </MessagingProvider>
   </AuthProvider>
 );

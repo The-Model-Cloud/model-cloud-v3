@@ -1,14 +1,10 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
 import { auth, db } from "config/firebase";
 import { doc, getDoc, collection, query, where, getDocs } from "firebase/firestore";
 import { Link } from "react-router-dom";
 
 // @mui components
-import Card from "@mui/material/Card";
 import Icon from "@mui/material/Icon";
-import Menu from "@mui/material/Menu";
-import MenuItem from "@mui/material/MenuItem";
-import Divider from "@mui/material/Divider";
 
 // Material Dashboard components
 import MDBox from "components/MDBox";
@@ -19,45 +15,35 @@ import MDButton from "components/MDButton";
 import DashboardLayout from "examples/LayoutContainers/DashboardLayout";
 import DashboardNavbar from "examples/Navbars/DashboardNavbar";
 import Footer from "examples/Footer";
-import DataTable from "examples/Tables/DataTable";
+
+// Custom components
+import MyJobFilters from "./components/MyJobFilters";
+import MyJobResults from "./components/MyJobResults";
 
 function MyJobs() {
-  const [menu, setMenu] = useState(null);
-  const [tableData, setTableData] = useState({ columns: [], rows: [] });
+  const [allJobs, setAllJobs] = useState([]);
   const [loading, setLoading] = useState(true);
-
-  const openMenu = (event) => setMenu(event.currentTarget);
-  const closeMenu = () => setMenu(null);
-
-  const renderMenu = (
-    <Menu
-      anchorEl={menu}
-      anchorOrigin={{ vertical: "bottom", horizontal: "left" }}
-      transformOrigin={{ vertical: "top", horizontal: "left" }}
-      open={Boolean(menu)}
-      onClose={closeMenu}
-      keepMounted
-    >
-      <MenuItem onClick={closeMenu}>Status: Open</MenuItem>
-      <MenuItem onClick={closeMenu}>Status: Closed</MenuItem>
-      <Divider sx={{ margin: "0.5rem 0" }} />
-      <MenuItem onClick={closeMenu}>
-        <MDTypography variant="button" color="error" fontWeight="regular">
-          Remove Filter
-        </MDTypography>
-      </MenuItem>
-    </Menu>
-  );
+  const [filters, setFilters] = useState({
+    jobType: "all",
+    jobStatus: "all",
+    applicationStatus: "all",
+  });
 
   const fetchJobsForCurrentUser = async () => {
     setLoading(true);
     const user = auth.currentUser;
-    if (!user) return;
+    if (!user) {
+      setLoading(false);
+      return;
+    }
 
     const userRef = doc(db, "users", user.uid);
     const userSnap = await getDoc(userRef);
 
-    if (!userSnap.exists()) return;
+    if (!userSnap.exists()) {
+      setLoading(false);
+      return;
+    }
 
     const userData = userSnap.data();
     const jobRefs = userData.jobs || [];
@@ -67,128 +53,49 @@ function MyJobs() {
     const allJobRefs = [...new Set([...jobRefs, ...appliedJobs.map(j => j.jobReference)])];
 
     if (allJobRefs.length === 0) {
-      setTableData({ columns: [], rows: [] });
+      setAllJobs([]);
       setLoading(false);
       return;
     }
 
-    const jobsQuery = query(collection(db, "jobs"), where("reference", "in", allJobRefs));
-    const jobDocs = await getDocs(jobsQuery);
+    // Firestore "in" queries are limited to 30 items, so we may need to batch
+    const batchSize = 30;
+    const batches = [];
+    for (let i = 0; i < allJobRefs.length; i += batchSize) {
+      batches.push(allJobRefs.slice(i, i + batchSize));
+    }
 
     const jobs = [];
-    jobDocs.forEach((doc) => {
-      const data = doc.data();
+    for (const batch of batches) {
+      const jobsQuery = query(collection(db, "jobs"), where("reference", "in", batch));
+      const jobDocs = await getDocs(jobsQuery);
 
-      // Check if this is a created job or applied job
-      const isCreated = jobRefs.includes(data.reference);
-      const appliedJob = appliedJobs.find(aj => aj.jobReference === data.reference);
-      const isApplied = !!appliedJob;
+      jobDocs.forEach((docSnap) => {
+        const data = docSnap.data();
 
-      jobs.push({
-        reference: data.reference,
-        title: data.title,
-        location: data.location,
-        status: data.status || "Open",
-        applicationStatus: isApplied ? (appliedJob.status || "pending") : (isCreated ? "Owner" : "-"),
-        budget: {
-          amount: data.budget || "-",
-          currency: data.currency || "GBP",
-        },
-        createdAt: isApplied && appliedJob.appliedAt
-          ? new Date(appliedJob.appliedAt).toLocaleDateString("en-UK")
-          : new Date(data.createdAt).toLocaleDateString("en-UK"),
-        isOwner: isCreated,
+        // Check if this is a created job or applied job
+        const isCreated = jobRefs.includes(data.reference);
+        const appliedJob = appliedJobs.find(aj => aj.jobReference === data.reference);
+        const isApplied = !!appliedJob;
+
+        jobs.push({
+          ...data, // Include all job data for the cards
+          applicationStatus: isApplied ? (appliedJob.status || "pending") : (isCreated ? "Owner" : "-"),
+          appliedAt: appliedJob?.appliedAt,
+          isOwner: isCreated,
+          isApplied: isApplied,
+        });
       });
+    }
+
+    // Sort: owned jobs first, then by date
+    jobs.sort((a, b) => {
+      if (a.isOwner && !b.isOwner) return -1;
+      if (!a.isOwner && b.isOwner) return 1;
+      return (b.createdAt || 0) - (a.createdAt || 0);
     });
 
-    const formatCurrency = ({ amount, currency }) => {
-      if (!amount || amount === "-") return "-";
-
-      const number = parseFloat(amount);
-      const formatter = new Intl.NumberFormat("en-GB", {
-        style: "currency",
-        currency,
-        currencyDisplay: "symbol", // can be "symbol" | "code" | "name"
-        minimumFractionDigits: 2,
-        maximumFractionDigits: 2,
-      });
-
-      return formatter.format(number);
-    };
-
-
-
-    const getStatusColor = (status) => {
-      switch (status.toLowerCase()) {
-        case "pending":
-          return "warning";
-        case "accepted":
-        case "approved":
-          return "success";
-        case "rejected":
-          return "error";
-        case "owner":
-          return "info";
-        default:
-          return "text";
-      }
-    };
-
-    setTableData({
-      columns: [
-        {
-          Header: "reference", accessor: "reference",
-          Cell: ({ value }) => (
-            <Link to={`/jobs/${value}`}>
-              <MDTypography variant="button" color="info">{value}</MDTypography>
-            </Link>
-          ),
-        },
-        { Header: "title", accessor: "title" },
-        { Header: "location", accessor: "location" },
-        { Header: "status", accessor: "status" },
-        {
-          Header: "application",
-          accessor: "applicationStatus",
-          Cell: ({ value }) => (
-            <MDTypography variant="button" color={getStatusColor(value)} fontWeight="medium">
-              {value}
-            </MDTypography>
-          ),
-        },
-        {
-          Header: "budget",
-          accessor: "budget",
-          Cell: ({ value }) => (
-            <MDTypography variant="button" color="text">
-              {formatCurrency(value)}
-            </MDTypography>
-          ),
-        },
-        { Header: "date", accessor: "createdAt" },
-        {
-          Header: "action",
-          accessor: "action",
-          Cell: ({ row }) => (
-            row.original.isOwner ? (
-              <Link to={`/jobs/edit/${row.original.reference}`}>
-                <MDButton variant="text" color="info" size="small">
-                  <Icon>edit</Icon>&nbsp;Edit
-                </MDButton>
-              </Link>
-            ) : (
-              <Link to={`/jobs/${row.original.reference}`}>
-                <MDButton variant="text" color="info" size="small">
-                  <Icon>visibility</Icon>&nbsp;View
-                </MDButton>
-              </Link>
-            )
-          ),
-        },
-      ],
-      rows: jobs,
-    });
-
+    setAllJobs(jobs);
     setLoading(false);
   };
 
@@ -196,36 +103,71 @@ function MyJobs() {
     fetchJobsForCurrentUser();
   }, []);
 
+  // Apply filters
+  const filteredJobs = useMemo(() => {
+    return allJobs.filter(job => {
+      // Filter by job type (owned vs applied)
+      if (filters.jobType === "owned" && !job.isOwner) return false;
+      if (filters.jobType === "applied" && job.isOwner) return false;
+
+      // Filter by job status
+      if (filters.jobStatus !== "all") {
+        const jobStatus = (job.status || "open").toLowerCase();
+        if (jobStatus !== filters.jobStatus) return false;
+      }
+
+      // Filter by application status (only for applied jobs)
+      if (filters.applicationStatus !== "all" && !job.isOwner) {
+        const appStatus = (job.applicationStatus || "").toLowerCase();
+        if (appStatus !== filters.applicationStatus) return false;
+      }
+
+      return true;
+    });
+  }, [allJobs, filters]);
+
+  // Calculate counts for filter badges
+  const jobCounts = useMemo(() => ({
+    owned: allJobs.filter(j => j.isOwner).length,
+    applied: allJobs.filter(j => !j.isOwner).length,
+  }), [allJobs]);
+
   return (
     <DashboardLayout>
       <DashboardNavbar />
       <MDBox my={3}>
-        <MDBox display="flex" justifyContent="space-between" alignItems="flex-start" mb={2}>
-          <MDTypography variant="h4">My Jobs</MDTypography>
-          <MDBox display="flex">
-            <MDButton variant={menu ? "contained" : "outlined"} color="dark" onClick={openMenu}>
-              filters&nbsp;
-              <Icon>keyboard_arrow_down</Icon>
-            </MDButton>
-            {renderMenu}
-            <MDBox ml={1}>
-              <MDButton variant="outlined" color="dark">
-                <Icon>description</Icon>
-                &nbsp;export csv
-              </MDButton>
+        {/* Page Header */}
+        <MDBox display="flex" justifyContent="space-between" alignItems="flex-start" mb={3} flexWrap="wrap" gap={2}>
+          <MDBox>
+            <MDBox display="flex" alignItems="center" gap={1} mb={1}>
+              <Icon sx={{ color: "info.main", fontSize: "2rem" }}>business_center</Icon>
+              <MDTypography variant="h4" fontWeight="bold" color="dark">
+                My Jobs
+              </MDTypography>
             </MDBox>
+            <MDTypography variant="body2" color="text">
+              Manage jobs you've created and track your applications
+            </MDTypography>
           </MDBox>
+
+          <Link to="/jobs/new">
+            <MDButton variant="gradient" color="info" startIcon={<Icon>add</Icon>}>
+              Post New Job
+            </MDButton>
+          </Link>
         </MDBox>
-        <Card>
-          <DataTable
-            table={tableData}
-            entriesPerPage={{ defaultValue: 5, entries: [5, 10, 15, 20] }}
-            canSearch
-            showTotalEntries
-            isSorted
-            noEndBorder
-          />
-        </Card>
+
+        {/* Filters */}
+        <MyJobFilters
+          filters={filters}
+          setFilters={setFilters}
+          jobCounts={jobCounts}
+        />
+
+        {/* Results */}
+        <MDBox mt={4}>
+          <MyJobResults jobs={filteredJobs} loading={loading} />
+        </MDBox>
       </MDBox>
       <Footer />
     </DashboardLayout>

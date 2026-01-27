@@ -1,6 +1,8 @@
 import { useEffect, useState } from "react";
+import { Link } from "react-router-dom";
 import { auth, db } from "config/firebase";
-import { doc, getDoc, updateDoc } from "firebase/firestore";
+import { doc, getDoc, collection, getDocs } from "firebase/firestore";
+import { doesModelMatchJob } from "utils/matching";
 
 // @mui material components
 import Grid from "@mui/material/Grid";
@@ -27,8 +29,10 @@ import DefaultProjectCard from "examples/Cards/ProjectCards/DefaultProjectCard";
 // Overview page components
 import ProfileCompletion from "components/ProfileCompletion";
 import ConversationsWidget from "components/ConversationsWidget";
+import ZCardWidget from "components/ZCard/ZCardWidget";
 import Header from "layouts/pages/profile/components/Header";
 import PlatformSettings from "layouts/pages/profile/profile-overview/components/PlatformSettings";
+import JobCard from "layouts/jobs/search/components/JobCard";
 
 // Images
 import homeDecor1 from "assets/images/home-decor-1.jpg";
@@ -54,8 +58,11 @@ function Overview() {
     instagram: "",
     linkedin: "",
     youtube: "",
+    gender: [],
+    categories: [],
   });
   const [userRole, setUserRole] = useState(null);
+  const [matchingJobs, setMatchingJobs] = useState([]);
 
   const socialUrls = {
     facebook: "https://facebook.com/",
@@ -77,7 +84,7 @@ function Overview() {
         if (snap.exists()) {
           const data = snap.data();
           setUserRole(data.role || null);
-          setUserProfile({
+          const profile = {
             firstName: data.firstName || "",
             lastName: data.lastName || "",
             aboutMe: data.aboutMe || "",
@@ -89,7 +96,35 @@ function Overview() {
             instagram: data.instagram || "",
             linkedin: data.linkedin || "",
             youtube: data.youtube || "",
-          });
+            gender: data.gender || [],
+            categories: data.categories || [],
+          };
+          setUserProfile(profile);
+
+          // Fetch matching jobs for models
+          if (data.role === "model") {
+            try {
+              // Fetch all jobs (jobs don't have a status field when created)
+              const jobsSnap = await getDocs(collection(db, "jobs"));
+              const jobs = jobsSnap.docs
+                .map((docSnap) => ({
+                  id: docSnap.id,
+                  ...docSnap.data(),
+                }))
+                .sort((a, b) => {
+                  // Sort by createdAt descending (newest first)
+                  const dateA = a.createdAt?.toDate?.() || new Date(a.createdAt) || 0;
+                  const dateB = b.createdAt?.toDate?.() || new Date(b.createdAt) || 0;
+                  return dateB - dateA;
+                });
+
+              // Filter jobs that match the model's profile
+              const matched = jobs.filter((job) => doesModelMatchJob(profile, job));
+              setMatchingJobs(matched.slice(0, 4)); // Show max 4 jobs
+            } catch (error) {
+              console.error("Error fetching matching jobs:", error);
+            }
+          }
         }
       }
     };
@@ -108,6 +143,13 @@ function Overview() {
             {showProfileCompletion && (
               <Grid item xs={12}>
                 <ProfileCompletion />
+              </Grid>
+            )}
+
+            {/* Z-Card Widget for Models */}
+            {userRole === "model" && (
+              <Grid item xs={12} md={6} xl={4}>
+                <ZCardWidget />
               </Grid>
             )}
 
@@ -164,6 +206,43 @@ function Overview() {
             </Grid>
           </Grid>
         </MDBox>
+        {/* Matching Jobs Section - Only for Models */}
+        {userRole === "model" && matchingJobs.length > 0 && (
+          <>
+            <MDBox pt={2} px={2} lineHeight={1.25}>
+              <MDBox display="flex" justifyContent="space-between" alignItems="center">
+                <MDTypography variant="h6" fontWeight="medium">
+                  Jobs For You
+                </MDTypography>
+                <MDTypography
+                  component={Link}
+                  to="/jobs/search"
+                  variant="button"
+                  color="info"
+                  fontWeight="medium"
+                  sx={{ "&:hover": { textDecoration: "underline" } }}
+                >
+                  View All Jobs
+                </MDTypography>
+              </MDBox>
+              <MDBox mb={1}>
+                <MDTypography variant="button" color="text">
+                  Jobs matching your profile
+                </MDTypography>
+              </MDBox>
+            </MDBox>
+            <MDBox p={2}>
+              <Grid container spacing={6}>
+                {matchingJobs.map((job) => (
+                  <Grid item xs={12} md={6} xl={3} key={job.id}>
+                    <JobCard job={job} isMatch={true} />
+                  </Grid>
+                ))}
+              </Grid>
+            </MDBox>
+          </>
+        )}
+
         <MDBox pt={2} px={2} lineHeight={1.25}>
           <MDTypography variant="h6" fontWeight="medium">
             Projects

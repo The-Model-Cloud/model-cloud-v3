@@ -52,6 +52,9 @@ import {
   useMaterialUIController,
   setMiniSidenav,
   setOpenConfigurator,
+  loadPreferences,
+  setDarkModePreference,
+  getSystemDarkMode,
 } from "context";
 
 // Images
@@ -85,7 +88,7 @@ export default function App() {
     const isAuthRoute = pathname.startsWith('/authentication') || pathname === '/sign-in' || pathname === '/sign-up';
 
     // Exclude app routes from public profile detection
-    const appRoutes = ['/dashboard', '/edit-profile', '/jobs', '/models', '/admin', '/dashboards', '/pages', '/applications', '/ecommerce', '/authentication', '/sign-in', '/sign-up', '/messages', '/favourites', '/shared'];
+    const appRoutes = ['/dashboard', '/edit-profile', '/jobs', '/models', '/admin', '/dashboards', '/pages', '/applications', '/ecommerce', '/authentication', '/sign-in', '/sign-up', '/messages', '/favourites', '/shared', '/zcard'];
     const isAppRoute = appRoutes.some(route => pathname.startsWith(route));
 
     // Check if it's a public profile (single segment slug, not an app route)
@@ -144,6 +147,33 @@ export default function App() {
   }, [pathname]);
 
   const { user } = useAuth();
+
+  // Load UI preferences from Firestore when user logs in
+  useEffect(() => {
+    if (user?.uiPreferences) {
+      const prefs = user.uiPreferences;
+      // Load all saved preferences
+      const prefsToLoad = {};
+      if (prefs.miniSidenav !== undefined) prefsToLoad.miniSidenav = prefs.miniSidenav;
+      if (prefs.transparentSidenav !== undefined) prefsToLoad.transparentSidenav = prefs.transparentSidenav;
+      if (prefs.whiteSidenav !== undefined) prefsToLoad.whiteSidenav = prefs.whiteSidenav;
+      if (prefs.sidenavColor !== undefined) prefsToLoad.sidenavColor = prefs.sidenavColor;
+      if (prefs.fixedNavbar !== undefined) prefsToLoad.fixedNavbar = prefs.fixedNavbar;
+      if (prefs.darkModePreference !== undefined) {
+        prefsToLoad.darkModePreference = prefs.darkModePreference;
+        // Set darkMode based on preference
+        if (prefs.darkModePreference === "system") {
+          prefsToLoad.darkMode = getSystemDarkMode();
+        } else {
+          prefsToLoad.darkMode = prefs.darkModePreference === "dark";
+        }
+      }
+
+      if (Object.keys(prefsToLoad).length > 0) {
+        loadPreferences(dispatch, prefsToLoad);
+      }
+    }
+  }, [user?.uid, user?.uiPreferences, dispatch]);
 
   const getRoutes = (allRoutes) =>
     allRoutes.flatMap((route) => {

@@ -12,23 +12,43 @@ service cloud.firestore {
       return request.auth.uid in threadData.participants;
     }
 
-    // Users collection - existing rules
+    // Helper: Get the requesting user's role from their user document
+    function getUserRole() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role;
+    }
+
+    // Helper: Check if user is a super admin
+    function isSuperAdmin() {
+      return isAuthenticated() && getUserRole() == "super admin";
+    }
+
+    // Helper: Check if user is an admin (admin or super admin)
+    function isAdmin() {
+      return isAuthenticated() && (getUserRole() == "admin" || getUserRole() == "super admin");
+    }
+
+    // Helper: Check if user is a model
+    function isModel() {
+      return isAuthenticated() && getUserRole() == "model";
+    }
+
+    // Users collection
     match /users/{userId} {
       allow read: if isAuthenticated();
       allow create: if isAuthenticated() && request.auth.uid == userId;
-      allow update: if isAuthenticated() && request.auth.uid == userId;
-      allow delete: if false;
+      allow update: if isAuthenticated() && (request.auth.uid == userId || isAdmin());
+      allow delete: if isSuperAdmin();
 
       // User notifications subcollection
       match /notifications/{notificationId} {
-        allow read: if isAuthenticated() && request.auth.uid == userId;
+        allow read: if isAuthenticated() && (request.auth.uid == userId || isAdmin());
         allow create: if isAuthenticated();
-        allow update: if isAuthenticated() && request.auth.uid == userId;
-        allow delete: if isAuthenticated() && request.auth.uid == userId;
+        allow update: if isAuthenticated() && (request.auth.uid == userId || isAdmin());
+        allow delete: if isAuthenticated() && (request.auth.uid == userId || isSuperAdmin());
       }
     }
 
-    // Jobs collection - existing rules
+    // Jobs collection
     match /jobs/{jobId} {
       allow read: if isAuthenticated();
       allow create: if isAuthenticated();
@@ -42,6 +62,14 @@ service cloud.firestore {
         allow update: if isAuthenticated();
         allow delete: if isAuthenticated();
       }
+
+      // Job invitations subcollection
+      match /invitations/{invitationId} {
+        allow read: if isAuthenticated();
+        allow create: if isAuthenticated();
+        allow update: if isAuthenticated();
+        allow delete: if isAuthenticated();
+      }
     }
 
     // ============================================================================
@@ -50,27 +78,57 @@ service cloud.firestore {
 
     // Favourite Lists collection
     match /favouriteLists/{listId} {
-      // Read rules:
-      // - Owner can always read their own lists
-      // - Authenticated users can read lists with 'authenticated' visibility
-      // - Anyone can read lists with 'public' visibility
       allow read: if
         (isAuthenticated() && resource.data.ownerId == request.auth.uid)
         || (isAuthenticated() && resource.data.visibility == "authenticated")
-        || resource.data.visibility == "public";
+        || resource.data.visibility == "public"
+        || isAdmin();
 
-      // Create: Only authenticated users can create lists
-      // Must set themselves as the owner
       allow create: if isAuthenticated()
         && request.resource.data.ownerId == request.auth.uid;
 
-      // Update: Only the owner can update their lists
       allow update: if isAuthenticated()
-        && resource.data.ownerId == request.auth.uid;
+        && (resource.data.ownerId == request.auth.uid || isAdmin());
 
-      // Delete: Only the owner can delete their lists
       allow delete: if isAuthenticated()
-        && resource.data.ownerId == request.auth.uid;
+        && (resource.data.ownerId == request.auth.uid || isSuperAdmin());
+    }
+
+    // ============================================================================
+    // Z-CARDS - Model Composite Cards
+    // ============================================================================
+
+    match /zcards/{zcardId} {
+      // Read: Model can read their own, creator can read theirs, admins can read any,
+      // public/authenticated visibility rules apply for shared links
+      allow read: if 
+        (isAuthenticated() && resource.data.modelId == request.auth.uid)
+        || (isAuthenticated() && resource.data.createdBy == request.auth.uid)
+        || (isAuthenticated() && resource.data.visibility == "authenticated")
+        || resource.data.visibility == "public"
+        || isAdmin();
+
+      // Create: Models can create for themselves, admins can create for any model
+      allow create: if isAuthenticated()
+        && (
+          (isModel() && request.resource.data.modelId == request.auth.uid)
+          || isAdmin()
+        );
+
+      // Update: Models can update their own, creator can update theirs, admins can update any
+      allow update: if isAuthenticated()
+        && (
+          resource.data.modelId == request.auth.uid
+          || resource.data.createdBy == request.auth.uid
+          || isAdmin()
+        );
+
+      // Delete: Models can delete their own, admins can delete any
+      allow delete: if isAuthenticated()
+        && (
+          resource.data.modelId == request.auth.uid
+          || isAdmin()
+        );
     }
 
     // ============================================================================
@@ -79,30 +137,22 @@ service cloud.firestore {
 
     // Threads collection
     match /threads/{threadId} {
-      // Only participants can read threads
-      allow read: if isAuthenticated() && isParticipant(resource.data);
+      allow read: if isAuthenticated() && (isParticipant(resource.data) || isAdmin());
 
-      // Thread creation only via Cloud Functions (not direct client writes)
-      // This ensures proper validation of job access, participants, etc.
       allow create: if false;
 
-      // Participants can update only their own muted/archived flags and unread count
       allow update: if isAuthenticated()
         && isParticipant(resource.data)
         && request.resource.data.diff(resource.data).affectedKeys()
             .hasOnly(['muted', 'unread']);
 
-      // No direct deletes
-      allow delete: if false;
+      allow delete: if isSuperAdmin();
 
       // Messages subcollection
       match /messages/{messageId} {
-        // Only participants can read messages
         allow read: if isAuthenticated()
-          && isParticipant(get(/databases/$(database)/documents/threads/$(threadId)).data);
+          && (isParticipant(get(/databases/$(database)/documents/threads/$(threadId)).data) || isAdmin());
 
-        // Only participants can create messages
-        // Validates: sender matches auth, body is non-empty string under limit
         allow create: if isAuthenticated()
           && isParticipant(get(/databases/$(database)/documents/threads/$(threadId)).data)
           && request.resource.data.senderId == request.auth.uid
@@ -110,9 +160,18 @@ service cloud.firestore {
           && request.resource.data.body.size() > 0
           && request.resource.data.body.size() <= 5000;
 
-        // No updates or deletes on messages (immutable)
         allow update, delete: if false;
       }
+    }
+
+    // ============================================================================
+    // ADMIN LOGS - Audit trail for admin actions
+    // ============================================================================
+    
+    match /adminLogs/{logId} {
+      allow read: if isAdmin();
+      allow create: if isAdmin();
+      allow update, delete: if false;
     }
   }
 }

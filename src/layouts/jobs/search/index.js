@@ -2,9 +2,9 @@ import { useState } from "react";
 import DashboardLayout from "examples/LayoutContainers/DashboardLayout";
 import DashboardNavbar from "examples/Navbars/DashboardNavbar";
 import Footer from "examples/Footer";
-import Card from "@mui/material/Card";
 import MDBox from "components/MDBox";
 import MDTypography from "components/MDTypography";
+import Icon from "@mui/material/Icon";
 
 import JobSearchFilters from "./components/JobSearchFilters";
 import JobSearchResults from "./components/JobSearchResults";
@@ -18,15 +18,30 @@ function JobSearch() {
     <DashboardLayout>
       <DashboardNavbar />
       <MDBox my={3}>
-        <MDTypography variant="h4" mb={2}>Search Jobs</MDTypography>
+        {/* Page Header */}
+        <MDBox mb={3}>
+          <MDBox display="flex" alignItems="center" gap={1} mb={1}>
+            <Icon sx={{ color: "info.main", fontSize: "2rem" }}>work</Icon>
+            <MDTypography variant="h4" fontWeight="bold" color="dark">
+              Search Jobs
+            </MDTypography>
+          </MDBox>
+          <MDTypography variant="body2" color="text">
+            Discover opportunities that match your skills and preferences
+          </MDTypography>
+        </MDBox>
 
         {/* Filters */}
-        <JobSearchFilters setFilters={setFilters} setLoading={setLoading} setResults={setResults} />
+        <JobSearchFilters
+          setFilters={setFilters}
+          setLoading={setLoading}
+          setResults={setResults}
+        />
 
-        {/* Results Table */}
-        <Card sx={{ mt: 3 }}>
+        {/* Results */}
+        <MDBox mt={4}>
           <JobSearchResults results={results} loading={loading} />
-        </Card>
+        </MDBox>
       </MDBox>
       <Footer />
     </DashboardLayout>

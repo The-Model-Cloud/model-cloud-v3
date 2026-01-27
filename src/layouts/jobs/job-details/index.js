@@ -12,9 +12,11 @@ import { createJobApplicationNotification, createJobApplicationConfirmationNotif
 // API utilities
 import { sendApplicationEmail, sendModelApplicationConfirmation, createThread } from "utils/api";
 
+// Invitations
+import { markInvitationAsApplied } from "utils/invitations";
+
 // MUI and MD components
 import Card from "@mui/material/Card";
-import Grid from "@mui/material/Grid";
 import Modal from "@mui/material/Modal";
 import Box from "@mui/material/Box";
 import Fade from "@mui/material/Fade";
@@ -25,7 +27,6 @@ import Icon from "@mui/material/Icon";
 import MDBox from "components/MDBox";
 import MDButton from "components/MDButton";
 import MDTypography from "components/MDTypography";
-import MDBadge from "components/MDBadge";
 import Snackbar from "@mui/material/Snackbar";
 
 import DashboardLayout from "examples/LayoutContainers/DashboardLayout";
@@ -36,6 +37,7 @@ import Footer from "examples/Footer";
 import JobImages from "./components/JobImages";
 import JobInfo from "./components/JobInfo";
 import JobApplicants from "./components/JobApplicants";
+import MatchingModels from "./components/MatchingModels";
 import ShortlistForJobModal from "components/Favourites/ShortlistForJobModal";
 
 // Favourites utilities
@@ -89,7 +91,7 @@ function JobDetails() {
         fetchCurrentModel();
     }, []);
 
-    const isMatch = model && job && doesModelMatchJob(model, job);
+    // Note: doesModelMatchJob is called inline in the JSX below
 
     const handleConfirmApply = async () => {
         if (!model || !job) {
@@ -154,20 +156,25 @@ function JobDetails() {
 
             console.log("✅ Core application process completed successfully!");
 
-            // ✅ Step 4: Get client details and send notifications/emails (non-critical)
+            // ✅ Step 4: Mark invitation as applied (if model was invited)
+            console.log("Step 4: Checking for invitation...");
+            await markInvitationAsApplied(job.id, model.uid)
+                .catch(err => console.warn("⚠️ Invitation status update skipped:", err.message));
+
+            // ✅ Step 5: Get client details and send notifications/emails (non-critical)
             try {
-                console.log("Step 4: Fetching client details...");
+                console.log("Step 5: Fetching client details...");
                 const clientSnap = await getDoc(doc(db, "users", job.userId));
                 if (clientSnap.exists()) {
                     const client = clientSnap.data();
 
-                    // ✅ Step 5: Create notification for client
-                    console.log("Step 5: Creating notification for client...");
+                    // ✅ Step 6: Create notification for client
+                    console.log("Step 6: Creating notification for client...");
                     await createJobApplicationNotification(job.userId, model, job)
                         .catch(err => console.warn("⚠️ Notification creation failed:", err.message));
 
-                    // ✅ Step 6: Send email to client
-                    console.log("Step 6: Sending email to client...");
+                    // ✅ Step 7: Send email to client
+                    console.log("Step 7: Sending email to client...");
                     await sendApplicationEmail(
                         client.email,
                         `${model.firstName} ${model.lastName || ""}`,
@@ -179,13 +186,13 @@ function JobDetails() {
                 console.warn("⚠️ Client notification/email failed (non-critical):", clientError.message);
             }
 
-            // ✅ Step 7: Create confirmation notification for model
-            console.log("Step 7: Creating confirmation notification for model...");
+            // ✅ Step 8: Create confirmation notification for model
+            console.log("Step 8: Creating confirmation notification for model...");
             await createJobApplicationConfirmationNotification(model.uid, job)
                 .catch(err => console.warn("⚠️ Model notification creation failed:", err.message));
 
-            // ✅ Step 8: Send confirmation email to model
-            console.log("Step 8: Sending confirmation email to model...");
+            // ✅ Step 9: Send confirmation email to model
+            console.log("Step 9: Sending confirmation email to model...");
             await sendModelApplicationConfirmation(
                 model.email,
                 `${model.firstName} ${model.lastName || ""}`,
@@ -386,144 +393,157 @@ function JobDetails() {
         <DashboardLayout>
             <DashboardNavbar />
             <MDBox py={3}>
-                <Card sx={{ overflow: "visible" }}>
-                    <MDBox p={3}>
-                        <MDBox mb={3}>
-                            <MDTypography variant="h5" fontWeight="medium">
-                                Job Details
-                            </MDTypography>
-                        </MDBox>
+                {job && (
+                    <>
+                        {/* Hero Section with Images */}
+                        {job.media && job.media.length > 0 && (
+                            <Card sx={{ overflow: "hidden", mb: 3 }}>
+                                <JobImages media={job.media} />
+                            </Card>
+                        )}
 
-                        {job && (
-                            <Grid container spacing={3}>
-                                <Grid item xs={12} lg={6} xl={5}>
-                                    <JobImages media={job.media} />
-                                </Grid>
-                                <Grid item xs={12} lg={5} sx={{ mx: "auto" }}>
-                                    <JobInfo job={job} />
+                        {/* Main Content Card */}
+                        <Card sx={{ overflow: "visible" }}>
+                            <MDBox p={{ xs: 2, md: 4 }}>
+                                <JobInfo job={job} />
 
-                                    {/* Application status and buttons */}
-                                    {model && job.userId !== model.uid && (
-                                        <MDBox mt={4}>
-                                            {doesModelMatchJob(model, job) ? (
-                                                <>
-                                                    {hasApplied ? (
-                                                        <MDBox>
-                                                            <MDTypography variant="body2" color="success" fontWeight="medium" mb={2}>
+                                {/* Application status and buttons */}
+                                {model && job.userId !== model.uid && (
+                                    <MDBox mt={4} pt={3} sx={{ borderTop: "1px solid", borderColor: "grey.200" }}>
+                                        {doesModelMatchJob(model, job) ? (
+                                            <>
+                                                {hasApplied ? (
+                                                    <MDBox>
+                                                        <MDBox display="flex" alignItems="center" gap={1} mb={2}>
+                                                            <Icon sx={{ color: "success.main" }}>check_circle</Icon>
+                                                            <MDTypography variant="body1" color="success" fontWeight="medium">
                                                                 You've applied for this job
                                                             </MDTypography>
-                                                            <MDBox display="flex" gap={2} flexWrap="wrap">
-                                                                <MDButton
-                                                                    color="info"
-                                                                    variant="outlined"
-                                                                    onClick={handleMessageClient}
-                                                                    disabled={isCreatingThread}
-                                                                >
-                                                                    <Icon sx={{ mr: 1 }}>message</Icon>
-                                                                    {isCreatingThread ? "Opening..." : "Message Client"}
-                                                                </MDButton>
-                                                                <MDButton
-                                                                    color="error"
-                                                                    variant="outlined"
-                                                                    onClick={() => setShowCancelModal(true)}
-                                                                >
-                                                                    Cancel Application
-                                                                </MDButton>
-                                                            </MDBox>
                                                         </MDBox>
-                                                    ) : applicationStatus === "cancelled" ? (
-                                                        <MDBox>
-                                                            <MDTypography variant="body2" color="warning" fontWeight="medium" mb={2}>
-                                                                Application Cancelled
-                                                            </MDTypography>
+                                                        <MDBox display="flex" gap={2} flexWrap="wrap">
                                                             <MDButton
                                                                 color="info"
                                                                 variant="gradient"
-                                                                onClick={() => setShowApplyModal(true)}
+                                                                onClick={handleMessageClient}
+                                                                disabled={isCreatingThread}
+                                                                startIcon={<Icon>message</Icon>}
                                                             >
-                                                                Apply Again
+                                                                {isCreatingThread ? "Opening..." : "Message Client"}
+                                                            </MDButton>
+                                                            <MDButton
+                                                                color="error"
+                                                                variant="outlined"
+                                                                onClick={() => setShowCancelModal(true)}
+                                                            >
+                                                                Cancel Application
                                                             </MDButton>
                                                         </MDBox>
-                                                    ) : (
+                                                    </MDBox>
+                                                ) : applicationStatus === "cancelled" ? (
+                                                    <MDBox>
+                                                        <MDBox display="flex" alignItems="center" gap={1} mb={2}>
+                                                            <Icon sx={{ color: "warning.main" }}>info</Icon>
+                                                            <MDTypography variant="body1" color="warning" fontWeight="medium">
+                                                                Application Previously Cancelled
+                                                            </MDTypography>
+                                                        </MDBox>
                                                         <MDButton
                                                             color="info"
                                                             variant="gradient"
                                                             onClick={() => setShowApplyModal(true)}
+                                                            size="large"
                                                         >
-                                                            Apply Now
+                                                            Apply Again
                                                         </MDButton>
-                                                    )}
-                                                </>
-                                            ) : (
+                                                    </MDBox>
+                                                ) : (
+                                                    <MDButton
+                                                        color="info"
+                                                        variant="gradient"
+                                                        onClick={() => setShowApplyModal(true)}
+                                                        size="large"
+                                                        sx={{ px: 4, py: 1.5 }}
+                                                    >
+                                                        Apply Now
+                                                    </MDButton>
+                                                )}
+                                            </>
+                                        ) : (
+                                            <MDBox display="flex" alignItems="center" gap={1} p={2} borderRadius="lg" sx={{ backgroundColor: "error.lighter" }}>
+                                                <Icon sx={{ color: "error.main" }}>block</Icon>
                                                 <MDTypography color="error" variant="body2">
-                                                    Sorry, you don't match this job's requirements.
+                                                    Sorry, you can't apply as you don't match this job's requirements.
                                                 </MDTypography>
-                                            )}
-                                        </MDBox>
-                                    )}
-                                    <Snackbar
-                                        open={snackOpen}
-                                        autoHideDuration={4000}
-                                        onClose={() => setSnackOpen(false)}
-                                        message={snackMessage}
-                                    />
+                                            </MDBox>
+                                        )}
+                                    </MDBox>
+                                )}
 
-                                </Grid>
-                            </Grid>
-                        )}
-
-
-                        {/* Shortlist section for job owner */}
-                        {job && model && job.userId === model.uid && (
-                            <MDBox mt={4} mb={2}>
-                                <MDBox display="flex" alignItems="center" justifyContent="space-between" mb={2}>
-                                    <MDTypography variant="h6" fontWeight="medium">
-                                        Model Shortlist
-                                    </MDTypography>
-                                    <MDButton
-                                        variant="outlined"
-                                        color="info"
-                                        size="small"
-                                        onClick={() => setShortlistModalOpen(true)}
-                                        startIcon={<Icon>playlist_add</Icon>}
-                                    >
-                                        {linkedShortlist ? "Change Shortlist" : "Add Shortlist"}
-                                    </MDButton>
-                                </MDBox>
-                                {linkedShortlist ? (
-                                    <Card sx={{ p: 2, backgroundColor: "grey.100" }}>
-                                        <MDBox display="flex" alignItems="center" justifyContent="space-between">
-                                            <MDBox>
-                                                <MDTypography variant="body1" fontWeight="medium">
-                                                    {linkedShortlist.title}
-                                                </MDTypography>
-                                                <MDTypography variant="caption" color="text">
-                                                    {linkedShortlist.modelCount || 0} models in shortlist
+                                {/* Shortlist section for job owner */}
+                                {model && job.userId === model.uid && (
+                                    <MDBox mt={4} pt={3} sx={{ borderTop: "1px solid", borderColor: "grey.200" }}>
+                                        <MDBox display="flex" alignItems="center" justifyContent="space-between" mb={2}>
+                                            <MDBox display="flex" alignItems="center" gap={1}>
+                                                <Icon sx={{ color: "info.main" }}>bookmark</Icon>
+                                                <MDTypography variant="h6" fontWeight="medium">
+                                                    Model Shortlist
                                                 </MDTypography>
                                             </MDBox>
                                             <MDButton
-                                                variant="text"
+                                                variant="outlined"
                                                 color="info"
                                                 size="small"
-                                                href={`/favourites/${linkedShortlist.id}`}
+                                                onClick={() => setShortlistModalOpen(true)}
+                                                startIcon={<Icon>playlist_add</Icon>}
                                             >
-                                                View List
+                                                {linkedShortlist ? "Change Shortlist" : "Add Shortlist"}
                                             </MDButton>
                                         </MDBox>
-                                    </Card>
-                                ) : (
-                                    <MDTypography variant="body2" color="text">
-                                        No shortlist linked to this job yet. Create or link a favourite list to shortlist models for this job.
-                                    </MDTypography>
+                                        {linkedShortlist ? (
+                                            <MDBox p={2} borderRadius="lg" sx={{ backgroundColor: "grey.100" }}>
+                                                <MDBox display="flex" alignItems="center" justifyContent="space-between">
+                                                    <MDBox>
+                                                        <MDTypography variant="body1" fontWeight="medium">
+                                                            {linkedShortlist.title}
+                                                        </MDTypography>
+                                                        <MDTypography variant="caption" color="text">
+                                                            {linkedShortlist.modelCount || 0} models in shortlist
+                                                        </MDTypography>
+                                                    </MDBox>
+                                                    <MDButton
+                                                        variant="text"
+                                                        color="info"
+                                                        size="small"
+                                                        href={`/favourites/${linkedShortlist.id}`}
+                                                    >
+                                                        View List
+                                                    </MDButton>
+                                                </MDBox>
+                                            </MDBox>
+                                        ) : (
+                                            <MDTypography variant="body2" color="text">
+                                                No shortlist linked to this job yet. Create or link a favourite list to shortlist models for this job.
+                                            </MDTypography>
+                                        )}
+                                    </MDBox>
                                 )}
                             </MDBox>
-                        )}
+                        </Card>
 
-                        {job && (
-                            <JobApplicants job={job} models={models} />
-                        )}
-                    </MDBox>
-                </Card>
+                        {/* Applicants Section - separate card */}
+                        <JobApplicants job={job} models={models} />
+
+                        {/* Matching Models Section - for job owner */}
+                        <MatchingModels job={job} />
+
+                        <Snackbar
+                            open={snackOpen}
+                            autoHideDuration={4000}
+                            onClose={() => setSnackOpen(false)}
+                            message={snackMessage}
+                        />
+                    </>
+                )}
             </MDBox>
             <Footer />
 

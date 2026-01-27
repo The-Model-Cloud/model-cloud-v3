@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useParams, useNavigate, Link } from "react-router-dom";
-import { db } from "config/firebase";
+import { auth, db } from "config/firebase";
 import { collection, doc, getDocs, query, updateDoc, where } from "firebase/firestore";
 import { useAuth } from "context/AuthContext";
 import { Formik, Form } from "formik";
