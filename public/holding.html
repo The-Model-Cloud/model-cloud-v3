@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <link rel="shortcut icon" href="favicon.png" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#1A1A1A" />
+    <link rel="apple-touch-icon" sizes="76x76" href="apple-icon.png" />
+    <title>The Model Cloud - Change is Coming</title>
+    <link
+      rel="stylesheet"
+      href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;700&display=swap"
+    />
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+
+      html, body {
+        height: 100%;
+      }
+
+      body {
+        font-family: 'Montserrat', sans-serif;
+        background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f0f23 100%);
+        min-height: 100vh;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        padding: 2rem;
+        color: #ffffff;
+      }
+
+      .container {
+        text-align: center;
+        max-width: 800px;
+        width: 100%;
+      }
+
+      .logo {
+        width: 100%;
+        max-width: 500px;
+        height: auto;
+        margin-bottom: 3rem;
+      }
+
+      .message {
+        font-size: clamp(2rem, 8vw, 4rem);
+        font-weight: 700;
+        letter-spacing: 0.1em;
+        text-transform: uppercase;
+        background: linear-gradient(90deg, #ff7bac 0%, #ffffff 50%, #ff7bac 100%);
+        background-size: 200% auto;
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        background-clip: text;
+        animation: shimmer 3s ease-in-out infinite;
+      }
+
+      @keyframes shimmer {
+        0%, 100% {
+          background-position: 0% center;
+        }
+        50% {
+          background-position: 100% center;
+        }
+      }
+
+      @media (max-width: 480px) {
+        .logo {
+          max-width: 280px;
+          margin-bottom: 2rem;
+        }
+
+        body {
+          padding: 1.5rem;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <svg class="logo" viewBox="0 0 6430 823" xmlns="http://www.w3.org/2000/svg">
+        <defs>
+          <style>
+            .logo-pink { fill: #ff7bac; font-size: 710.25px; font-family: Montserrat, sans-serif; font-weight: 700; }
+            .logo-white { fill: #fff; font-size: 710.25px; font-family: Montserrat, sans-serif; font-weight: 700; }
+          </style>
+        </defs>
+        <text transform="translate(65.46 679.19)">
+          <tspan class="logo-pink">//</tspan>
+          <tspan class="logo-white" x="487.95" y="0">themodel.cloud</tspan>
+        </text>
+      </svg>
+      <h1 class="message">Change is Coming</h1>
+    </div>
+  </body>
+</html>

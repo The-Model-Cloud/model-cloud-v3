@@ -1,6 +1,6 @@
 {
-  "name": "material-dashboard-3-pro-react",
-  "version": "2.3.0",
+  "name": "the-model-cloud",
+  "version": "3.2.3",
   "private": true,
   "author": "Russell English",
   "homepage": ".",
@@ -108,6 +108,7 @@
     "eslint-plugin-jsx-a11y": "6.10.2",
     "eslint-plugin-react": "7.37.2",
     "eslint-plugin-react-hooks": "5.0.0",
+    "firebase-admin": "^13.6.0",
     "ftp-deploy": "^2.4.7",
     "node-notifier": "^10.0.1"
   },

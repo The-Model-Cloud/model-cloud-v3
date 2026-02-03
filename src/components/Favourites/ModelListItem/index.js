@@ -38,6 +38,7 @@ function ModelListItem({
   showDeleteButton,
   onDelete,
   isHidden,
+  isUnverified,
 }) {
   const {
     uid,
@@ -145,6 +146,21 @@ function ModelListItem({
               }}
             />
           )}
+          {isUnverified && !isHidden && (
+            <Chip
+              label="UNVERIFIED"
+              size="small"
+              icon={<Icon sx={{ fontSize: "14px !important" }}>gpp_maybe</Icon>}
+              sx={{
+                backgroundColor: "error.main",
+                color: "white",
+                fontWeight: "bold",
+                fontSize: "0.65rem",
+                height: 22,
+                "& .MuiChip-icon": { color: "white" },
+              }}
+            />
+          )}
         </MDBox>
 
         <MDBox display="flex" alignItems="center" mt={0.5}>
@@ -225,6 +241,7 @@ ModelListItem.defaultProps = {
   showDeleteButton: false,
   onDelete: null,
   isHidden: false,
+  isUnverified: false,
 };
 
 ModelListItem.propTypes = {
@@ -246,6 +263,7 @@ ModelListItem.propTypes = {
   showDeleteButton: PropTypes.bool,
   onDelete: PropTypes.func,
   isHidden: PropTypes.bool,
+  isUnverified: PropTypes.bool,
 };
 
 export default ModelListItem;

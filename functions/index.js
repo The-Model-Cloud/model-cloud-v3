@@ -93,6 +93,106 @@ if (sendgridApiKey) {
 }
 
 
+// ============================================================================
+// SYSTEM SETTINGS HELPERS
+// ============================================================================
+
+/**
+ * Check if emails are enabled in system settings
+ * @returns {Promise<boolean>} - Whether emails are enabled
+ */
+const isEmailEnabled = async () => {
+  try {
+    const settingsDoc = await db.collection("settings").doc("system").get();
+    if (!settingsDoc.exists) {
+      // If no settings document exists, emails are enabled by default
+      return true;
+    }
+    const settings = settingsDoc.data();
+    // Default to true if emailEnabled is not set
+    return settings.emailEnabled !== false;
+  } catch (error) {
+    console.error("Error checking email settings:", error);
+    // Default to true on error
+    return true;
+  }
+};
+
+/**
+ * Get system settings (Super Admin only)
+ */
+exports.getSystemSettings = onCall(async (request) => {
+  if (!request.auth) {
+    throw new HttpsError("unauthenticated", "User must be logged in");
+  }
+
+  // Verify caller is a super admin
+  const callerDoc = await db.collection("users").doc(request.auth.uid).get();
+  if (!callerDoc.exists || callerDoc.data().role !== "super admin") {
+    throw new HttpsError("permission-denied", "Only super admins can access system settings");
+  }
+
+  try {
+    const settingsDoc = await db.collection("settings").doc("system").get();
+
+    if (!settingsDoc.exists) {
+      // Return default settings if none exist
+      return {
+        success: true,
+        settings: {
+          emailEnabled: true,
+        },
+      };
+    }
+
+    return {
+      success: true,
+      settings: settingsDoc.data(),
+    };
+  } catch (error) {
+    console.error("Error getting system settings:", error);
+    throw new HttpsError("internal", error.message);
+  }
+});
+
+/**
+ * Update system settings (Super Admin only)
+ */
+exports.updateSystemSettings = onCall(async (request) => {
+  if (!request.auth) {
+    throw new HttpsError("unauthenticated", "User must be logged in");
+  }
+
+  // Verify caller is a super admin
+  const callerDoc = await db.collection("users").doc(request.auth.uid).get();
+  if (!callerDoc.exists || callerDoc.data().role !== "super admin") {
+    throw new HttpsError("permission-denied", "Only super admins can update system settings");
+  }
+
+  const { settings } = request.data;
+
+  if (!settings || typeof settings !== "object") {
+    throw new HttpsError("invalid-argument", "Settings object is required");
+  }
+
+  try {
+    await db.collection("settings").doc("system").set(
+      {
+        ...settings,
+        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        updatedBy: request.auth.uid,
+      },
+      { merge: true }
+    );
+
+    return { success: true };
+  } catch (error) {
+    console.error("Error updating system settings:", error);
+    throw new HttpsError("internal", error.message);
+  }
+});
+
+
 exports.updateInstagramFollowerCount = onCall(async (request) => {
   const { uid, instagramUsername } = request.data;
 
@@ -132,6 +232,13 @@ exports.sendApplicationEmail = onCall(async (request) => {
     return { success: false, skipped: true };
   }
 
+  // Check if emails are enabled in system settings
+  const emailEnabled = await isEmailEnabled();
+  if (!emailEnabled) {
+    console.log("📧 Email disabled by system settings");
+    return { success: false, skipped: true, reason: "disabled" };
+  }
+
   const { to, modelName, jobTitle, jobReference } = request.data;
 
   if (!to || !modelName || !jobTitle || !jobReference) {
@@ -161,6 +268,13 @@ exports.sendApplicationEmail = onCall(async (request) => {
 exports.sendModelApplicationConfirmation = onCall(async (request) => {
   if (!sendgridApiKey) {
     return { success: false, skipped: true };
+  }
+
+  // Check if emails are enabled in system settings
+  const emailEnabled = await isEmailEnabled();
+  if (!emailEnabled) {
+    console.log("📧 Email disabled by system settings");
+    return { success: false, skipped: true, reason: "disabled" };
   }
 
   const { to, modelName, jobTitle, jobReference } = request.data;
@@ -198,6 +312,13 @@ exports.sendJobInvitationEmail = onCall(async (request) => {
   if (!sendgridApiKey) {
     console.warn("SendGrid not configured");
     return { success: false, skipped: true };
+  }
+
+  // Check if emails are enabled in system settings
+  const emailEnabled = await isEmailEnabled();
+  if (!emailEnabled) {
+    console.log("📧 Email disabled by system settings");
+    return { success: false, skipped: true, reason: "disabled" };
   }
 
   const { to, modelName, clientName, companyName, jobTitle, jobReference } = request.data;
@@ -238,6 +359,217 @@ exports.sendJobInvitationEmail = onCall(async (request) => {
 });
 
 
+// HTTP endpoint for sending account verification email to model
+exports.sendVerificationEmail = onCall(async (request) => {
+  if (!request.auth) {
+    throw new HttpsError("unauthenticated", "User must be logged in");
+  }
+
+  if (!sendgridApiKey) {
+    console.warn("SendGrid not configured");
+    return { success: false, skipped: true };
+  }
+
+  // Check if emails are enabled in system settings
+  const emailEnabled = await isEmailEnabled();
+  if (!emailEnabled) {
+    console.log("📧 Email disabled by system settings");
+    return { success: false, skipped: true, reason: "disabled" };
+  }
+
+  const { to, modelName } = request.data;
+
+  if (!to || !modelName) {
+    throw new HttpsError("invalid-argument", "Missing required fields");
+  }
+
+  const msg = {
+    to,
+    from: sendgridFromEmail,
+    subject: "Your Account Has Been Verified - The Model Cloud",
+    text: `Hi ${modelName},\n\nGreat news! Your account on The Model Cloud has been verified.\n\nYou can now:\n- Apply for jobs\n- Create your own Z-Card\n- Appear in search listings\n- Be matched to relevant jobs\n\nLog in now to explore opportunities: https://themodel.cloud/dashboard\n\nWelcome to The Model Cloud!\n\nThe Model Cloud Team`,
+    html: `
+      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+        <h2 style="color: #2e7d32;">Your Account Has Been Verified!</h2>
+        <p>Hi ${modelName},</p>
+        <p>Great news! Your account on <strong>The Model Cloud</strong> has been verified.</p>
+        <div style="background-color: #e8f5e9; padding: 20px; border-radius: 8px; margin: 20px 0; border-left: 4px solid #2e7d32;">
+          <h3 style="margin: 0 0 15px 0; color: #2e7d32;">You can now:</h3>
+          <ul style="margin: 0; padding-left: 20px; color: #333;">
+            <li style="margin-bottom: 8px;">Apply for jobs</li>
+            <li style="margin-bottom: 8px;">Create your own Z-Card</li>
+            <li style="margin-bottom: 8px;">Appear in search listings</li>
+            <li style="margin-bottom: 8px;">Be matched to relevant jobs</li>
+          </ul>
+        </div>
+        <p style="margin: 30px 0;">
+          <a href="https://themodel.cloud/dashboard" style="background-color: #2e7d32; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; font-weight: bold;">Go to Dashboard</a>
+        </p>
+        <p style="color: #666; font-size: 14px;">Welcome to The Model Cloud!</p>
+        <p style="color: #666; font-size: 14px;">The Model Cloud Team</p>
+      </div>
+    `
+  };
+
+  await sgMail.send(msg);
+
+  return { success: true };
+});
+
+
+// HTTP endpoint for sending account unverification email to model
+exports.sendUnverificationEmail = onCall(async (request) => {
+  if (!request.auth) {
+    throw new HttpsError("unauthenticated", "User must be logged in");
+  }
+
+  if (!sendgridApiKey) {
+    console.warn("SendGrid not configured");
+    return { success: false, skipped: true };
+  }
+
+  // Check if emails are enabled in system settings
+  const emailEnabled = await isEmailEnabled();
+  if (!emailEnabled) {
+    console.log("📧 Email disabled by system settings");
+    return { success: false, skipped: true, reason: "disabled" };
+  }
+
+  const { to, modelName } = request.data;
+
+  if (!to || !modelName) {
+    throw new HttpsError("invalid-argument", "Missing required fields");
+  }
+
+  const msg = {
+    to,
+    from: sendgridFromEmail,
+    subject: "Account Update Required - The Model Cloud",
+    text: `Hi ${modelName},\n\nYour account on The Model Cloud has been marked as requiring updates.\n\nWhat this means:\n- Your profile won't appear in search results for clients\n- You won't be matched to new jobs\n- You can still access your account and update your profile\n\nTo restore full access, please log in and update the content on your account. Once your profile is complete, an admin will review and verify your account.\n\nUpdate your profile here: https://themodel.cloud/edit-profile\n\nIf you have any questions, please contact our support team.\n\nThe Model Cloud Team`,
+    html: `
+      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+        <h2 style="color: #ed6c02;">Account Update Required</h2>
+        <p>Hi ${modelName},</p>
+        <p>Your account on <strong>The Model Cloud</strong> has been marked as requiring updates.</p>
+        <div style="background-color: #fff3e0; padding: 20px; border-radius: 8px; margin: 20px 0; border-left: 4px solid #ed6c02;">
+          <h3 style="margin: 0 0 15px 0; color: #ed6c02;">What this means:</h3>
+          <ul style="margin: 0; padding-left: 20px; color: #333;">
+            <li style="margin-bottom: 8px;">Your profile won't appear in search results for clients</li>
+            <li style="margin-bottom: 8px;">You won't be matched to new jobs</li>
+            <li style="margin-bottom: 8px;">You can still access your account and update your profile</li>
+          </ul>
+        </div>
+        <p>To restore full access, please log in and update the content on your account. Once your profile is complete, an admin will review and verify your account.</p>
+        <p style="margin: 30px 0;">
+          <a href="https://themodel.cloud/edit-profile" style="background-color: #ed6c02; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; font-weight: bold;">Update Your Profile</a>
+        </p>
+        <p style="color: #666; font-size: 14px;">If you have any questions, please contact our support team.</p>
+        <p style="color: #666; font-size: 14px;">The Model Cloud Team</p>
+      </div>
+    `
+  };
+
+  await sgMail.send(msg);
+
+  return { success: true };
+});
+
+
+// HTTP endpoint for sending welcome email to new users created by admin
+exports.sendWelcomeEmail = onCall(async (request) => {
+  if (!request.auth) {
+    throw new HttpsError("unauthenticated", "User must be logged in");
+  }
+
+  if (!sendgridApiKey) {
+    console.warn("SendGrid not configured");
+    return { success: false, skipped: true };
+  }
+
+  // Check if emails are enabled in system settings
+  const emailEnabled = await isEmailEnabled();
+  if (!emailEnabled) {
+    console.log("📧 Email disabled by system settings");
+    return { success: false, skipped: true, reason: "disabled" };
+  }
+
+  const { email, firstName, lastName, role, password } = request.data;
+
+  if (!email || !firstName || !lastName || !role || !password) {
+    throw new HttpsError("invalid-argument", "Missing required fields");
+  }
+
+  // Format role for display
+  const formattedRole = role
+    .split(" ")
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(" ");
+
+  const loginUrl = "https://themodel.cloud/sign-in";
+  const supportEmail = "support@themodel.cloud";
+
+  const msg = {
+    to: email,
+    from: sendgridFromEmail,
+    subject: `Welcome to The Model Cloud - Your Account Details`,
+    text: `Welcome to The Model Cloud, ${firstName}!\n\nYour account has been created with the following details:\n\nEmail: ${email}\nPassword: ${password}\nRole: ${formattedRole}\n\nYou can log in at: ${loginUrl}\n\nFor security reasons, we recommend changing your password after your first login.\n\nIf you have any questions, please contact us at ${supportEmail}.\n\nBest regards,\nThe Model Cloud Team`,
+    html: `
+      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+        <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 30px; text-align: center; border-radius: 8px 8px 0 0;">
+          <h1 style="color: white; margin: 0;">Welcome to The Model Cloud</h1>
+        </div>
+        <div style="padding: 30px; background-color: #f8f9fa; border-radius: 0 0 8px 8px;">
+          <p style="font-size: 16px;">Hi ${firstName},</p>
+          <p style="font-size: 16px;">Your account has been created and you're ready to get started!</p>
+
+          <div style="background-color: white; padding: 20px; border-radius: 8px; margin: 20px 0; border: 1px solid #e9ecef;">
+            <h3 style="margin: 0 0 15px 0; color: #333;">Your Login Details</h3>
+            <table style="width: 100%; border-collapse: collapse;">
+              <tr>
+                <td style="padding: 8px 0; color: #666; width: 100px;">Email:</td>
+                <td style="padding: 8px 0; font-weight: bold;">${email}</td>
+              </tr>
+              <tr>
+                <td style="padding: 8px 0; color: #666;">Password:</td>
+                <td style="padding: 8px 0; font-weight: bold; font-family: monospace; background-color: #f8f9fa; padding-left: 10px;">${password}</td>
+              </tr>
+              <tr>
+                <td style="padding: 8px 0; color: #666;">Role:</td>
+                <td style="padding: 8px 0; font-weight: bold;">${formattedRole}</td>
+              </tr>
+            </table>
+          </div>
+
+          <p style="margin: 30px 0; text-align: center;">
+            <a href="${loginUrl}" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 14px 28px; text-decoration: none; border-radius: 6px; font-weight: bold; display: inline-block;">Log In Now</a>
+          </p>
+
+          <div style="background-color: #fff3cd; padding: 15px; border-radius: 6px; margin: 20px 0; border-left: 4px solid #ffc107;">
+            <p style="margin: 0; color: #856404; font-size: 14px;">
+              <strong>Security Tip:</strong> For your security, we recommend changing your password after your first login.
+            </p>
+          </div>
+
+          <p style="color: #666; font-size: 14px;">If you have any questions or need assistance, please contact us at <a href="mailto:${supportEmail}" style="color: #667eea;">${supportEmail}</a>.</p>
+
+          <hr style="border: none; border-top: 1px solid #e9ecef; margin: 25px 0;">
+
+          <p style="color: #999; font-size: 12px; text-align: center;">
+            The Model Cloud Team<br>
+            <a href="https://themodel.cloud" style="color: #667eea;">themodel.cloud</a>
+          </p>
+        </div>
+      </div>
+    `
+  };
+
+  await sgMail.send(msg);
+  console.log(`✅ Welcome email sent to ${email}`);
+
+  return { success: true };
+});
+
+
 // Admin notification emails - add more recipients here as needed
 const ADMIN_NOTIFICATION_EMAILS = [
   "russell@themodel.cloud"
@@ -247,6 +579,13 @@ const ADMIN_NOTIFICATION_EMAILS = [
 exports.onUserCreated = onDocumentCreated("users/{userId}", async (event) => {
     if (!sendgridApiKey) {
       console.warn("SendGrid not configured - skipping admin notification");
+      return null;
+    }
+
+    // Check if emails are enabled in system settings
+    const emailEnabled = await isEmailEnabled();
+    if (!emailEnabled) {
+      console.log("📧 Admin notification email disabled by system settings");
       return null;
     }
 
@@ -513,6 +852,13 @@ exports.onMessageCreated = onDocumentCreated(
       return { success: true, emailsSent: 0 };
     }
 
+    // Check if emails are enabled in system settings
+    const emailEnabled = await isEmailEnabled();
+    if (!emailEnabled) {
+      console.log("📧 Message notification emails disabled by system settings");
+      return { success: true, emailsSent: 0 };
+    }
+
     const senderDetails = threadData.participantDetails?.[senderId] || {};
     const senderName = `${senderDetails.firstName || ""} ${senderDetails.lastName || ""}`.trim() || "Someone";
 
@@ -610,6 +956,13 @@ exports.sendShareListEmail = onCall(async (request) => {
   if (!sendgridApiKey) {
     console.warn("SendGrid not configured");
     return { success: false, skipped: true };
+  }
+
+  // Check if emails are enabled in system settings
+  const emailEnabled = await isEmailEnabled();
+  if (!emailEnabled) {
+    console.log("📧 Share list email disabled by system settings");
+    return { success: false, skipped: true, reason: "disabled" };
   }
 
   const { to, listTitle, listDescription, shareUrl, modelCount, senderName } = request.data;
@@ -1078,7 +1431,8 @@ exports.adminResetUserPassword = onCall(async (request) => {
   }
 
   // 5. Send email with new password if requested
-  if (sendEmail && userEmail && sendgridApiKey) {
+  const emailEnabled = await isEmailEnabled();
+  if (sendEmail && userEmail && sendgridApiKey && emailEnabled) {
     try {
       const msg = {
         to: userEmail,
@@ -1122,7 +1476,7 @@ exports.adminResetUserPassword = onCall(async (request) => {
         userEmail,
         userName,
         userRole: userData.role,
-        emailSent: sendEmail && !!userEmail,
+        emailSent: sendEmail && !!userEmail && emailEnabled,
       },
       createdAt: admin.firestore.FieldValue.serverTimestamp(),
       timestamp: new Date().toISOString(),
@@ -1135,7 +1489,7 @@ exports.adminResetUserPassword = onCall(async (request) => {
     success: true,
     userUid,
     userEmail,
-    emailSent: sendEmail && !!userEmail && !!sendgridApiKey,
+    emailSent: sendEmail && !!userEmail && !!sendgridApiKey && emailEnabled,
   };
 });
 
@@ -2580,4 +2934,586 @@ exports.optimizeModelImages = onCall({ timeoutSeconds: 540 }, async (request) =>
     success: true,
     ...results,
   };
+});
+
+
+// ============================================================================
+// ANALYTICS FUNCTIONS
+// ============================================================================
+
+const { BetaAnalyticsDataClient } = require("@google-analytics/data");
+
+// Initialize GA4 client
+// Uses Application Default Credentials (ADC) from the Firebase environment
+let analyticsClient = null;
+const getAnalyticsClient = () => {
+  if (!analyticsClient) {
+    analyticsClient = new BetaAnalyticsDataClient();
+  }
+  return analyticsClient;
+};
+
+// GA4 Property ID (Measurement ID: G-YCYM83P40H corresponds to a property ID)
+// You'll need to get the property ID from GA4 Admin > Property Settings
+// It's in the format: properties/XXXXXXXXX
+const GA4_PROPERTY_ID = process.env.GA4_PROPERTY_ID || "properties/488925969";
+
+/**
+ * Get analytics data from GA4 (Admin/Super Admin only)
+ * Returns page views, sessions, users, and other metrics
+ * @param {string} startDate - Start date in YYYY-MM-DD format
+ * @param {string} endDate - End date in YYYY-MM-DD format
+ * @param {string[]} metrics - Array of metric names to fetch
+ * @param {string[]} dimensions - Array of dimension names to fetch
+ * @returns {Object} - Analytics data
+ */
+exports.getGA4Analytics = onCall(async (request) => {
+  // 1. Verify authentication
+  if (!request.auth) {
+    throw new HttpsError("unauthenticated", "User must be logged in");
+  }
+
+  const callerUid = request.auth.uid;
+  const { startDate, endDate, metrics, dimensions } = request.data;
+
+  // 2. Verify caller is admin or super admin
+  const callerDoc = await db.collection("users").doc(callerUid).get();
+  if (!callerDoc.exists) {
+    throw new HttpsError("permission-denied", "Caller user not found");
+  }
+
+  const callerData = callerDoc.data();
+  const callerRole = callerData.role;
+  const ADMIN_ROLES = ["admin", "super admin"];
+
+  if (!ADMIN_ROLES.includes(callerRole)) {
+    throw new HttpsError("permission-denied", "Only admins can access analytics");
+  }
+
+  try {
+    const client = getAnalyticsClient();
+
+    // Run the report
+    const [response] = await client.runReport({
+      property: GA4_PROPERTY_ID,
+      dateRanges: [
+        {
+          startDate: startDate || "30daysAgo",
+          endDate: endDate || "today",
+        },
+      ],
+      metrics: (metrics || ["screenPageViews", "sessions", "activeUsers"]).map(m => ({ name: m })),
+      dimensions: (dimensions || []).map(d => ({ name: d })),
+    });
+
+    return {
+      success: true,
+      data: {
+        rows: response.rows?.map(row => ({
+          dimensions: row.dimensionValues?.map(d => d.value) || [],
+          metrics: row.metricValues?.map(m => m.value) || [],
+        })) || [],
+        totals: response.totals?.[0]?.metricValues?.map(m => m.value) || [],
+        rowCount: response.rowCount || 0,
+      },
+    };
+  } catch (error) {
+    console.error("Error fetching GA4 analytics:", error);
+    throw new HttpsError("internal", `Failed to fetch analytics: ${error.message}`);
+  }
+});
+
+/**
+ * Get daily analytics data from GA4 for charts (Admin/Super Admin only)
+ * Returns daily breakdown of page views, sessions, and users
+ * @param {string} startDate - Start date in YYYY-MM-DD format
+ * @param {string} endDate - End date in YYYY-MM-DD format
+ * @returns {Object} - Daily analytics data
+ */
+exports.getGA4DailyData = onCall(async (request) => {
+  // 1. Verify authentication
+  if (!request.auth) {
+    throw new HttpsError("unauthenticated", "User must be logged in");
+  }
+
+  const callerUid = request.auth.uid;
+  const { startDate, endDate } = request.data;
+
+  // 2. Verify caller is admin or super admin
+  const callerDoc = await db.collection("users").doc(callerUid).get();
+  if (!callerDoc.exists) {
+    throw new HttpsError("permission-denied", "Caller user not found");
+  }
+
+  const callerData = callerDoc.data();
+  const callerRole = callerData.role;
+  const ADMIN_ROLES = ["admin", "super admin"];
+
+  if (!ADMIN_ROLES.includes(callerRole)) {
+    throw new HttpsError("permission-denied", "Only admins can access analytics");
+  }
+
+  try {
+    const client = getAnalyticsClient();
+
+    // Run the report with date dimension for time-series data
+    const [response] = await client.runReport({
+      property: GA4_PROPERTY_ID,
+      dateRanges: [
+        {
+          startDate: startDate || "30daysAgo",
+          endDate: endDate || "today",
+        },
+      ],
+      metrics: [
+        { name: "screenPageViews" },
+        { name: "sessions" },
+        { name: "activeUsers" },
+      ],
+      dimensions: [{ name: "date" }],
+      orderBys: [
+        {
+          dimension: {
+            dimensionName: "date",
+          },
+          desc: false,
+        },
+      ],
+    });
+
+    // Transform the data into a more usable format
+    const dailyData = response.rows?.map(row => ({
+      date: row.dimensionValues?.[0]?.value || "",
+      pageViews: parseInt(row.metricValues?.[0]?.value || "0", 10),
+      sessions: parseInt(row.metricValues?.[1]?.value || "0", 10),
+      users: parseInt(row.metricValues?.[2]?.value || "0", 10),
+    })) || [];
+
+    return {
+      success: true,
+      data: {
+        daily: dailyData,
+        totals: response.totals?.[0]?.metricValues ? {
+          pageViews: parseInt(response.totals[0].metricValues[0].value || "0", 10),
+          sessions: parseInt(response.totals[0].metricValues[1].value || "0", 10),
+          users: parseInt(response.totals[0].metricValues[2].value || "0", 10),
+        } : { pageViews: 0, sessions: 0, users: 0 },
+      },
+    };
+  } catch (error) {
+    console.error("Error fetching GA4 daily data:", error);
+    throw new HttpsError("internal", `Failed to fetch daily analytics: ${error.message}`);
+  }
+});
+
+/**
+ * Get model profile page views from GA4 (Admin/Super Admin only)
+ * Returns the most viewed model profiles
+ * @param {string} startDate - Start date in YYYY-MM-DD format
+ * @param {string} endDate - End date in YYYY-MM-DD format
+ * @param {number} limit - Max number of results (default: 10)
+ * @returns {Object} - Model profile views data
+ */
+exports.getModelProfileViews = onCall(async (request) => {
+  // 1. Verify authentication
+  if (!request.auth) {
+    throw new HttpsError("unauthenticated", "User must be logged in");
+  }
+
+  const callerUid = request.auth.uid;
+  const { startDate, endDate, limit } = request.data;
+
+  // 2. Verify caller is admin or super admin
+  const callerDoc = await db.collection("users").doc(callerUid).get();
+  if (!callerDoc.exists) {
+    throw new HttpsError("permission-denied", "Caller user not found");
+  }
+
+  const callerData = callerDoc.data();
+  const callerRole = callerData.role;
+  const ADMIN_ROLES = ["admin", "super admin"];
+
+  if (!ADMIN_ROLES.includes(callerRole)) {
+    throw new HttpsError("permission-denied", "Only admins can access analytics");
+  }
+
+  try {
+    const client = getAnalyticsClient();
+
+    // Run the report filtering for model profile pages
+    const [response] = await client.runReport({
+      property: GA4_PROPERTY_ID,
+      dateRanges: [
+        {
+          startDate: startDate || "30daysAgo",
+          endDate: endDate || "today",
+        },
+      ],
+      metrics: [{ name: "screenPageViews" }],
+      dimensions: [{ name: "pagePath" }, { name: "pageTitle" }],
+      dimensionFilter: {
+        filter: {
+          fieldName: "pagePath",
+          stringFilter: {
+            matchType: "CONTAINS",
+            value: "/profile/",
+          },
+        },
+      },
+      orderBys: [
+        {
+          metric: {
+            metricName: "screenPageViews",
+          },
+          desc: true,
+        },
+      ],
+      limit: limit || 10,
+    });
+
+    return {
+      success: true,
+      data: {
+        profiles: response.rows?.map(row => ({
+          path: row.dimensionValues?.[0]?.value || "",
+          title: row.dimensionValues?.[1]?.value || "",
+          views: parseInt(row.metricValues?.[0]?.value || "0", 10),
+        })) || [],
+        rowCount: response.rowCount || 0,
+      },
+    };
+  } catch (error) {
+    console.error("Error fetching model profile views:", error);
+    throw new HttpsError("internal", `Failed to fetch profile views: ${error.message}`);
+  }
+});
+
+/**
+ * Get traffic sources from GA4 (Admin/Super Admin only)
+ * @param {string} startDate - Start date in YYYY-MM-DD format
+ * @param {string} endDate - End date in YYYY-MM-DD format
+ * @returns {Object} - Traffic sources data
+ */
+exports.getTrafficSources = onCall(async (request) => {
+  // 1. Verify authentication
+  if (!request.auth) {
+    throw new HttpsError("unauthenticated", "User must be logged in");
+  }
+
+  const callerUid = request.auth.uid;
+  const { startDate, endDate } = request.data;
+
+  // 2. Verify caller is admin or super admin
+  const callerDoc = await db.collection("users").doc(callerUid).get();
+  if (!callerDoc.exists) {
+    throw new HttpsError("permission-denied", "Caller user not found");
+  }
+
+  const callerData = callerDoc.data();
+  const callerRole = callerData.role;
+  const ADMIN_ROLES = ["admin", "super admin"];
+
+  if (!ADMIN_ROLES.includes(callerRole)) {
+    throw new HttpsError("permission-denied", "Only admins can access analytics");
+  }
+
+  try {
+    const client = getAnalyticsClient();
+
+    // Run the report for traffic sources
+    const [response] = await client.runReport({
+      property: GA4_PROPERTY_ID,
+      dateRanges: [
+        {
+          startDate: startDate || "30daysAgo",
+          endDate: endDate || "today",
+        },
+      ],
+      metrics: [{ name: "sessions" }, { name: "activeUsers" }],
+      dimensions: [{ name: "sessionSource" }, { name: "sessionMedium" }],
+      orderBys: [
+        {
+          metric: {
+            metricName: "sessions",
+          },
+          desc: true,
+        },
+      ],
+      limit: 10,
+    });
+
+    return {
+      success: true,
+      data: {
+        sources: response.rows?.map(row => ({
+          source: row.dimensionValues?.[0]?.value || "",
+          medium: row.dimensionValues?.[1]?.value || "",
+          sessions: parseInt(row.metricValues?.[0]?.value || "0", 10),
+          users: parseInt(row.metricValues?.[1]?.value || "0", 10),
+        })) || [],
+      },
+    };
+  } catch (error) {
+    console.error("Error fetching traffic sources:", error);
+    throw new HttpsError("internal", `Failed to fetch traffic sources: ${error.message}`);
+  }
+});
+
+/**
+ * Get geographic data from GA4 (Admin/Super Admin only)
+ * Returns visits by country and city
+ * @param {string} startDate - Start date in YYYY-MM-DD format
+ * @param {string} endDate - End date in YYYY-MM-DD format
+ * @returns {Object} - Geographic data
+ */
+exports.getGeographicData = onCall(async (request) => {
+  // 1. Verify authentication
+  if (!request.auth) {
+    throw new HttpsError("unauthenticated", "User must be logged in");
+  }
+
+  const callerUid = request.auth.uid;
+  const { startDate, endDate } = request.data;
+
+  // 2. Verify caller is admin or super admin
+  const callerDoc = await db.collection("users").doc(callerUid).get();
+  if (!callerDoc.exists) {
+    throw new HttpsError("permission-denied", "Caller user not found");
+  }
+
+  const callerData = callerDoc.data();
+  const callerRole = callerData.role;
+  const ADMIN_ROLES = ["admin", "super admin"];
+
+  if (!ADMIN_ROLES.includes(callerRole)) {
+    throw new HttpsError("permission-denied", "Only admins can access analytics");
+  }
+
+  try {
+    const client = getAnalyticsClient();
+
+    // Get country data
+    const [countryResponse] = await client.runReport({
+      property: GA4_PROPERTY_ID,
+      dateRanges: [
+        {
+          startDate: startDate || "30daysAgo",
+          endDate: endDate || "today",
+        },
+      ],
+      metrics: [{ name: "sessions" }, { name: "activeUsers" }],
+      dimensions: [{ name: "country" }],
+      orderBys: [
+        {
+          metric: {
+            metricName: "sessions",
+          },
+          desc: true,
+        },
+      ],
+      limit: 10,
+    });
+
+    // Get city data
+    const [cityResponse] = await client.runReport({
+      property: GA4_PROPERTY_ID,
+      dateRanges: [
+        {
+          startDate: startDate || "30daysAgo",
+          endDate: endDate || "today",
+        },
+      ],
+      metrics: [{ name: "sessions" }, { name: "activeUsers" }],
+      dimensions: [{ name: "city" }, { name: "country" }],
+      orderBys: [
+        {
+          metric: {
+            metricName: "sessions",
+          },
+          desc: true,
+        },
+      ],
+      limit: 10,
+    });
+
+    return {
+      success: true,
+      data: {
+        countries: countryResponse.rows?.map(row => ({
+          country: row.dimensionValues?.[0]?.value || "",
+          sessions: parseInt(row.metricValues?.[0]?.value || "0", 10),
+          users: parseInt(row.metricValues?.[1]?.value || "0", 10),
+        })) || [],
+        cities: cityResponse.rows?.map(row => ({
+          city: row.dimensionValues?.[0]?.value || "",
+          country: row.dimensionValues?.[1]?.value || "",
+          sessions: parseInt(row.metricValues?.[0]?.value || "0", 10),
+          users: parseInt(row.metricValues?.[1]?.value || "0", 10),
+        })) || [],
+      },
+    };
+  } catch (error) {
+    console.error("Error fetching geographic data:", error);
+    throw new HttpsError("internal", `Failed to fetch geographic data: ${error.message}`);
+  }
+});
+
+/**
+ * Get job count (Admin/Super Admin only)
+ * @returns {Object} - Job count data
+ */
+exports.getJobCount = onCall(async (request) => {
+  // 1. Verify authentication
+  if (!request.auth) {
+    throw new HttpsError("unauthenticated", "User must be logged in");
+  }
+
+  const callerUid = request.auth.uid;
+
+  // 2. Verify caller is admin or super admin
+  const callerDoc = await db.collection("users").doc(callerUid).get();
+  if (!callerDoc.exists) {
+    throw new HttpsError("permission-denied", "Caller user not found");
+  }
+
+  const callerData = callerDoc.data();
+  const callerRole = callerData.role;
+  const ADMIN_ROLES = ["admin", "super admin"];
+
+  if (!ADMIN_ROLES.includes(callerRole)) {
+    throw new HttpsError("permission-denied", "Only admins can access job count");
+  }
+
+  try {
+    // Get total count of jobs
+    const jobsSnapshot = await db.collection("jobs").count().get();
+    const totalJobs = jobsSnapshot.data().count;
+
+    // Get count of active jobs (optional - depends on your data structure)
+    // Assuming you have a 'status' field
+    const activeJobsSnapshot = await db.collection("jobs")
+      .where("status", "==", "active")
+      .count()
+      .get();
+    const activeJobs = activeJobsSnapshot.data().count;
+
+    return {
+      success: true,
+      data: {
+        totalJobs,
+        activeJobs,
+      },
+    };
+  } catch (error) {
+    console.error("Error fetching job count:", error);
+    throw new HttpsError("internal", `Failed to fetch job count: ${error.message}`);
+  }
+});
+
+/**
+ * Get user count (Admin/Super Admin only)
+ * @returns {Object} - User count data
+ */
+exports.getUserCount = onCall(async (request) => {
+  // 1. Verify authentication
+  if (!request.auth) {
+    throw new HttpsError("unauthenticated", "User must be logged in");
+  }
+
+  const callerUid = request.auth.uid;
+
+  // 2. Verify caller is admin or super admin
+  const callerDoc = await db.collection("users").doc(callerUid).get();
+  if (!callerDoc.exists) {
+    throw new HttpsError("permission-denied", "Caller user not found");
+  }
+
+  const callerData = callerDoc.data();
+  const callerRole = callerData.role;
+  const ADMIN_ROLES = ["admin", "super admin"];
+
+  if (!ADMIN_ROLES.includes(callerRole)) {
+    throw new HttpsError("permission-denied", "Only admins can access user count");
+  }
+
+  try {
+    // Get total count of users
+    const usersSnapshot = await db.collection("users").count().get();
+    const totalUsers = usersSnapshot.data().count;
+
+    // Get count by role (optional)
+    const modelsSnapshot = await db.collection("users")
+      .where("role", "==", "model")
+      .count()
+      .get();
+    const clientsSnapshot = await db.collection("users")
+      .where("role", "==", "client")
+      .count()
+      .get();
+
+    return {
+      success: true,
+      data: {
+        totalUsers,
+        models: modelsSnapshot.data().count,
+        clients: clientsSnapshot.data().count,
+      },
+    };
+  } catch (error) {
+    console.error("Error fetching user count:", error);
+    throw new HttpsError("internal", `Failed to fetch user count: ${error.message}`);
+  }
+});
+
+/**
+ * Get Instagram follower count for a specific account (Admin/Super Admin only)
+ * @param {string} username - Instagram username
+ * @returns {Object} - Instagram follower count
+ */
+exports.getInstagramFollowers = onCall(async (request) => {
+  // 1. Verify authentication
+  if (!request.auth) {
+    throw new HttpsError("unauthenticated", "User must be logged in");
+  }
+
+  const callerUid = request.auth.uid;
+  const { username } = request.data;
+
+  if (!username) {
+    throw new HttpsError("invalid-argument", "Username is required");
+  }
+
+  // 2. Verify caller is admin or super admin
+  const callerDoc = await db.collection("users").doc(callerUid).get();
+  if (!callerDoc.exists) {
+    throw new HttpsError("permission-denied", "Caller user not found");
+  }
+
+  const callerData = callerDoc.data();
+  const callerRole = callerData.role;
+  const ADMIN_ROLES = ["admin", "super admin"];
+
+  if (!ADMIN_ROLES.includes(callerRole)) {
+    throw new HttpsError("permission-denied", "Only admins can access Instagram data");
+  }
+
+  try {
+    const count = await getInstagramFollowerCount(username);
+
+    if (typeof count !== "number") {
+      throw new Error("Follower count not found.");
+    }
+
+    return {
+      success: true,
+      data: {
+        username,
+        followers: count,
+        lastChecked: new Date().toISOString(),
+      },
+    };
+  } catch (error) {
+    console.error("Error fetching Instagram followers:", error);
+    throw new HttpsError("internal", `Failed to fetch Instagram followers: ${error.message}`);
+  }
 });

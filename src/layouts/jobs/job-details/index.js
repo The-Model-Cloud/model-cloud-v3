@@ -15,6 +15,9 @@ import { sendApplicationEmail, sendModelApplicationConfirmation, createThread } 
 // Invitations
 import { markInvitationAsApplied } from "utils/invitations";
 
+// Verification
+import { isUnverifiedModel } from "utils/verification";
+
 // MUI and MD components
 import Card from "@mui/material/Card";
 import Modal from "@mui/material/Modal";
@@ -410,7 +413,14 @@ function JobDetails() {
                                 {/* Application status and buttons */}
                                 {model && job.userId !== model.uid && (
                                     <MDBox mt={4} pt={3} sx={{ borderTop: "1px solid", borderColor: "grey.200" }}>
-                                        {doesModelMatchJob(model, job) ? (
+                                        {isUnverifiedModel(model) ? (
+                                            <MDBox display="flex" alignItems="center" gap={1} p={2} borderRadius="lg" sx={{ backgroundColor: "warning.lighter" }}>
+                                                <Icon sx={{ color: "warning.main" }}>gpp_maybe</Icon>
+                                                <MDTypography color="warning" variant="body2">
+                                                    Your account is pending verification. Once an admin verifies your account, you'll be able to apply for jobs.
+                                                </MDTypography>
+                                            </MDBox>
+                                        ) : doesModelMatchJob(model, job) ? (
                                             <>
                                                 {hasApplied ? (
                                                     <MDBox>

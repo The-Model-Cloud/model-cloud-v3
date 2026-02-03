@@ -59,6 +59,8 @@ import AllUsers from "layouts/admin/users/all";
 import AllClients from "layouts/admin/users/clients";
 import AllAdmins from "layouts/admin/users/admins";
 import AllAccountManagers from "layouts/admin/users/account-managers";
+import Organisations from "layouts/admin/organisations";
+import OrganisationDetail from "layouts/admin/organisations/detail";
 
 // Favourites layouts
 import FavouritesOverview from "layouts/favourites/overview";
@@ -361,17 +363,17 @@ const routes = [
   },
 
   // ============================================================
-  // ORGANISATIONS SECTION (For Super Admin)
+  // ORGANISATIONS SECTION (For Admins and Account Managers)
   // ============================================================
   {
     type: "collapse",
     name: "Organisations",
     key: "organisations",
     icon: <Icon fontSize="small">corporate_fare</Icon>,
-    roles: ["super admin"],
+    roles: ["admin", "super admin", "account manager"],
     noCollapse: true,
     route: "/admin/organisations",
-    component: <DataTables />, // Placeholder
+    component: <Organisations />,
   },
 
   // ============================================================
@@ -382,7 +384,7 @@ const routes = [
     name: "Castings",
     key: "castings",
     icon: <Icon fontSize="small">camera</Icon>,
-    roles: [...CLIENT_ROLES, ...ADMIN_ROLES],
+    roles: [...CLIENT_ROLES, "super admin"], // Hidden from admin role
     noCollapse: true,
     route: "/castings",
     component: <Calendar />, // Placeholder - will need castings component
@@ -403,14 +405,14 @@ const routes = [
   },
 
   // ============================================================
-  // MESSAGING SECTION (Admin version)
+  // MESSAGING SECTION (Super Admin only)
   // ============================================================
   {
     type: "collapse",
     name: "Messaging",
     key: "messaging",
     icon: <Icon fontSize="small">forum</Icon>,
-    roles: ADMIN_ROLES,
+    roles: ["super admin"], // Hidden from admin role
     noCollapse: true,
     route: "/admin/messaging",
     component: <Kanban />, // Placeholder
@@ -431,28 +433,28 @@ const routes = [
   },
 
   // ============================================================
-  // CUSTOMER BRIEFS (Admin)
+  // CUSTOMER BRIEFS (Super Admin only)
   // ============================================================
   {
     type: "collapse",
     name: "Customer Briefs",
     key: "briefs",
     icon: <Icon fontSize="small">description</Icon>,
-    roles: ADMIN_ROLES,
+    roles: ["super admin"], // Hidden from admin role
     noCollapse: true,
     route: "/admin/briefs",
     component: <DataTables />, // Placeholder
   },
 
   // ============================================================
-  // ANALYTICS SECTION (Admin)
+  // ANALYTICS SECTION (Admin and Super Admin)
   // ============================================================
   {
     type: "collapse",
     name: "Analytics",
     key: "analytics",
     icon: <Icon fontSize="small">analytics</Icon>,
-    roles: ADMIN_ROLES,
+    roles: ADMIN_ROLES, // Admin and Super Admin can access
     noCollapse: true,
     route: "/admin/analytics",
     component: <Analytics />,
@@ -522,14 +524,14 @@ const routes = [
   },
 
   // ============================================================
-  // DATA MANAGEMENT SECTION (Admins)
+  // DATA MANAGEMENT SECTION (Super Admin only)
   // ============================================================
   {
     type: "collapse",
     name: "Data Management",
     key: "data-management",
     icon: <Icon fontSize="small">storage</Icon>,
-    roles: ADMIN_ROLES,
+    roles: ["super admin"], // Hidden from admin role
     collapse: [
       {
         name: "Import Models",
@@ -666,6 +668,15 @@ const routes = [
     route: "/admin/model/:uid/settings",
     component: <ModelSettingsProxy />,
     roles: ADMIN_ROLES,
+    invisible: true,
+  },
+  {
+    type: "collapse",
+    name: "Organisation Detail",
+    key: "organisation-detail",
+    route: "/admin/organisations/:orgId",
+    component: <OrganisationDetail />,
+    roles: [...ADMIN_ROLES, "account manager"],
     invisible: true,
   },
   {
@@ -821,6 +832,65 @@ export const cleanRoutes = (routes) => {
 
     return true;
   });
+};
+
+// Routes that unverified models ARE allowed to access (keys)
+const UNVERIFIED_ALLOWED_KEYS = [
+  "dashboard",
+  "profile-overview",
+  "edit-profile",
+  "settings",
+  "sign-in",
+  "sign-up",
+  "logout",
+  "my-profile",
+];
+
+/**
+ * Filter routes for unverified models
+ * @param {Array} routes - Array of route objects
+ * @param {Object} user - The user object from auth context
+ * @returns {Array} - Filtered routes the unverified model can access
+ */
+export const filterRoutesForUnverifiedModel = (routes, user) => {
+  // Only apply this filter for unverified models
+  if (!user || user.role !== "model" || user.verified === true) {
+    return routes;
+  }
+
+  return routes
+    .filter((route) => {
+      // Always show dividers and titles (will be cleaned up later)
+      if (route.type === "divider" || route.type === "title") return true;
+
+      // Check if route key is in allowed list
+      if (UNVERIFIED_ALLOWED_KEYS.includes(route.key)) return true;
+
+      // If route has collapse, check children
+      if (route.collapse) {
+        return route.collapse.some((child) =>
+          UNVERIFIED_ALLOWED_KEYS.includes(child.key)
+        );
+      }
+
+      return false;
+    })
+    .map((route) => {
+      // If route has nested collapse, filter those too
+      if (route.collapse) {
+        const filteredCollapse = route.collapse.filter((child) =>
+          UNVERIFIED_ALLOWED_KEYS.includes(child.key)
+        );
+
+        if (filteredCollapse.length === 0) {
+          return null;
+        }
+
+        return { ...route, collapse: filteredCollapse };
+      }
+      return route;
+    })
+    .filter(Boolean);
 };
 
 export default routes;

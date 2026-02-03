@@ -1,7 +1,4 @@
-import { useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
-import { db } from "config/firebase";
-import { collection, query, where, getDocs } from "firebase/firestore";
+import PropTypes from "prop-types";
 
 // @react-jvectormap components
 import { VectorMap } from "@react-jvectormap/core";
@@ -38,113 +35,70 @@ const countryData = {
   France: { latLng: [46.228, 2.214] },
   Italy: { latLng: [41.872, 12.567] },
   Spain: { latLng: [40.464, -3.749] },
+  Canada: { latLng: [56.1304, -106.3468] },
+  Netherlands: { latLng: [52.1326, 5.2913] },
 };
 
-function ModelsByCountry() {
-  const navigate = useNavigate();
-  const [tableData, setTableData] = useState([]);
-  const [markers, setMarkers] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [totalModels, setTotalModels] = useState(0);
-
-  useEffect(() => {
-    const fetchModelsByCountry = async () => {
-      try {
-        const usersRef = collection(db, "users");
-        const modelsQuery = query(usersRef, where("role", "==", "model"));
-        const snapshot = await getDocs(modelsQuery);
-
-        // Aggregate by country
-        const countryCounts = {};
-        let notSpecifiedCount = 0;
-
-        snapshot.docs.forEach((doc) => {
-          const data = doc.data();
-          const country = data.country;
-          if (country && country.trim() !== "") {
-            countryCounts[country] = (countryCounts[country] || 0) + 1;
-          } else {
-            notSpecifiedCount += 1;
-          }
-        });
-
-        // Sort by count descending
-        const sortedCountries = Object.entries(countryCounts)
-          .sort(([, a], [, b]) => b - a)
-          .slice(0, 10); // Top 10 countries
-
-        // Format data with flag info
-        const formattedData = sortedCountries.map(([country, count]) => {
-          const info = countryData[country];
-          return {
-            country,
-            flag: info?.flag || null,
-            count,
-          };
-        });
-
-        // Add "Not specified" at the end if there are any
-        if (notSpecifiedCount > 0) {
-          formattedData.push({
-            country: "Not specified",
-            flag: null,
-            count: notSpecifiedCount,
-          });
-        }
-
-        // Create markers for the map
-        const mapMarkers = sortedCountries
-          .filter(([country]) => countryData[country])
-          .map(([country]) => ({
-            name: country,
-            latLng: countryData[country].latLng,
-          }));
-
-        const total = snapshot.docs.length;
-        setTableData(formattedData);
-        setMarkers(mapMarkers);
-        setTotalModels(total);
-        setLoading(false);
-      } catch (error) {
-        console.error("Error fetching models by country:", error);
-        setLoading(false);
-      }
-    };
-
-    fetchModelsByCountry();
-  }, []);
-
-  const handleCountryClick = (country) => {
-    if (country === "Not specified") {
-      // Navigate without filter to show all, user can see unfiltered
-      navigate("/models/browse");
-    } else {
-      navigate(`/models/browse?country=${encodeURIComponent(country)}`);
+function ModelsByCountry({ geographicData }) {
+  // Format GA4 country data for display
+  const formatCountryData = () => {
+    if (!geographicData || !geographicData.countries || geographicData.countries.length === 0) {
+      return [];
     }
+
+    return geographicData.countries.map(item => {
+      const info = countryData[item.country];
+      return {
+        country: item.country,
+        flag: info?.flag || null,
+        sessions: item.sessions,
+        users: item.users,
+      };
+    });
+  };
+
+  // Create markers for the map
+  const createMarkers = () => {
+    if (!geographicData || !geographicData.countries) {
+      return [];
+    }
+
+    return geographicData.countries
+      .filter(item => countryData[item.country])
+      .map(item => ({
+        name: item.country,
+        latLng: countryData[item.country].latLng,
+      }));
+  };
+
+  const tableData = formatCountryData();
+  const markers = createMarkers();
+
+  // Format large numbers
+  const formatNumber = (num) => {
+    if (num >= 1000000) return `${(num / 1000000).toFixed(1)}M`;
+    if (num >= 1000) return `${(num / 1000).toFixed(1)}K`;
+    return num.toLocaleString();
   };
 
   return (
     <Card sx={{ width: "100%" }}>
       <MDBox>
         <MDTypography variant="h6" sx={{ mt: 2, ml: 2 }}>
-          Models by Country
+          Visits by Country
         </MDTypography>
         <MDTypography
           variant="body2"
           color="text"
           sx={{ fontSize: "14px", mb: 1, ml: 2 }}
         >
-          Distribution of models across countries. Total: {totalModels} models.
+          Website traffic by country (last 30 days)
         </MDTypography>
       </MDBox>
       <MDBox p={2}>
-        {loading ? (
+        {tableData.length === 0 ? (
           <MDTypography variant="body2" color="text">
-            Loading...
-          </MDTypography>
-        ) : tableData.length === 0 ? (
-          <MDTypography variant="body2" color="text">
-            No model data available.
+            No data available.
           </MDTypography>
         ) : (
           <Grid container>
@@ -157,10 +111,7 @@ function ModelsByCountry() {
                         key={row.country}
                         sx={{
                           "&:last-child td": { borderBottom: "none" },
-                          cursor: "pointer",
-                          "&:hover": { backgroundColor: "rgba(0, 0, 0, 0.04)" },
                         }}
-                        onClick={() => handleCountryClick(row.country)}
                       >
                         <TableCell sx={{ py: 1, borderBottom: index === tableData.length - 1 ? "none" : undefined }}>
                           <MDBox display="flex" alignItems="center" gap={1}>
@@ -175,19 +126,20 @@ function ModelsByCountry() {
                             <MDTypography
                               variant="button"
                               fontWeight="medium"
-                              sx={{
-                                color: "info.main",
-                                "&:hover": { textDecoration: "underline" },
-                              }}
                             >
                               {row.country}
                             </MDTypography>
                           </MDBox>
                         </TableCell>
                         <TableCell align="right" sx={{ py: 1, borderBottom: index === tableData.length - 1 ? "none" : undefined }}>
-                          <MDTypography variant="button" fontWeight="regular" color="text">
-                            {row.count}
-                          </MDTypography>
+                          <MDBox textAlign="right">
+                            <MDTypography variant="button" fontWeight="bold" color="text">
+                              {formatNumber(row.sessions)}
+                            </MDTypography>
+                            <MDTypography variant="caption" color="text" display="block">
+                              {formatNumber(row.users)} users
+                            </MDTypography>
+                          </MDBox>
                         </TableCell>
                       </TableRow>
                     ))}
@@ -247,5 +199,25 @@ function ModelsByCountry() {
     </Card>
   );
 }
+
+ModelsByCountry.propTypes = {
+  geographicData: PropTypes.shape({
+    countries: PropTypes.arrayOf(
+      PropTypes.shape({
+        country: PropTypes.string,
+        sessions: PropTypes.number,
+        users: PropTypes.number,
+      })
+    ),
+    cities: PropTypes.array,
+  }),
+};
+
+ModelsByCountry.defaultProps = {
+  geographicData: {
+    countries: [],
+    cities: [],
+  },
+};
 
 export default ModelsByCountry;

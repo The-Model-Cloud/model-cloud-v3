@@ -28,6 +28,12 @@ const form = {
       type: "text",
       errorMsg: "Last name is required.",
     },
+    role: {
+      name: "role",
+      label: "User Role",
+      type: "text",
+      errorMsg: "User role is required.",
+    },
     company: {
       name: "company",
       label: "Company",
@@ -65,25 +71,28 @@ const form = {
       label: "Address 2",
       type: "text",
     },
+    country: {
+      name: "country",
+      label: "Country",
+      type: "text",
+      errorMsg: "Country is required.",
+    },
+    county: {
+      name: "county",
+      label: "County/State",
+      type: "text",
+    },
     city: {
       name: "city",
       label: "City",
       type: "text",
       errorMsg: "City is required.",
     },
-    state: {
-      name: "state",
-      label: "State",
+    postcode: {
+      name: "postcode",
+      label: "Postcode",
       type: "text",
-      errorMsg: "State is required.",
-      invalidMsg: "State is not valid",
-    },
-    zip: {
-      name: "zip",
-      label: "Zip",
-      type: "number",
-      errorMsg: "Zip is required.",
-      invalidMsg: "Zipcode is not valie (e.g. 70000).",
+      errorMsg: "Postcode is required for UK addresses.",
     },
     twitter: {
       name: "twitter",
@@ -101,14 +110,15 @@ const form = {
       label: "Instagram Account",
       type: "text",
     },
-    publicEmail: {
-      name: "publicEmail",
-      label: "Public Email",
-      type: "email",
+    headshot: {
+      name: "headshot",
+      label: "Headshot",
+      type: "text",
     },
-    bio: {
-      name: "bio",
-      label: "Bio",
+    profileAvatar: {
+      name: "profileAvatar",
+      label: "Profile Image",
+      type: "text",
     },
   },
 };

@@ -309,7 +309,26 @@ function AllAdmins() {
           ),
         },
         { Header: "Phone", accessor: "phone" },
+        { Header: "Location", accessor: "city", Cell: ({ value }) => value || "—" },
         { Header: "Status", accessor: "status", width: "8%" },
+        {
+          Header: "Created",
+          accessor: "createdAt",
+          sortType: (rowA, rowB) => {
+            const a = rowA.original.createdAt ? new Date(rowA.original.createdAt).getTime() : 0;
+            const b = rowB.original.createdAt ? new Date(rowB.original.createdAt).getTime() : 0;
+            return a - b;
+          },
+          Cell: ({ value }) => {
+            if (!value) return "—";
+            const date = new Date(value);
+            return date.toLocaleDateString("en-GB", {
+              day: "2-digit",
+              month: "short",
+              year: "numeric",
+            });
+          },
+        },
         {
           Header: "Actions",
           accessor: "actions",

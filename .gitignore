@@ -36,3 +36,5 @@ firebase.json
 firestore.rules
 firestore.indexes.json
 nul
+serviceAccountKey.json
+.htpasswd

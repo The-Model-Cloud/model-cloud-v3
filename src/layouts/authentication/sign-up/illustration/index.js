@@ -126,8 +126,9 @@ function SignUpIllustration() {
                 role,
                 publicSlug,
                 profileAvatar,
-                companyName, 
+                companyName,
                 createdAt: new Date().toISOString(),
+                ...(role === "model" && { verified: false }),
             });
 
             // Set logged in flag to remember login status

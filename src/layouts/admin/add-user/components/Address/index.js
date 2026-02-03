@@ -28,18 +28,115 @@ import MDInput from "components/MDInput";
 
 // NewUser page components
 import FormField from "layouts/pages/users/new-user/components/FormField";
-import { Field, ErrorMessage } from "formik";
+import { Field } from "formik";
+
+// Import countries and cities
+import { getCountries, getCities } from "countries-cities";
+import ukCounties from "uk-counties-cities-towns";
+import stateCities from "state-cities";
 
 function Address({ formData }) {
-  const { formField, values, errors, touched, setValues } = formData;
-  const { address1, address2, city, zip } = formField;
-  const { address1: address1V, address2: address2V, city: cityV, zip: zipV } = values;
+  const { formField, values, errors, touched, setFieldValue } = formData;
+  const { address1, address2, city } = formField;
+  const { address1: address1V, address2: address2V, city: cityV } = values;
 
-  const [stateValue, setStateValue] = React.useState("");
+  const [countryValue, setCountryValue] = React.useState(values.country || "");
+  const [countyValue, setCountyValue] = React.useState(values.county || "");
+  const [cityOptions, setCityOptions] = React.useState([]);
+  const [countyOptions, setCountyOptions] = React.useState([]);
 
+  // Get list of countries
+  const countries = React.useMemo(() => {
+    try {
+      const countryList = getCountries();
+      return countryList.sort();
+    } catch (e) {
+      console.error("Error getting countries:", e);
+      return ["United Kingdom", "United States", "Canada", "Australia"];
+    }
+  }, []);
+
+  // Check if the selected country is UK
+  const isUK = countryValue === "United Kingdom";
+
+  // Update county/state options when country changes
   React.useEffect(() => {
-    setValues({ ...values, state: stateValue });
-  }, [stateValue]);
+    if (!countryValue) {
+      setCountyOptions([]);
+      setCityOptions([]);
+      return;
+    }
+
+    if (countryValue === "United Kingdom") {
+      // Get UK counties
+      try {
+        const counties = ukCounties.getCounties ? ukCounties.getCounties() : [];
+        setCountyOptions(counties.sort());
+      } catch (e) {
+        console.error("Error getting UK counties:", e);
+        setCountyOptions([]);
+      }
+    } else if (countryValue === "United States") {
+      // Get US states
+      try {
+        const states = stateCities.getStates ? stateCities.getStates() : [];
+        setCountyOptions(states.sort());
+      } catch (e) {
+        console.error("Error getting US states:", e);
+        setCountyOptions([]);
+      }
+    } else {
+      // For other countries, try to get cities/regions
+      try {
+        const cities = getCities(countryValue) || [];
+        setCityOptions(cities.sort());
+        setCountyOptions([]);
+      } catch (e) {
+        console.error("Error getting cities:", e);
+        setCityOptions([]);
+        setCountyOptions([]);
+      }
+    }
+  }, [countryValue]);
+
+  // Update cities when county/state changes
+  React.useEffect(() => {
+    if (!countyValue || !countryValue) {
+      return;
+    }
+
+    if (countryValue === "United Kingdom") {
+      try {
+        const cities = ukCounties.getCities ? ukCounties.getCities(countyValue) : [];
+        setCityOptions(cities ? cities.sort() : []);
+      } catch (e) {
+        console.error("Error getting UK cities:", e);
+        setCityOptions([]);
+      }
+    } else if (countryValue === "United States") {
+      try {
+        const cities = stateCities.getCities ? stateCities.getCities(countyValue) : [];
+        setCityOptions(cities ? cities.sort() : []);
+      } catch (e) {
+        console.error("Error getting US cities:", e);
+        setCityOptions([]);
+      }
+    }
+  }, [countyValue, countryValue]);
+
+  // Sync country value to form
+  React.useEffect(() => {
+    if (setFieldValue) {
+      setFieldValue("country", countryValue);
+    }
+  }, [countryValue, setFieldValue]);
+
+  // Sync county value to form
+  React.useEffect(() => {
+    if (setFieldValue) {
+      setFieldValue("county", countyValue);
+    }
+  }, [countyValue, setFieldValue]);
 
   return (
     <MDBox>
@@ -73,41 +170,87 @@ function Address({ formData }) {
         </Grid>
         <Grid container spacing={3}>
           <Grid item xs={12} sm={6}>
-            <FormField
-              type={city.type}
-              label={city.label}
-              name={city.name}
-              value={cityV}
-              placeholder={city.placeholder}
-              error={errors.city && touched.city}
-              success={cityV.length > 0 && !errors.city}
-            />
-          </Grid>
-          <Grid item xs={6} sm={3}>
             <Autocomplete
-              options={["State 1", "State 2", "State 3"]}
+              options={countries}
+              value={countryValue}
               onChange={(_, value) => {
-                setStateValue(value);
+                setCountryValue(value || "");
+                setCountyValue(""); // Reset county when country changes
               }}
-              value={stateValue}
-              renderInput={(params) => {
-                return (
-                  <Field {...params} as={MDInput} variant="standard" label="State" fullWidth />
-                );
-              }}
+              renderInput={(params) => (
+                <Field
+                  {...params}
+                  as={MDInput}
+                  variant="standard"
+                  label="Country"
+                  fullWidth
+                />
+              )}
             />
           </Grid>
-          <Grid item xs={6} sm={3}>
-            <FormField
-              type={zip.type}
-              label={zip.label}
-              name={zip.name}
-              value={zipV}
-              placeholder={zip.placeholder}
-              error={errors.zip && touched.zip}
-              success={zipV.length > 0 && !errors.zip}
+          <Grid item xs={12} sm={6}>
+            <Autocomplete
+              options={countyOptions}
+              value={countyValue}
+              onChange={(_, value) => {
+                setCountyValue(value || "");
+              }}
+              disabled={!countryValue || countyOptions.length === 0}
+              renderInput={(params) => (
+                <Field
+                  {...params}
+                  as={MDInput}
+                  variant="standard"
+                  label={countryValue === "United States" ? "State" : "County"}
+                  fullWidth
+                />
+              )}
             />
           </Grid>
+        </Grid>
+        <Grid container spacing={3}>
+          <Grid item xs={12} sm={isUK ? 6 : 12}>
+            <Autocomplete
+              freeSolo
+              options={cityOptions}
+              value={cityV || ""}
+              onChange={(_, value) => {
+                if (setFieldValue) {
+                  setFieldValue("city", value || "");
+                }
+              }}
+              onInputChange={(_, newInputValue) => {
+                if (setFieldValue) {
+                  setFieldValue("city", newInputValue);
+                }
+              }}
+              renderInput={(params) => (
+                <FormField
+                  {...params}
+                  type={city.type}
+                  label={city.label}
+                  name={city.name}
+                  placeholder={city.placeholder}
+                  error={errors.city && touched.city}
+                  success={cityV && cityV.length > 0 && !errors.city}
+                />
+              )}
+            />
+          </Grid>
+          {isUK && (
+            <Grid item xs={12} sm={6}>
+              <FormField
+                type="text"
+                label="Postcode"
+                name="postcode"
+                value={values.postcode || ""}
+                placeholder="e.g. SW1A 1AA"
+                error={errors.postcode && touched.postcode}
+                success={values.postcode && values.postcode.length > 0 && !errors.postcode}
+                onChange={(e) => setFieldValue && setFieldValue("postcode", e.target.value)}
+              />
+            </Grid>
+          )}
         </Grid>
       </MDBox>
     </MDBox>

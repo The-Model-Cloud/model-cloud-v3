@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback } from "react";
-import { collection, getDocs, getFirestore, doc, updateDoc } from "firebase/firestore";
+import { collection, getDocs, getFirestore, doc, updateDoc, writeBatch } from "firebase/firestore";
 
 // MUI and MD components
 import Card from "@mui/material/Card";
@@ -9,13 +9,15 @@ import Tooltip from "@mui/material/Tooltip";
 import Snackbar from "@mui/material/Snackbar";
 import Alert from "@mui/material/Alert";
 import Chip from "@mui/material/Chip";
+import Checkbox from "@mui/material/Checkbox";
 import FormControl from "@mui/material/FormControl";
 import InputLabel from "@mui/material/InputLabel";
 import Select from "@mui/material/Select";
 import MenuItem from "@mui/material/MenuItem";
 import MDBox from "components/MDBox";
 import MDTypography from "components/MDTypography";
-import { Link } from "react-router-dom";
+import MDButton from "components/MDButton";
+import { useNavigate } from "react-router-dom";
 
 // Dashboard layout components
 import DashboardLayout from "examples/LayoutContainers/DashboardLayout";
@@ -36,7 +38,7 @@ import {
 } from "components/AdminUserDialogs";
 
 // API functions
-import { adminResetUserPassword, adminUpdateUserEmail } from "utils/api";
+import { adminResetUserPassword, adminUpdateUserEmail, sendVerificationEmail, sendUnverificationEmail } from "utils/api";
 import { logAdminAction, ADMIN_ACTIONS } from "utils/adminLogs";
 import { useAuth } from "context/AuthContext";
 
@@ -77,13 +79,44 @@ const ROLE_OPTIONS = [
   { value: "super admin", label: "Super Admins" },
 ];
 
+// Available verified filter options
+const VERIFIED_OPTIONS = [
+  { value: "all", label: "All" },
+  { value: "verified", label: "Verified" },
+  { value: "unverified", label: "Unverified" },
+];
+
+// Available status filter options
+const STATUS_OPTIONS = [
+  { value: "all", label: "All Statuses" },
+  { value: "active", label: "Active" },
+  { value: "inactive", label: "Inactive" },
+  { value: "pending", label: "Pending" },
+  { value: "suspended", label: "Suspended" },
+];
+
 function AllUsers() {
+  const navigate = useNavigate();
   const { user: currentUser } = useAuth();
   const [tableData, setTableData] = useState({ columns: [], rows: [] });
   const [rawUsers, setRawUsers] = useState([]);
   const [filteredUsers, setFilteredUsers] = useState([]);
   const [roleFilter, setRoleFilter] = useState("all");
+  const [verifiedFilter, setVerifiedFilter] = useState("all");
+  const [statusFilter, setStatusFilter] = useState("all");
+  const [locationFilter, setLocationFilter] = useState("all");
   const { deleteUser, deleting, error: deleteError, clearError } = useDeleteUser();
+
+  // Check if any filter is active
+  const hasActiveFilters = roleFilter !== "all" || verifiedFilter !== "all" || statusFilter !== "all" || locationFilter !== "all";
+
+  // Reset all filters
+  const handleResetFilters = useCallback(() => {
+    setRoleFilter("all");
+    setVerifiedFilter("all");
+    setStatusFilter("all");
+    setLocationFilter("all");
+  }, []);
 
   // Dialog states
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
@@ -107,6 +140,154 @@ function AllUsers() {
 
   // Success message
   const [successMessage, setSuccessMessage] = useState("");
+
+  // Bulk verification state
+  const [selectedModels, setSelectedModels] = useState([]);
+  const [verifying, setVerifying] = useState(false);
+
+  // Get models from filtered users (only models can be verified)
+  const allModels = filteredUsers.filter((u) => u.role === "model");
+  const unverifiedModels = allModels.filter((u) => u.verified !== true);
+  const verifiedModels = allModels.filter((u) => u.verified === true);
+
+  // Get selected models by verification status
+  const selectedUnverified = selectedModels.filter((uid) =>
+    unverifiedModels.some((m) => m.uid === uid)
+  );
+  const selectedVerified = selectedModels.filter((uid) =>
+    verifiedModels.some((m) => m.uid === uid)
+  );
+
+  // Handle checkbox toggle
+  const handleSelectModel = useCallback((uid) => {
+    setSelectedModels((prev) =>
+      prev.includes(uid) ? prev.filter((id) => id !== uid) : [...prev, uid]
+    );
+  }, []);
+
+  // Handle select all models
+  const handleSelectAllModels = useCallback(() => {
+    if (selectedModels.length === allModels.length) {
+      setSelectedModels([]);
+    } else {
+      setSelectedModels(allModels.map((m) => m.uid));
+    }
+  }, [selectedModels.length, allModels]);
+
+  // Bulk verify selected models
+  const handleBulkVerify = useCallback(async () => {
+    if (selectedUnverified.length === 0) return;
+
+    setVerifying(true);
+    try {
+      const db = getFirestore();
+      const batch = writeBatch(db);
+
+      selectedUnverified.forEach((uid) => {
+        const userRef = doc(db, "users", uid);
+        batch.update(userRef, { verified: true });
+      });
+
+      await batch.commit();
+
+      // Send verification emails to all verified models
+      const modelsToEmail = rawUsers.filter((u) => selectedUnverified.includes(u.uid));
+      modelsToEmail.forEach((model) => {
+        if (model.email) {
+          sendVerificationEmail(model.email, model.name || "Model").catch((err) =>
+            console.warn("Failed to send verification email:", err)
+          );
+        }
+      });
+
+      // Update local state
+      setRawUsers((prev) =>
+        prev.map((u) =>
+          selectedUnverified.includes(u.uid) ? { ...u, verified: true } : u
+        )
+      );
+      setSelectedModels([]);
+      setSuccessMessage(`${selectedUnverified.length} model${selectedUnverified.length > 1 ? "s" : ""} verified successfully`);
+    } catch (error) {
+      console.error("Error bulk verifying models:", error);
+    } finally {
+      setVerifying(false);
+    }
+  }, [selectedUnverified, rawUsers]);
+
+  // Bulk unverify selected models
+  const handleBulkUnverify = useCallback(async () => {
+    if (selectedVerified.length === 0) return;
+
+    setVerifying(true);
+    try {
+      const db = getFirestore();
+      const batch = writeBatch(db);
+
+      selectedVerified.forEach((uid) => {
+        const userRef = doc(db, "users", uid);
+        batch.update(userRef, { verified: false });
+      });
+
+      await batch.commit();
+
+      // Send unverification emails to all unverified models
+      const modelsToEmail = rawUsers.filter((u) => selectedVerified.includes(u.uid));
+      modelsToEmail.forEach((model) => {
+        if (model.email) {
+          sendUnverificationEmail(model.email, model.name || "Model").catch((err) =>
+            console.warn("Failed to send unverification email:", err)
+          );
+        }
+      });
+
+      // Update local state
+      setRawUsers((prev) =>
+        prev.map((u) =>
+          selectedVerified.includes(u.uid) ? { ...u, verified: false } : u
+        )
+      );
+      setSelectedModels([]);
+      setSuccessMessage(`${selectedVerified.length} model${selectedVerified.length > 1 ? "s" : ""} unverified successfully`);
+    } catch (error) {
+      console.error("Error bulk unverifying models:", error);
+    } finally {
+      setVerifying(false);
+    }
+  }, [selectedVerified, rawUsers]);
+
+  // Individual verify/unverify toggle handler
+  const handleToggleVerification = useCallback(async (user) => {
+    const newVerified = !user.verified;
+    try {
+      const db = getFirestore();
+      const userRef = doc(db, "users", user.uid);
+      await updateDoc(userRef, { verified: newVerified });
+
+      // Send appropriate email
+      if (user.email) {
+        if (newVerified) {
+          sendVerificationEmail(user.email, user.name || "Model").catch((err) =>
+            console.warn("Failed to send verification email:", err)
+          );
+        } else {
+          sendUnverificationEmail(user.email, user.name || "Model").catch((err) =>
+            console.warn("Failed to send unverification email:", err)
+          );
+        }
+      }
+
+      // Update local state
+      setRawUsers((prev) =>
+        prev.map((u) =>
+          u.uid === user.uid ? { ...u, verified: newVerified } : u
+        )
+      );
+      setSuccessMessage(`${user.name || "Model"} ${newVerified ? "verified" : "unverified"} successfully`);
+    } catch (error) {
+      console.error("Error toggling verification:", error);
+    }
+  }, []);
 
   // Handle delete click
   const handleDeleteClick = useCallback((user) => {
@@ -366,6 +547,7 @@ function AllUsers() {
           status: data.status || "",
           profileAvatar: data.profileAvatar || "",
           createdAt: data.createdAt || null,
+          verified: data.verified,
         };
       });
 
@@ -375,19 +557,69 @@ function AllUsers() {
     fetchUsers();
   }, []);
 
-  // Apply role filter
+  // Get unique locations for filter dropdown
+  const uniqueLocations = [...new Set(rawUsers.map((u) => u.location).filter(Boolean))].sort();
+
+  // Apply all filters
   useEffect(() => {
-    if (roleFilter === "all") {
-      setFilteredUsers(rawUsers);
-    } else {
-      setFilteredUsers(rawUsers.filter((user) => user.role === roleFilter));
+    let filtered = rawUsers;
+
+    // Filter by role/account type
+    if (roleFilter !== "all") {
+      filtered = filtered.filter((user) => user.role === roleFilter);
     }
-  }, [rawUsers, roleFilter]);
+
+    // Filter by verified status
+    if (verifiedFilter !== "all") {
+      if (verifiedFilter === "verified") {
+        filtered = filtered.filter((user) => user.verified === true);
+      } else if (verifiedFilter === "unverified") {
+        filtered = filtered.filter((user) => user.verified !== true);
+      }
+    }
+
+    // Filter by status
+    if (statusFilter !== "all") {
+      filtered = filtered.filter((user) => user.status?.toLowerCase() === statusFilter.toLowerCase());
+    }
+
+    // Filter by location
+    if (locationFilter !== "all") {
+      filtered = filtered.filter((user) => user.location === locationFilter);
+    }
+
+    setFilteredUsers(filtered);
+  }, [rawUsers, roleFilter, verifiedFilter, statusFilter, locationFilter]);
 
   // Update table data when filteredUsers changes
   useEffect(() => {
     setTableData({
       columns: [
+        {
+          Header: () => (
+            <Checkbox
+              checked={allModels.length > 0 && selectedModels.length === allModels.length}
+              indeterminate={selectedModels.length > 0 && selectedModels.length < allModels.length}
+              onChange={handleSelectAllModels}
+              disabled={allModels.length === 0}
+              size="small"
+            />
+          ),
+          accessor: "select",
+          width: "4%",
+          Cell: ({ row }) => {
+            const { uid, role } = row.original;
+            // Only show checkbox for models
+            if (role !== "model") return null;
+            return (
+              <Checkbox
+                checked={selectedModels.includes(uid)}
+                onChange={() => handleSelectModel(uid)}
+                size="small"
+              />
+            );
+          },
+        },
         {
           Header: "Name",
           accessor: "name",
@@ -395,9 +627,18 @@ function AllUsers() {
             const { uid, name, role } = row.original;
             if (role === "model") {
               return (
-                <Link to={`/admin/model/${uid}/settings`} style={{ color: "#1976d2", textDecoration: "none" }}>
+                <MDTypography
+                  variant="button"
+                  fontWeight="regular"
+                  sx={{
+                    color: "#1976d2",
+                    cursor: "pointer",
+                    "&:hover": { textDecoration: "underline" },
+                  }}
+                  onClick={() => navigate(`/admin/model/${uid}/settings`)}
+                >
                   {name || "—"}
-                </Link>
+                </MDTypography>
               );
             }
             return name || "—";
@@ -416,19 +657,66 @@ function AllUsers() {
             />
           ),
         },
-        { Header: "Location", accessor: "location" },
+        {
+          Header: "Verified",
+          accessor: "verified",
+          width: "8%",
+          Cell: ({ row }) => {
+            const { role, verified } = row.original;
+            if (role !== "model") return "—";
+            return (
+              <Chip
+                label={verified ? "Verified" : "Unverified"}
+                color={verified ? "success" : "warning"}
+                size="small"
+                icon={<Icon sx={{ fontSize: "16px !important" }}>{verified ? "verified_user" : "gpp_maybe"}</Icon>}
+              />
+            );
+          },
+        },
+        { Header: "Location", accessor: "city", Cell: ({ value }) => value || "—" },
         { Header: "Status", accessor: "status", width: "8%" },
+        {
+          Header: "Created",
+          accessor: "createdAt",
+          sortType: (rowA, rowB) => {
+            const a = rowA.original.createdAt ? new Date(rowA.original.createdAt).getTime() : 0;
+            const b = rowB.original.createdAt ? new Date(rowB.original.createdAt).getTime() : 0;
+            return a - b;
+          },
+          Cell: ({ value }) => {
+            if (!value) return "—";
+            const date = new Date(value);
+            return date.toLocaleDateString("en-GB", {
+              day: "2-digit",
+              month: "short",
+              year: "numeric",
+            });
+          },
+        },
         {
           Header: "Actions",
           accessor: "actions",
-          width: "18%",
+          width: "20%",
           Cell: ({ row }) => {
             const user = row.original;
             const isSuperAdmin = user.role === "super admin";
             const isCurrentUser = user.uid === currentUser?.uid;
+            const isModel = user.role === "model";
 
             return (
               <MDBox display="flex" gap={0.5}>
+                {isModel && (
+                  <Tooltip title={user.verified ? "Unverify Model" : "Verify Model"}>
+                    <IconButton
+                      size="small"
+                      onClick={() => handleToggleVerification(user)}
+                      sx={{ color: user.verified ? "#ed6c02" : "#2e7d32" }}
+                    >
+                      <Icon fontSize="small">{user.verified ? "gpp_maybe" : "verified_user"}</Icon>
+                    </IconButton>
+                  </Tooltip>
+                )}
                 <Tooltip title="Reset Password">
                   <IconButton
                     size="small"
@@ -490,7 +778,13 @@ function AllUsers() {
     handleChangeEmailClick,
     handleChangeNameClick,
     handleChangeLocationClick,
+    handleToggleVerification,
     currentUser,
+    selectedModels,
+    allModels,
+    handleSelectAllModels,
+    handleSelectModel,
+    navigate,
   ]);
 
   return (
@@ -506,22 +800,110 @@ function AllUsers() {
                 </MDTypography>
                 <MDTypography variant="button" color="text">
                   {filteredUsers.length} user{filteredUsers.length !== 1 ? "s" : ""} found
+                  {unverifiedModels.length > 0 && ` • ${unverifiedModels.length} unverified model${unverifiedModels.length > 1 ? "s" : ""}`}
                 </MDTypography>
               </MDBox>
-              <FormControl size="small" sx={{ minWidth: 200 }}>
-                <InputLabel>Filter by Type</InputLabel>
-                <Select
-                  value={roleFilter}
-                  label="Filter by Type"
-                  onChange={(e) => setRoleFilter(e.target.value)}
-                >
-                  {ROLE_OPTIONS.map((option) => (
-                    <MenuItem key={option.value} value={option.value}>
-                      {option.label}
-                    </MenuItem>
-                  ))}
-                </Select>
-              </FormControl>
+              <MDBox display="flex" alignItems="center" gap={2} flexWrap="wrap">
+                {selectedModels.length > 0 && (
+                  <MDBox display="flex" alignItems="center" gap={2}>
+                    <MDTypography variant="button" color="text">
+                      {selectedModels.length} selected
+                    </MDTypography>
+                    {selectedUnverified.length > 0 && (
+                      <MDButton
+                        variant="gradient"
+                        color="success"
+                        size="small"
+                        onClick={handleBulkVerify}
+                        disabled={verifying}
+                        startIcon={<Icon>{verifying ? "hourglass_empty" : "verified_user"}</Icon>}
+                      >
+                        {verifying ? "Processing..." : `Verify (${selectedUnverified.length})`}
+                      </MDButton>
+                    )}
+                    {selectedVerified.length > 0 && (
+                      <MDButton
+                        variant="gradient"
+                        color="warning"
+                        size="small"
+                        onClick={handleBulkUnverify}
+                        disabled={verifying}
+                        startIcon={<Icon>{verifying ? "hourglass_empty" : "gpp_maybe"}</Icon>}
+                      >
+                        {verifying ? "Processing..." : `Unverify (${selectedVerified.length})`}
+                      </MDButton>
+                    )}
+                  </MDBox>
+                )}
+                <FormControl size="small" sx={{ minWidth: 150 }}>
+                  <InputLabel>Account Type</InputLabel>
+                  <Select
+                    value={roleFilter}
+                    label="Account Type"
+                    onChange={(e) => setRoleFilter(e.target.value)}
+                  >
+                    {ROLE_OPTIONS.map((option) => (
+                      <MenuItem key={option.value} value={option.value}>
+                        {option.label}
+                      </MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
+                <FormControl size="small" sx={{ minWidth: 130 }}>
+                  <InputLabel>Verified</InputLabel>
+                  <Select
+                    value={verifiedFilter}
+                    label="Verified"
+                    onChange={(e) => setVerifiedFilter(e.target.value)}
+                  >
+                    {VERIFIED_OPTIONS.map((option) => (
+                      <MenuItem key={option.value} value={option.value}>
+                        {option.label}
+                      </MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
+                <FormControl size="small" sx={{ minWidth: 130 }}>
+                  <InputLabel>Status</InputLabel>
+                  <Select
+                    value={statusFilter}
+                    label="Status"
+                    onChange={(e) => setStatusFilter(e.target.value)}
+                  >
+                    {STATUS_OPTIONS.map((option) => (
+                      <MenuItem key={option.value} value={option.value}>
+                        {option.label}
+                      </MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
+                <FormControl size="small" sx={{ minWidth: 150 }}>
+                  <InputLabel>Location</InputLabel>
+                  <Select
+                    value={locationFilter}
+                    label="Location"
+                    onChange={(e) => setLocationFilter(e.target.value)}
+                  >
+                    <MenuItem value="all">All Locations</MenuItem>
+                    {uniqueLocations.map((location) => (
+                      <MenuItem key={location} value={location}>
+                        {location}
+                      </MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
+                {hasActiveFilters && (
+                  <MDButton
+                    variant="outlined"
+                    color="secondary"
+                    size="small"
+                    onClick={handleResetFilters}
+                    startIcon={<Icon>filter_alt_off</Icon>}
+                  >
+                    Reset Filters
+                  </MDButton>
+                )}
+              </MDBox>
             </MDBox>
           </MDBox>
           <DataTable table={tableData} canSearch entriesPerPage={{ defaultValue: 25 }} />

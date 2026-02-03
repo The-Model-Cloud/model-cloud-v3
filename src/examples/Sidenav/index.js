@@ -62,7 +62,7 @@ import { useAuth } from "context/AuthContext";
 import { useMessaging } from "context/MessagingContext";
 
 // Role-based route filtering
-import { filterRoutesByRole, cleanRoutes, hasAccess } from "routes";
+import { filterRoutesByRole, cleanRoutes, hasAccess, filterRoutesForUnverifiedModel } from "routes";
 
 function Sidenav({ color, brand, brandName, routes, ...rest }) {
   const [openCollapse, setOpenCollapse] = useState(false);
@@ -102,12 +102,14 @@ function Sidenav({ color, brand, brandName, routes, ...rest }) {
     publicSlug: null,
   });
 
-  // ✅ Filter routes based on user role
+  // ✅ Filter routes based on user role and verification status
   const filteredRoutes = useMemo(() => {
     if (!userRole) return routes; // Show all routes if no role (should not happen when authenticated)
-    const filtered = filterRoutesByRole(routes, userRole);
+    let filtered = filterRoutesByRole(routes, userRole);
+    // Apply additional filtering for unverified models
+    filtered = filterRoutesForUnverifiedModel(filtered, user);
     return cleanRoutes(filtered);
-  }, [routes, userRole]);
+  }, [routes, userRole, user]);
 
   // ✅ Fetch user data
   useEffect(() => {

@@ -24,6 +24,9 @@ import { useAuth } from "context/AuthContext";
 import { useMaterialUIController } from "context";
 import AddToListModal from "components/Favourites/AddToListModal";
 
+// API functions
+import { sendVerificationEmail, sendUnverificationEmail } from "utils/api";
+
 // Stat item component for clean display
 function StatItem({ label, value, unit }) {
   if (!value) return null;
@@ -97,6 +100,29 @@ function PublicProfile() {
     setProfile((prev) => ({ ...prev, hideFromSearch: newValue }));
     const userRef = doc(db, "users", profileUid);
     await updateDoc(userRef, { hideFromSearch: newValue });
+  };
+
+  // Handle verification toggle (admin only)
+  const handleVerificationToggle = async () => {
+    if (!isAdmin || !profileUid || profile.role !== "model") return;
+    const newValue = !profile.verified;
+    setProfile((prev) => ({ ...prev, verified: newValue }));
+    const userRef = doc(db, "users", profileUid);
+    await updateDoc(userRef, { verified: newValue });
+
+    // Send appropriate email
+    const modelName = `${profile.firstName || ""} ${profile.lastName || ""}`.trim() || "Model";
+    if (profile.email) {
+      if (newValue) {
+        sendVerificationEmail(profile.email, modelName).catch((err) =>
+          console.warn("Failed to send verification email:", err)
+        );
+      } else {
+        sendUnverificationEmail(profile.email, modelName).catch((err) =>
+          console.warn("Failed to send unverification email:", err)
+        );
+      }
+    }
   };
 
   const handleFavouriteToggle = async () => {
@@ -181,23 +207,45 @@ function PublicProfile() {
           )}
           {!isAdmin && <MDBox />}
 
-          {canToggleVisibility && (
-            <Tooltip title={profile.hideFromSearch ? "Profile is hidden from search" : "Profile is visible in search"}>
-              <MDBox display="flex" alignItems="center" gap={1}>
-                <Icon sx={{ color: profile.hideFromSearch ? "white" : "text.secondary" }}>
-                  {profile.hideFromSearch ? "visibility_off" : "visibility"}
-                </Icon>
-                <MDTypography variant="button" fontWeight="medium" color={profile.hideFromSearch ? "white" : "text"}>
-                  {profile.hideFromSearch ? "Hidden" : "Visible"}
-                </MDTypography>
-                <Switch
-                  checked={!profile.hideFromSearch}
-                  onChange={handleVisibilityToggle}
-                  color="default"
-                />
-              </MDBox>
-            </Tooltip>
-          )}
+          <MDBox display="flex" alignItems="center" gap={3}>
+            {/* Verification Toggle - Admin Only for Models */}
+            {isAdmin && profile.role === "model" && (
+              <Tooltip title={profile.verified ? "Account is verified" : "Account is unverified - click to verify"}>
+                <MDBox display="flex" alignItems="center" gap={1}>
+                  <Icon sx={{ color: profile.verified ? "success.main" : "warning.main" }}>
+                    {profile.verified ? "verified_user" : "gpp_maybe"}
+                  </Icon>
+                  <MDTypography variant="button" fontWeight="medium" color={profile.verified ? "success" : "warning"}>
+                    {profile.verified ? "Verified" : "Unverified"}
+                  </MDTypography>
+                  <Switch
+                    checked={profile.verified === true}
+                    onChange={handleVerificationToggle}
+                    color="success"
+                  />
+                </MDBox>
+              </Tooltip>
+            )}
+
+            {/* Visibility Toggle */}
+            {canToggleVisibility && (
+              <Tooltip title={profile.hideFromSearch ? "Profile is hidden from search" : "Profile is visible in search"}>
+                <MDBox display="flex" alignItems="center" gap={1}>
+                  <Icon sx={{ color: profile.hideFromSearch ? "white" : "text.secondary" }}>
+                    {profile.hideFromSearch ? "visibility_off" : "visibility"}
+                  </Icon>
+                  <MDTypography variant="button" fontWeight="medium" color={profile.hideFromSearch ? "white" : "text"}>
+                    {profile.hideFromSearch ? "Hidden" : "Visible"}
+                  </MDTypography>
+                  <Switch
+                    checked={!profile.hideFromSearch}
+                    onChange={handleVisibilityToggle}
+                    color="default"
+                  />
+                </MDBox>
+              </Tooltip>
+            )}
+          </MDBox>
         </MDBox>
       )}
 
@@ -337,7 +385,7 @@ function PublicProfile() {
                             startIcon={<Icon>{isFavourited ? "favorite" : "favorite_border"}</Icon>}
                             sx={{ letterSpacing: "1px" }}
                           >
-                            {isFavourited ? "Saved" : "Save"}
+                            {isFavourited ? "Added to Favourites" : "Favourite"}
                           </MDButton>
                           <MDButton
                             variant="outlined"

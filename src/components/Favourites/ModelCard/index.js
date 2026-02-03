@@ -38,6 +38,7 @@ function ModelCard({
   showDeleteButton,
   onDelete,
   isHidden,
+  isUnverified,
 }) {
   const {
     uid,
@@ -118,6 +119,27 @@ function ModelCard({
         >
           <MDTypography variant="caption" fontWeight="bold" color="white" sx={{ fontSize: "0.65rem" }}>
             HIDDEN
+          </MDTypography>
+        </MDBox>
+      )}
+
+      {/* Unverified account ribbon */}
+      {isUnverified && !isHidden && (
+        <MDBox
+          sx={{
+            position: "absolute",
+            top: 16,
+            left: -32,
+            backgroundColor: "error.main",
+            color: "white",
+            padding: "4px 40px",
+            transform: "rotate(-45deg)",
+            zIndex: 3,
+            boxShadow: 2,
+          }}
+        >
+          <MDTypography variant="caption" fontWeight="bold" color="white" sx={{ fontSize: "0.65rem" }}>
+            UNVERIFIED
           </MDTypography>
         </MDBox>
       )}
@@ -290,6 +312,7 @@ ModelCard.defaultProps = {
   showDeleteButton: false,
   onDelete: null,
   isHidden: false,
+  isUnverified: false,
 };
 
 ModelCard.propTypes = {
@@ -311,6 +334,7 @@ ModelCard.propTypes = {
   showDeleteButton: PropTypes.bool,
   onDelete: PropTypes.func,
   isHidden: PropTypes.bool,
+  isUnverified: PropTypes.bool,
 };
 
 export default ModelCard;

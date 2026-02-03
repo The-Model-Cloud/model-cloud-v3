@@ -87,7 +87,11 @@ function Settings() {
   const handleTabChange = (event, newValue) => setTabValue(newValue);
 
   const getTabs = () => {
-    if (userRole === "model" || userRole === "super admin" || userRole === "admin") {
+    // Show model-specific tabs (Portfolio, Digitals, Measurements) only when:
+    // 1. A model is viewing their own profile, OR
+    // 2. An admin/super admin is editing a model's profile
+    // The userRole reflects the TARGET profile being edited, not the logged-in user
+    if (userRole === "model") {
       return [
         { label: "Basic Info", icon: <InfoIcon />, component: <BasicInfo /> },
         { label: "Portfolio", icon: <ImageIcon />, component: <Portfolio /> },
@@ -108,7 +112,14 @@ function Settings() {
         { label: "Delete Account", icon: <DeleteIcon />, component: <DeleteAccount /> },
       ];
     } else {
-      return [];
+      // Admin, super admin, account manager viewing their own profile
+      return [
+        { label: "Basic Info", icon: <InfoIcon />, component: <BasicInfo /> },
+        { label: "Social Media", icon: <ShareIcon />, component: <SocialMedia /> },
+        { label: "Notifications", icon: <NotificationsIcon />, component: <Notifications /> },
+        { label: "Change Password", icon: <LockIcon />, component: <ChangePassword /> },
+        { label: "Delete Account", icon: <DeleteIcon />, component: <DeleteAccount /> },
+      ];
     }
   };
 

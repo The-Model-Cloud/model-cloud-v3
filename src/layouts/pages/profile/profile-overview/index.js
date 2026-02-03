@@ -1,12 +1,18 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { auth, db } from "config/firebase";
-import { doc, getDoc, collection, getDocs } from "firebase/firestore";
+import { doc, getDoc, collection, getDocs, query, where } from "firebase/firestore";
 import { doesModelMatchJob } from "utils/matching";
+import { useAuth } from "context/AuthContext";
+import { useFavourites } from "context/FavouritesContext";
+import { isUnverifiedModel } from "utils/verification";
 
 // @mui material components
 import Grid from "@mui/material/Grid";
 import Divider from "@mui/material/Divider";
+import Card from "@mui/material/Card";
+import Icon from "@mui/material/Icon";
+import Alert from "@mui/material/Alert";
 
 // @mui icons
 import FacebookIcon from "@mui/icons-material/Facebook";
@@ -24,7 +30,6 @@ import DashboardLayout from "examples/LayoutContainers/DashboardLayout";
 import DashboardNavbar from "examples/Navbars/DashboardNavbar";
 import Footer from "examples/Footer";
 import ProfileInfoCard from "examples/Cards/InfoCards/ProfileInfoCard";
-import DefaultProjectCard from "examples/Cards/ProjectCards/DefaultProjectCard";
 
 // Overview page components
 import ProfileCompletion from "components/ProfileCompletion";
@@ -33,18 +38,11 @@ import ZCardWidget from "components/ZCard/ZCardWidget";
 import Header from "layouts/pages/profile/components/Header";
 import PlatformSettings from "layouts/pages/profile/profile-overview/components/PlatformSettings";
 import JobCard from "layouts/jobs/search/components/JobCard";
-
-// Images
-import homeDecor1 from "assets/images/home-decor-1.jpg";
-import homeDecor2 from "assets/images/home-decor-2.jpg";
-import homeDecor3 from "assets/images/home-decor-3.jpg";
-import homeDecor4 from "assets/images/home-decor-4.jpeg";
-import team1 from "assets/images/team-1.jpg";
-import team2 from "assets/images/team-2.jpg";
-import team3 from "assets/images/team-3.jpg";
-import team4 from "assets/images/team-4.jpg";
+import ModelCard from "components/Favourites/ModelCard";
 
 function Overview() {
+  const { user } = useAuth();
+  const { favouriteModelIds } = useFavourites();
 
   const [userProfile, setUserProfile] = useState({
     firstName: "",
@@ -63,6 +61,8 @@ function Overview() {
   });
   const [userRole, setUserRole] = useState(null);
   const [matchingJobs, setMatchingJobs] = useState([]);
+  const [clientJobs, setClientJobs] = useState([]);
+  const [favouriteModels, setFavouriteModels] = useState([]);
 
   const socialUrls = {
     facebook: "https://facebook.com/",
@@ -125,17 +125,95 @@ function Overview() {
               console.error("Error fetching matching jobs:", error);
             }
           }
+
+          // Fetch client's live jobs
+          if (data.role === "client") {
+            try {
+              const jobsQuery = query(
+                collection(db, "jobs"),
+                where("userId", "==", user.uid)
+              );
+              const jobsSnap = await getDocs(jobsQuery);
+              const jobs = jobsSnap.docs
+                .map((docSnap) => ({
+                  id: docSnap.id,
+                  ...docSnap.data(),
+                }))
+                .filter((job) => !job.status || job.status.toLowerCase() === "open")
+                .sort((a, b) => {
+                  const dateA = a.createdAt?.toDate?.() || new Date(a.createdAt) || 0;
+                  const dateB = b.createdAt?.toDate?.() || new Date(b.createdAt) || 0;
+                  return dateB - dateA;
+                });
+              setClientJobs(jobs.slice(0, 4)); // Show max 4 jobs
+            } catch (error) {
+              console.error("Error fetching client jobs:", error);
+            }
+          }
         }
       }
     };
     fetchProfile();
   }, []);
 
+  // Fetch favourite models data when favouriteModelIds changes
+  useEffect(() => {
+    const fetchFavouriteModels = async () => {
+      if (!favouriteModelIds || favouriteModelIds.length === 0 || userRole !== "client") {
+        setFavouriteModels([]);
+        return;
+      }
+
+      try {
+        // Fetch model data for each favourite (limit to 4 for dashboard display)
+        const modelIds = favouriteModelIds.slice(0, 4);
+        const modelPromises = modelIds.map(async (modelId) => {
+          const modelRef = doc(db, "users", modelId);
+          const modelSnap = await getDoc(modelRef);
+          if (modelSnap.exists()) {
+            return { uid: modelSnap.id, ...modelSnap.data() };
+          }
+          return null;
+        });
+
+        const models = (await Promise.all(modelPromises)).filter(Boolean);
+        setFavouriteModels(models);
+      } catch (error) {
+        console.error("Error fetching favourite models:", error);
+      }
+    };
+
+    fetchFavouriteModels();
+  }, [favouriteModelIds, userRole]);
 
   return (
     <DashboardLayout>
       <DashboardNavbar />
       <MDBox mb={2} />
+
+      {/* Verification pending banner for unverified models */}
+      {isUnverifiedModel(user) && (
+        <Card sx={{ mb: 3, p: 0, overflow: "hidden" }}>
+          <Alert
+            severity="warning"
+            icon={<Icon>gpp_maybe</Icon>}
+            sx={{
+              borderRadius: 0,
+              "& .MuiAlert-message": { width: "100%" },
+            }}
+          >
+            <MDBox>
+              <MDTypography variant="body2" fontWeight="medium" color="inherit">
+                Account Pending Verification
+              </MDTypography>
+              <MDTypography variant="caption" color="inherit">
+                Your account is being reviewed by an administrator. Once verified, you'll have full access to browse jobs, apply for opportunities, and create your Z-Card. In the meantime, you can complete your profile.
+              </MDTypography>
+            </MDBox>
+          </Alert>
+        </Card>
+      )}
+
       <Header>
         <MDBox mt={5} mb={3}>
           <Grid container spacing={3}>
@@ -243,100 +321,79 @@ function Overview() {
           </>
         )}
 
-        <MDBox pt={2} px={2} lineHeight={1.25}>
-          <MDTypography variant="h6" fontWeight="medium">
-            Projects
-          </MDTypography>
-          <MDBox mb={1}>
-            <MDTypography variant="button" color="text">
-              Architects design houses
-            </MDTypography>
-          </MDBox>
-        </MDBox>
-        <MDBox p={2}>
-          <Grid container spacing={6}>
-            <Grid item xs={12} md={6} xl={3}>
-              <DefaultProjectCard
-                image={homeDecor1}
-                label="project #2"
-                title="modern"
-                description="As Uber works through a huge amount of internal management turmoil."
-                action={{
-                  type: "internal",
-                  route: "/dashboard",
-                  color: "info",
-                  label: "view project",
-                }}
-                authors={[
-                  { image: team1, name: "Elena Morison" },
-                  { image: team2, name: "Ryan Milly" },
-                  { image: team3, name: "Nick Daniel" },
-                  { image: team4, name: "Peterson" },
-                ]}
-              />
-            </Grid>
-            <Grid item xs={12} md={6} xl={3}>
-              <DefaultProjectCard
-                image={homeDecor2}
-                label="project #1"
-                title="scandinavian"
-                description="Music is something that everyone has their own specific opinion about."
-                action={{
-                  type: "internal",
-                  route: "/dashboard",
-                  color: "info",
-                  label: "view project",
-                }}
-                authors={[
-                  { image: team3, name: "Nick Daniel" },
-                  { image: team4, name: "Peterson" },
-                  { image: team1, name: "Elena Morison" },
-                  { image: team2, name: "Ryan Milly" },
-                ]}
-              />
-            </Grid>
-            <Grid item xs={12} md={6} xl={3}>
-              <DefaultProjectCard
-                image={homeDecor3}
-                label="project #3"
-                title="minimalist"
-                description="Different people have different taste, and various types of music."
-                action={{
-                  type: "internal",
-                  route: "/dashboard",
-                  color: "info",
-                  label: "view project",
-                }}
-                authors={[
-                  { image: team4, name: "Peterson" },
-                  { image: team3, name: "Nick Daniel" },
-                  { image: team2, name: "Ryan Milly" },
-                  { image: team1, name: "Elena Morison" },
-                ]}
-              />
-            </Grid>
-            <Grid item xs={12} md={6} xl={3}>
-              <DefaultProjectCard
-                image={homeDecor4}
-                label="project #4"
-                title="gothic"
-                description="Why would anyone pick blue over pink? Pink is obviously a better color."
-                action={{
-                  type: "internal",
-                  route: "/dashboard",
-                  color: "info",
-                  label: "view project",
-                }}
-                authors={[
-                  { image: team4, name: "Peterson" },
-                  { image: team3, name: "Nick Daniel" },
-                  { image: team2, name: "Ryan Milly" },
-                  { image: team1, name: "Elena Morison" },
-                ]}
-              />
-            </Grid>
-          </Grid>
-        </MDBox>
+        {/* Your Jobs Section - Only for Clients */}
+        {userRole === "client" && clientJobs.length > 0 && (
+          <>
+            <MDBox pt={2} px={2} lineHeight={1.25}>
+              <MDBox display="flex" justifyContent="space-between" alignItems="center">
+                <MDTypography variant="h6" fontWeight="medium">
+                  Your Jobs
+                </MDTypography>
+                <MDTypography
+                  component={Link}
+                  to="/jobs/my-jobs"
+                  variant="button"
+                  color="info"
+                  fontWeight="medium"
+                  sx={{ "&:hover": { textDecoration: "underline" } }}
+                >
+                  View All Jobs
+                </MDTypography>
+              </MDBox>
+              <MDBox mb={1}>
+                <MDTypography variant="button" color="text">
+                  Your live job listings
+                </MDTypography>
+              </MDBox>
+            </MDBox>
+            <MDBox p={2}>
+              <Grid container spacing={6}>
+                {clientJobs.map((job) => (
+                  <Grid item xs={12} md={6} xl={3} key={job.id}>
+                    <JobCard job={job} />
+                  </Grid>
+                ))}
+              </Grid>
+            </MDBox>
+          </>
+        )}
+
+        {/* Favourite Models Section - Only for Clients */}
+        {userRole === "client" && favouriteModels.length > 0 && (
+          <>
+            <MDBox pt={2} px={2} lineHeight={1.25}>
+              <MDBox display="flex" justifyContent="space-between" alignItems="center">
+                <MDTypography variant="h6" fontWeight="medium">
+                  Your Favourites
+                </MDTypography>
+                <MDTypography
+                  component={Link}
+                  to="/favourites"
+                  variant="button"
+                  color="info"
+                  fontWeight="medium"
+                  sx={{ "&:hover": { textDecoration: "underline" } }}
+                >
+                  View All Favourites
+                </MDTypography>
+              </MDBox>
+              <MDBox mb={1}>
+                <MDTypography variant="button" color="text">
+                  Models you&apos;ve saved
+                </MDTypography>
+              </MDBox>
+            </MDBox>
+            <MDBox p={2}>
+              <Grid container spacing={6}>
+                {favouriteModels.map((model) => (
+                  <Grid item xs={12} md={6} xl={3} key={model.uid}>
+                    <ModelCard model={model} showActions={false} />
+                  </Grid>
+                ))}
+              </Grid>
+            </MDBox>
+          </>
+        )}
       </Header>
       <Footer />
     </DashboardLayout>

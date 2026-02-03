@@ -13,46 +13,50 @@ Coded by www.creative-tim.com
 * The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.
 */
 
-import checkout from "layouts/pages/users/new-user/schemas/form";
+import form from "./form";
 
 const {
   formField: {
     firstName,
     lastName,
+    role,
     company,
     email,
     password,
     repeatPassword,
     address1,
     address2,
+    country,
+    county,
     city,
-    state,
-    zip,
+    postcode,
     twitter,
     facebook,
     instagram,
-    publicEmail,
-    bio,
+    headshot,
+    profileAvatar,
   },
-} = checkout;
+} = form;
 
 const initialValues = {
   [firstName.name]: "",
   [lastName.name]: "",
+  [role.name]: "",
   [company.name]: "",
   [email.name]: "",
   [password.name]: "",
   [repeatPassword.name]: "",
   [address1.name]: "",
   [address2.name]: "",
+  [country.name]: "",
+  [county.name]: "",
   [city.name]: "",
-  [zip.name]: "",
-  [state.name]: "",
+  [postcode.name]: "",
   [twitter.name]: "",
   [facebook.name]: "",
   [instagram.name]: "",
-  [publicEmail.name]: "",
-  [bio.name]: "",
+  [headshot.name]: "",
+  [profileAvatar.name]: "",
 };
 
 export default initialValues;

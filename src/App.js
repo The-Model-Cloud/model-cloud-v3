@@ -6,10 +6,6 @@ import { Routes, Route, Navigate, useLocation } from "react-router-dom";
 // @mui material components
 import { ThemeProvider } from "@mui/material/styles";
 import CssBaseline from "@mui/material/CssBaseline";
-import Icon from "@mui/material/Icon";
-
-// Material Dashboard 3 PRO React components
-import MDBox from "components/MDBox";
 
 // Material Dashboard 3 PRO React examples
 import Sidenav from "examples/Sidenav";
@@ -33,6 +29,7 @@ import routes from "routes";
 
 import { hasAccess } from "routes";
 import { useAuth } from "context/AuthContext"; // Adjust if stored elsewhere
+import { isUnverifiedModel } from "utils/verification";
 
 // Model public profile page
 import PublicProfile from "layouts/pages/profile/public-profile";
@@ -53,7 +50,6 @@ import {
   setMiniSidenav,
   setOpenConfigurator,
   loadPreferences,
-  setDarkModePreference,
   getSystemDarkMode,
 } from "context";
 
@@ -73,7 +69,6 @@ export default function App() {
     miniSidenav,
     direction,
     layout,
-    openConfigurator,
     sidenavColor,
     transparentSidenav,
     whiteSidenav,
@@ -131,10 +126,6 @@ export default function App() {
     }
   };
 
-  // Change the openConfigurator state
-  const handleConfiguratorOpen = () =>
-    setOpenConfigurator(dispatch, !openConfigurator);
-
   // Setting the dir attribute for the body element
   useEffect(() => {
     document.body.setAttribute("dir", direction);
@@ -175,11 +166,41 @@ export default function App() {
     }
   }, [user?.uid, user?.uiPreferences, dispatch]);
 
+  // Routes that unverified models ARE allowed to access
+  const allowedRoutesForUnverified = [
+    "/dashboard",
+    "/edit-profile",
+    "/pages/account/settings",
+    "/pages/profile/profile-overview",
+    "/authentication",
+    "/sign-in",
+    "/sign-up",
+  ];
+
+  const isRouteAllowedForUnverified = (routePath) => {
+    return allowedRoutesForUnverified.some(
+      (allowed) => routePath === allowed || routePath.startsWith(allowed + "/")
+    );
+  };
+
   const getRoutes = (allRoutes) =>
     allRoutes.flatMap((route) => {
       if (route.collapse) return getRoutes(route.collapse);
 
       if (route.route && (!route.roles || hasAccess(user?.role, route.roles))) {
+        // Check if user is unverified model and route is restricted
+        if (isUnverifiedModel(user) && !isRouteAllowedForUnverified(route.route)) {
+          // Return a redirect to dashboard for restricted routes
+          return (
+            <Route
+              exact
+              path={route.route}
+              element={<Navigate to="/dashboard" replace />}
+              key={route.key}
+            />
+          );
+        }
+
         return (
           <Route
             exact
@@ -192,30 +213,6 @@ export default function App() {
 
       return [];
     });
-
-  const configsButton = (
-    <MDBox
-      display="flex"
-      justifyContent="center"
-      alignItems="center"
-      width="3.25rem"
-      height="3.25rem"
-      bgColor="white"
-      shadow="sm"
-      borderRadius="50%"
-      position="fixed"
-      right="2rem"
-      bottom="2rem"
-      zIndex={99}
-      color="dark"
-      sx={{ cursor: "pointer" }}
-      onClick={handleConfiguratorOpen}
-    >
-      <Icon fontSize="small" color="inherit">
-        settings
-      </Icon>
-    </MDBox>
-  );
 
   return direction === "rtl" ? (
     <CacheProvider value={rtlCache}>
@@ -236,7 +233,6 @@ export default function App() {
               onMouseLeave={handleOnMouseLeave}
             />
             <Configurator />
-            {configsButton}
           </>
         )}
 
@@ -279,7 +275,6 @@ export default function App() {
             onMouseLeave={handleOnMouseLeave}
           />
           <Configurator />
-          {configsButton}
         </>
       )}
       {layout === "vr" && <Configurator />}

@@ -379,6 +379,98 @@ export const adminUpdateUserEmail = async (userUid, newEmail) => {
   }
 };
 
+/**
+ * Send verification email to a model when their account is verified
+ * @param {string} to - Model's email address
+ * @param {string} modelName - Model's full name
+ * @returns {Promise<{success: boolean}>}
+ */
+export const sendVerificationEmail = async (to, modelName) => {
+  try {
+    const result = await callCloudFunction("sendVerificationEmail", {
+      to,
+      modelName,
+    });
+
+    if (result.skipped) {
+      console.log("📧 Verification email skipped - SendGrid not configured");
+    }
+
+    return result;
+  } catch (error) {
+    console.warn("Verification email failed, but continuing:", error);
+    return { success: false, skipped: true };
+  }
+};
+
+/**
+ * Send unverification email to a model when their account is unverified
+ * @param {string} to - Model's email address
+ * @param {string} modelName - Model's full name
+ * @returns {Promise<{success: boolean}>}
+ */
+export const sendUnverificationEmail = async (to, modelName) => {
+  try {
+    const result = await callCloudFunction("sendUnverificationEmail", {
+      to,
+      modelName,
+    });
+
+    if (result.skipped) {
+      console.log("📧 Unverification email skipped - SendGrid not configured");
+    }
+
+    return result;
+  } catch (error) {
+    console.warn("Unverification email failed, but continuing:", error);
+    return { success: false, skipped: true };
+  }
+};
+
+
+// ============================================================================
+// SYSTEM SETTINGS API FUNCTIONS
+// ============================================================================
+
+/**
+ * Get system settings (Super Admin only)
+ * @returns {Promise<{success: boolean, settings: Object}>}
+ */
+export const getSystemSettings = async () => {
+  try {
+    const result = await callCloudFunction("getSystemSettings", {});
+
+    if (result.error && !result.success) {
+      throw new Error(result.error);
+    }
+
+    return result;
+  } catch (error) {
+    console.error("Failed to get system settings:", error);
+    throw error;
+  }
+};
+
+/**
+ * Update system settings (Super Admin only)
+ * @param {Object} settings - The settings to update
+ * @returns {Promise<{success: boolean}>}
+ */
+export const updateSystemSettings = async (settings) => {
+  try {
+    const result = await callCloudFunction("updateSystemSettings", { settings });
+
+    if (result.error && !result.success) {
+      throw new Error(result.error);
+    }
+
+    return result;
+  } catch (error) {
+    console.error("Failed to update system settings:", error);
+    throw error;
+  }
+};
+
 
 // ============================================================================
 // IMAGE OPTIMIZATION API FUNCTIONS
@@ -433,6 +525,197 @@ export const optimizeModelImages = async (options) => {
     return result;
   } catch (error) {
     console.error("Failed to optimize model images:", error);
+    throw error;
+  }
+};
+
+
+// ============================================================================
+// ANALYTICS API FUNCTIONS
+// ============================================================================
+
+/**
+ * Get GA4 analytics data (Admin/Super Admin only)
+ * @param {string} startDate - Start date in YYYY-MM-DD format
+ * @param {string} endDate - End date in YYYY-MM-DD format
+ * @param {string[]} metrics - Array of metric names to fetch
+ * @param {string[]} dimensions - Array of dimension names to fetch
+ * @returns {Promise<{success: boolean, data: Object}>}
+ */
+export const getGA4Analytics = async (startDate, endDate, metrics, dimensions) => {
+  try {
+    const result = await callCloudFunction("getGA4Analytics", {
+      startDate,
+      endDate,
+      metrics,
+      dimensions,
+    });
+
+    if (result.error && !result.success) {
+      throw new Error(result.error);
+    }
+
+    return result;
+  } catch (error) {
+    console.error("Failed to get GA4 analytics:", error);
+    throw error;
+  }
+};
+
+/**
+ * Get daily GA4 analytics data for charts (Admin/Super Admin only)
+ * @param {string} startDate - Start date in YYYY-MM-DD format
+ * @param {string} endDate - End date in YYYY-MM-DD format
+ * @returns {Promise<{success: boolean, data: Object}>}
+ */
+export const getGA4DailyData = async (startDate, endDate) => {
+  try {
+    const result = await callCloudFunction("getGA4DailyData", {
+      startDate,
+      endDate,
+    });
+
+    if (result.error && !result.success) {
+      throw new Error(result.error);
+    }
+
+    return result;
+  } catch (error) {
+    console.error("Failed to get GA4 daily data:", error);
+    throw error;
+  }
+};
+
+/**
+ * Get model profile page views from GA4 (Admin/Super Admin only)
+ * @param {string} startDate - Start date in YYYY-MM-DD format
+ * @param {string} endDate - End date in YYYY-MM-DD format
+ * @param {number} limit - Max number of results (default: 10)
+ * @returns {Promise<{success: boolean, data: Object}>}
+ */
+export const getModelProfileViews = async (startDate, endDate, limit = 10) => {
+  try {
+    const result = await callCloudFunction("getModelProfileViews", {
+      startDate,
+      endDate,
+      limit,
+    });
+
+    if (result.error && !result.success) {
+      throw new Error(result.error);
+    }
+
+    return result;
+  } catch (error) {
+    console.error("Failed to get model profile views:", error);
+    throw error;
+  }
+};
+
+/**
+ * Get traffic sources from GA4 (Admin/Super Admin only)
+ * @param {string} startDate - Start date in YYYY-MM-DD format
+ * @param {string} endDate - End date in YYYY-MM-DD format
+ * @returns {Promise<{success: boolean, data: Object}>}
+ */
+export const getTrafficSources = async (startDate, endDate) => {
+  try {
+    const result = await callCloudFunction("getTrafficSources", {
+      startDate,
+      endDate,
+    });
+
+    if (result.error && !result.success) {
+      throw new Error(result.error);
+    }
+
+    return result;
+  } catch (error) {
+    console.error("Failed to get traffic sources:", error);
+    throw error;
+  }
+};
+
+/**
+ * Get geographic data from GA4 (Admin/Super Admin only)
+ * @param {string} startDate - Start date in YYYY-MM-DD format
+ * @param {string} endDate - End date in YYYY-MM-DD format
+ * @returns {Promise<{success: boolean, data: Object}>}
+ */
+export const getGeographicData = async (startDate, endDate) => {
+  try {
+    const result = await callCloudFunction("getGeographicData", {
+      startDate,
+      endDate,
+    });
+
+    if (result.error && !result.success) {
+      throw new Error(result.error);
+    }
+
+    return result;
+  } catch (error) {
+    console.error("Failed to get geographic data:", error);
+    throw error;
+  }
+};
+
+/**
+ * Get job count (Admin/Super Admin only)
+ * @returns {Promise<{success: boolean, data: Object}>}
+ */
+export const getJobCount = async () => {
+  try {
+    const result = await callCloudFunction("getJobCount", {});
+
+    if (result.error && !result.success) {
+      throw new Error(result.error);
+    }
+
+    return result;
+  } catch (error) {
+    console.error("Failed to get job count:", error);
+    throw error;
+  }
+};
+
+/**
+ * Get user count (Admin/Super Admin only)
+ * @returns {Promise<{success: boolean, data: Object}>}
+ */
+export const getUserCount = async () => {
+  try {
+    const result = await callCloudFunction("getUserCount", {});
+
+    if (result.error && !result.success) {
+      throw new Error(result.error);
+    }
+
+    return result;
+  } catch (error) {
+    console.error("Failed to get user count:", error);
+    throw error;
+  }
+};
+
+/**
+ * Get Instagram follower count for a specific account (Admin/Super Admin only)
+ * @param {string} username - Instagram username
+ * @returns {Promise<{success: boolean, data: Object}>}
+ */
+export const getInstagramFollowers = async (username) => {
+  try {
+    const result = await callCloudFunction("getInstagramFollowers", {
+      username,
+    });
+
+    if (result.error && !result.success) {
+      throw new Error(result.error);
+    }
+
+    return result;
+  } catch (error) {
+    console.error("Failed to get Instagram followers:", error);
     throw error;
   }
 };

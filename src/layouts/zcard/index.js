@@ -42,6 +42,9 @@ import ImagePositioner from "layouts/zcard/components/ImagePositioner";
 // Context
 import { useAuth } from "context/AuthContext";
 
+// Verification
+import { isUnverifiedModel } from "utils/verification";
+
 // Utilities
 import {
   createZCard,
@@ -391,6 +394,19 @@ function ZCardBuilder() {
           </MDTypography>
         </MDBox>
 
+        {/* Unverified model message */}
+        {isModel && isUnverifiedModel(user) && (
+          <Card sx={{ p: 4, textAlign: "center" }}>
+            <Icon sx={{ fontSize: 48, color: "warning.main", mb: 2 }}>gpp_maybe</Icon>
+            <MDTypography variant="h6" color="warning" fontWeight="medium" mb={1}>
+              Account Pending Verification
+            </MDTypography>
+            <MDTypography variant="body2" color="text">
+              Your account is pending verification by an administrator. Once verified, you'll be able to create and manage your Z-Card.
+            </MDTypography>
+          </Card>
+        )}
+
         {/* Model Selector (Admin only) */}
         {isAdmin && (
           <Card sx={{ mb: 3, p: 3 }}>
@@ -418,8 +434,8 @@ function ZCardBuilder() {
           </Card>
         )}
 
-        {/* Main content when model is selected */}
-        {modelData && !loading && (
+        {/* Main content when model is selected (and model is verified or user is admin) */}
+        {modelData && !loading && (!isModel || !isUnverifiedModel(user)) && (
           <Grid container spacing={3}>
             {/* Left side - Image Selection */}
             <Grid item xs={12} lg={7}>

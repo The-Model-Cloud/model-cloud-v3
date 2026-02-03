@@ -136,9 +136,9 @@ function BrowseModels() {
   const filteredModels = useMemo(() => {
     let result = [...models];
 
-    // Filter out hidden models for non-admin users
+    // Filter out hidden and unverified models for non-admin users
     if (!isAdmin) {
-      result = result.filter((model) => !model.hideFromSearch);
+      result = result.filter((model) => !model.hideFromSearch && model.verified === true);
     }
 
     // Text search filter
@@ -478,6 +478,7 @@ function BrowseModels() {
                       showDeleteButton={isAdmin}
                       onDelete={isAdmin ? handleDeleteClick : null}
                       isHidden={isAdmin && model.hideFromSearch}
+                      isUnverified={isAdmin && model.verified !== true}
                     />
                   </Grid>
                 ))}
@@ -496,6 +497,7 @@ function BrowseModels() {
                     showDeleteButton={isAdmin}
                     onDelete={isAdmin ? handleDeleteClick : null}
                     isHidden={isAdmin && model.hideFromSearch}
+                    isUnverified={isAdmin && model.verified !== true}
                   />
                 ))}
               </MDBox>
