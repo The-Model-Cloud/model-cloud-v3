@@ -24,7 +24,7 @@ import {
  */
 export async function createOrganisation(orgData) {
   const db = getFirestore();
-  const orgsRef = collection(db, "organisations");
+  const orgsRef = collection(db, "Organisations");
 
   // Generate new document reference with auto ID
   const newOrgRef = doc(orgsRef);
@@ -55,7 +55,7 @@ export async function createOrganisation(orgData) {
  */
 export async function getOrganisationByName(companyName) {
   const db = getFirestore();
-  const orgsRef = collection(db, "organisations");
+  const orgsRef = collection(db, "Organisations");
 
   // Firestore doesn't support case-insensitive queries, so we need to fetch and filter
   // For better performance with large datasets, consider storing a lowercase version
@@ -81,7 +81,7 @@ export async function getOrganisationByName(companyName) {
  */
 export async function getOrganisationById(orgId) {
   const db = getFirestore();
-  const orgRef = doc(db, "organisations", orgId);
+  const orgRef = doc(db, "Organisations", orgId);
   const orgSnap = await getDoc(orgRef);
 
   if (!orgSnap.exists()) return null;
@@ -124,7 +124,7 @@ export async function getOrCreateOrganisation(companyName, additionalData = {}, 
  */
 export async function getAllOrganisations(options = {}) {
   const db = getFirestore();
-  const orgsRef = collection(db, "organisations");
+  const orgsRef = collection(db, "Organisations");
 
   // Create query (can add orderBy if needed)
   const snapshot = await getDocs(orgsRef);
@@ -171,7 +171,7 @@ export async function getOrganisationUsers(orgId) {
  */
 export async function updateOrganisation(orgId, updates) {
   const db = getFirestore();
-  const orgRef = doc(db, "organisations", orgId);
+  const orgRef = doc(db, "Organisations", orgId);
 
   await setDoc(orgRef, {
     ...updates,
@@ -187,7 +187,7 @@ export async function updateOrganisation(orgId, updates) {
  */
 export async function updateOrganisationUserCount(orgId, increment = 1) {
   const db = getFirestore();
-  const orgRef = doc(db, "organisations", orgId);
+  const orgRef = doc(db, "Organisations", orgId);
 
   // Get current count
   const orgSnap = await getDoc(orgRef);
