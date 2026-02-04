@@ -100,7 +100,7 @@ function MaterialUIControllerProvider({ children }) {
     direction: "ltr",
     layout: "dashboard",
     darkMode: false,
-    darkModePreference: "system", // "light", "dark", or "system"
+    darkModePreference: "light", // "light", "dark", or "system"
   };
 
   const [controller, dispatch] = useReducer(reducer, initialState);
