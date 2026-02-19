@@ -27,6 +27,8 @@
     "@mui/material": "^5.16.7",
     "@react-jvectormap/core": "1.0.4",
     "@react-jvectormap/world": "1.1.2",
+    "@stripe/react-stripe-js": "^2.9.0",
+    "@stripe/stripe-js": "^2.4.0",
     "@tiptap/extension-image": "^2.11.5",
     "@tiptap/extension-placeholder": "^2.11.5",
     "@tiptap/extension-table": "^2.11.5",

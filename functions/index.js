@@ -2,7 +2,8 @@ require("dotenv").config();
 
 const functions = require("firebase-functions");
 const { onDocumentCreated } = require("firebase-functions/v2/firestore");
-const { onCall, HttpsError } = require("firebase-functions/v2/https");
+const { onCall, onRequest, HttpsError } = require("firebase-functions/v2/https");
+const { onSchedule } = require("firebase-functions/v2/scheduler");
 const admin = require("firebase-admin");
 const axios = require("axios");
 
@@ -65,6 +66,63 @@ const getInstagramFollowerCount = async (username) => {
 };
 const sgMail = require("@sendgrid/mail");
 const cloudinary = require("cloudinary").v2;
+const Stripe = require("stripe");
+
+// Initialize Stripe
+const stripe = process.env.STRIPE_SECRET_KEY
+  ? new Stripe(process.env.STRIPE_SECRET_KEY, { apiVersion: "2023-10-16" })
+  : null;
+
+if (stripe) {
+  console.log("✅ Stripe configured successfully");
+} else {
+  console.warn("⚠️ Stripe not configured. Payment functionality disabled.");
+}
+
+// Stripe fee configuration
+const PLATFORM_FEE_PERCENT = parseFloat(process.env.STRIPE_PLATFORM_FEE_PERCENT || "0.05"); // 5%
+const WITHDRAWAL_FEE_PERCENT = parseFloat(process.env.STRIPE_WITHDRAWAL_FEE_PERCENT || "0.015"); // 1.5%
+
+// ============================================================================
+// SUBSCRIPTION TIER CONFIGURATION
+// ============================================================================
+
+const SUBSCRIPTION_TIERS = {
+  free: {
+    id: "free",
+    name: "Free",
+    price: 0,
+    currency: "gbp",
+    stripePriceId: null,
+    includesSeats: 0,
+  },
+  starter: {
+    id: "starter",
+    name: "Starter",
+    price: 4999, // £49.99 in pence
+    currency: "gbp",
+    stripePriceId: process.env.STRIPE_STARTER_PRICE_ID || null,
+    includesSeats: 0,
+  },
+  premium: {
+    id: "premium",
+    name: "Premium",
+    price: 9999, // £99.99 in pence
+    currency: "gbp",
+    stripePriceId: process.env.STRIPE_PREMIUM_PRICE_ID || null,
+    includesSeats: 0,
+  },
+  agency: {
+    id: "agency",
+    name: "Agency",
+    price: 14999, // £149.99 in pence
+    currency: "gbp",
+    stripePriceId: process.env.STRIPE_AGENCY_PRICE_ID || null,
+    includesSeats: 6,
+  },
+};
+
+const ADDITIONAL_SEAT_PRICE_ID = process.env.STRIPE_ADDITIONAL_SEAT_PRICE_ID || null;
 
 admin.initializeApp();
 const db = admin.firestore();
@@ -116,6 +174,120 @@ const isEmailEnabled = async () => {
     // Default to true on error
     return true;
   }
+};
+
+// ============================================================================
+// SUBSCRIPTION HELPER FUNCTIONS
+// ============================================================================
+
+/**
+ * Check if a user's subscription is active and not expired
+ * @param {Object} userData - User document data
+ * @returns {boolean} - Whether subscription is active
+ */
+const isSubscriptionActive = (userData) => {
+  if (!userData.subscription) {
+    // Default to free tier for users without subscription data
+    return true;
+  }
+
+  const { tier, status, currentPeriodEnd } = userData.subscription;
+
+  // Free tier is always active
+  if (tier === "free") {
+    return true;
+  }
+
+  // Check status
+  if (status !== "active" && status !== "trialing") {
+    return false;
+  }
+
+  // Check expiry (immediate lockout)
+  if (currentPeriodEnd) {
+    const endDate = currentPeriodEnd.toDate ? currentPeriodEnd.toDate() : new Date(currentPeriodEnd);
+    if (endDate < new Date()) {
+      return false;
+    }
+  }
+
+  return true;
+};
+
+/**
+ * Get user's effective subscription tier
+ * @param {Object} userData - User document data
+ * @returns {string} - Tier ID
+ */
+const getEffectiveTier = (userData) => {
+  if (!userData.subscription || !isSubscriptionActive(userData)) {
+    return "free";
+  }
+  return userData.subscription.tier || "free";
+};
+
+/**
+ * Ensure user has Stripe customer, create if not exists
+ * @param {string} uid - User ID
+ * @param {Object} userData - User document data
+ * @returns {Promise<string>} - Stripe customer ID
+ */
+const ensureStripeCustomer = async (uid, userData) => {
+  if (userData.stripeCustomerId) {
+    return userData.stripeCustomerId;
+  }
+
+  const customer = await stripe.customers.create({
+    email: userData.email,
+    name: userData.companyName || `${userData.firstName} ${userData.lastName}`,
+    metadata: {
+      firebaseUid: uid,
+      role: userData.role,
+      platform: "model-cloud",
+    },
+  });
+
+  await db.collection("users").doc(uid).update({
+    stripeCustomerId: customer.id,
+  });
+
+  return customer.id;
+};
+
+/**
+ * Check subscription access for a feature
+ * @param {string} uid - User ID
+ * @param {Array<string>} requiredTiers - Tiers that can access this feature
+ * @returns {Promise<Object>} - { allowed: boolean, tier: string, reason?: string }
+ */
+const checkSubscriptionAccess = async (uid, requiredTiers = ["starter", "premium", "agency"]) => {
+  const userDoc = await db.collection("users").doc(uid).get();
+
+  if (!userDoc.exists) {
+    return { allowed: false, tier: null, reason: "User not found" };
+  }
+
+  const userData = userDoc.data();
+  const isActive = isSubscriptionActive(userData);
+  const tier = getEffectiveTier(userData);
+
+  if (!isActive) {
+    return {
+      allowed: false,
+      tier,
+      reason: "Subscription expired or inactive",
+    };
+  }
+
+  if (!requiredTiers.includes(tier)) {
+    return {
+      allowed: false,
+      tier,
+      reason: `This feature requires one of: ${requiredTiers.join(", ")}`,
+    };
+  }
+
+  return { allowed: true, tier };
 };
 
 /**
@@ -190,6 +362,686 @@ exports.updateSystemSettings = onCall(async (request) => {
     console.error("Error updating system settings:", error);
     throw new HttpsError("internal", error.message);
   }
+});
+
+// ============================================================================
+// SUBSCRIPTION FUNCTIONS
+// ============================================================================
+
+/**
+ * Initialize a user with free tier subscription
+ */
+exports.initializeFreeTier = onCall(async (request) => {
+  if (!request.auth) {
+    throw new HttpsError("unauthenticated", "User must be logged in");
+  }
+
+  const uid = request.auth.uid;
+  const userDoc = await db.collection("users").doc(uid).get();
+
+  if (!userDoc.exists) {
+    throw new HttpsError("not-found", "User not found");
+  }
+
+  const userData = userDoc.data();
+
+  // Don't overwrite existing paid subscription
+  if (userData.subscription?.tier && userData.subscription.tier !== "free" && userData.subscription.status === "active") {
+    return {
+      success: true,
+      message: "User already has an active subscription",
+      tier: userData.subscription.tier,
+    };
+  }
+
+  await db.collection("users").doc(uid).update({
+    subscription: {
+      tier: "free",
+      status: "active",
+      stripeSubscriptionId: null,
+      stripePriceId: null,
+      currentPeriodStart: null,
+      currentPeriodEnd: null,
+      cancelAtPeriodEnd: false,
+      managedSeat: false,
+      createdAt: admin.firestore.FieldValue.serverTimestamp(),
+      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+    },
+  });
+
+  return {
+    success: true,
+    message: "Free tier initialized",
+    tier: "free",
+  };
+});
+
+/**
+ * Get current user's subscription status
+ */
+exports.getSubscriptionStatus = onCall(async (request) => {
+  if (!request.auth) {
+    throw new HttpsError("unauthenticated", "User must be logged in");
+  }
+
+  const uid = request.auth.uid;
+  const userDoc = await db.collection("users").doc(uid).get();
+
+  if (!userDoc.exists) {
+    throw new HttpsError("not-found", "User not found");
+  }
+
+  const userData = userDoc.data();
+  const isActive = isSubscriptionActive(userData);
+  const effectiveTier = getEffectiveTier(userData);
+
+  const response = {
+    success: true,
+    isActive,
+    tier: effectiveTier,
+    tierDetails: SUBSCRIPTION_TIERS[effectiveTier],
+  };
+
+  if (userData.subscription) {
+    response.subscription = {
+      status: userData.subscription.status,
+      currentPeriodEnd: userData.subscription.currentPeriodEnd,
+      cancelAtPeriodEnd: userData.subscription.cancelAtPeriodEnd || false,
+      managedSeat: userData.subscription.managedSeat || false,
+    };
+  }
+
+  // Include agency seat info if applicable
+  if (effectiveTier === "agency" && userData.agency) {
+    response.agency = {
+      totalSeats: userData.agency.totalSeats || 6,
+      usedSeats: userData.agency.usedSeats || 0,
+      availableSeats: (userData.agency.totalSeats || 6) - (userData.agency.usedSeats || 0),
+      managedUserIds: userData.agency.managedUserIds || [],
+    };
+  }
+
+  // Include managed by info if applicable
+  if (userData.managedBy) {
+    response.managedBy = userData.managedBy;
+  }
+
+  return response;
+});
+
+/**
+ * Create a Stripe Checkout session for subscription
+ */
+exports.createSubscriptionCheckoutSession = onCall(async (request) => {
+  if (!request.auth) {
+    throw new HttpsError("unauthenticated", "User must be logged in");
+  }
+
+  if (!stripe) {
+    throw new HttpsError("unavailable", "Stripe is not configured");
+  }
+
+  const { tierId, successUrl, cancelUrl } = request.data;
+
+  if (!tierId || !successUrl || !cancelUrl) {
+    throw new HttpsError("invalid-argument", "tierId, successUrl, and cancelUrl are required");
+  }
+
+  const tier = SUBSCRIPTION_TIERS[tierId];
+  if (!tier || tierId === "free") {
+    throw new HttpsError("invalid-argument", "Invalid subscription tier");
+  }
+
+  if (!tier.stripePriceId) {
+    throw new HttpsError("unavailable", `Stripe price not configured for ${tierId} tier`);
+  }
+
+  const uid = request.auth.uid;
+  const userDoc = await db.collection("users").doc(uid).get();
+
+  if (!userDoc.exists) {
+    throw new HttpsError("not-found", "User not found");
+  }
+
+  const userData = userDoc.data();
+
+  // Check if user already has an active subscription
+  if (
+    userData.subscription?.stripeSubscriptionId &&
+    userData.subscription?.status === "active"
+  ) {
+    throw new HttpsError(
+      "already-exists",
+      "User already has an active subscription. Use the customer portal to change plans."
+    );
+  }
+
+  try {
+    // Ensure customer exists
+    const customerId = await ensureStripeCustomer(uid, userData);
+
+    const session = await stripe.checkout.sessions.create({
+      customer: customerId,
+      mode: "subscription",
+      payment_method_types: ["card"],
+      line_items: [
+        {
+          price: tier.stripePriceId,
+          quantity: 1,
+        },
+      ],
+      success_url: successUrl,
+      cancel_url: cancelUrl,
+      subscription_data: {
+        metadata: {
+          firebaseUid: uid,
+          tier: tierId,
+        },
+      },
+      metadata: {
+        firebaseUid: uid,
+        tier: tierId,
+      },
+    });
+
+    return {
+      success: true,
+      sessionId: session.id,
+      url: session.url,
+    };
+  } catch (error) {
+    console.error("Error creating checkout session:", error);
+    throw new HttpsError("internal", error.message);
+  }
+});
+
+/**
+ * Create a Stripe Customer Portal session for subscription management
+ */
+exports.createCustomerPortalSession = onCall(async (request) => {
+  if (!request.auth) {
+    throw new HttpsError("unauthenticated", "User must be logged in");
+  }
+
+  if (!stripe) {
+    throw new HttpsError("unavailable", "Stripe is not configured");
+  }
+
+  const { returnUrl } = request.data;
+
+  if (!returnUrl) {
+    throw new HttpsError("invalid-argument", "returnUrl is required");
+  }
+
+  const uid = request.auth.uid;
+  const userDoc = await db.collection("users").doc(uid).get();
+
+  if (!userDoc.exists) {
+    throw new HttpsError("not-found", "User not found");
+  }
+
+  const userData = userDoc.data();
+
+  if (!userData.stripeCustomerId) {
+    throw new HttpsError("failed-precondition", "No Stripe customer found for this user");
+  }
+
+  try {
+    const session = await stripe.billingPortal.sessions.create({
+      customer: userData.stripeCustomerId,
+      return_url: returnUrl,
+    });
+
+    return {
+      success: true,
+      url: session.url,
+    };
+  } catch (error) {
+    console.error("Error creating portal session:", error);
+    throw new HttpsError("internal", error.message);
+  }
+});
+
+/**
+ * Upgrade subscription to a higher tier (for existing subscribers)
+ */
+exports.upgradeSubscription = onCall(async (request) => {
+  if (!request.auth) {
+    throw new HttpsError("unauthenticated", "User must be logged in");
+  }
+
+  if (!stripe) {
+    throw new HttpsError("unavailable", "Stripe is not configured");
+  }
+
+  const { newTierId } = request.data;
+
+  if (!newTierId || !SUBSCRIPTION_TIERS[newTierId] || newTierId === "free") {
+    throw new HttpsError("invalid-argument", "Invalid tier");
+  }
+
+  const uid = request.auth.uid;
+  const userDoc = await db.collection("users").doc(uid).get();
+
+  if (!userDoc.exists) {
+    throw new HttpsError("not-found", "User not found");
+  }
+
+  const userData = userDoc.data();
+
+  if (!userData.subscription?.stripeSubscriptionId) {
+    throw new HttpsError(
+      "failed-precondition",
+      "No active subscription to upgrade. Use checkout instead."
+    );
+  }
+
+  const newTier = SUBSCRIPTION_TIERS[newTierId];
+
+  if (!newTier.stripePriceId) {
+    throw new HttpsError("unavailable", `Stripe price not configured for ${newTierId} tier`);
+  }
+
+  try {
+    // Get the current subscription
+    const subscription = await stripe.subscriptions.retrieve(
+      userData.subscription.stripeSubscriptionId
+    );
+
+    // Update subscription with new price
+    await stripe.subscriptions.update(subscription.id, {
+      items: [
+        {
+          id: subscription.items.data[0].id,
+          price: newTier.stripePriceId,
+        },
+      ],
+      proration_behavior: "always_invoice", // Charge difference immediately
+      metadata: {
+        firebaseUid: uid,
+        tier: newTierId,
+      },
+    });
+
+    // Update local record (webhook will also update, but this gives immediate feedback)
+    const updateData = {
+      "subscription.tier": newTierId,
+      "subscription.stripePriceId": newTier.stripePriceId,
+      "subscription.updatedAt": admin.firestore.FieldValue.serverTimestamp(),
+    };
+
+    // Initialize agency fields if upgrading to agency
+    if (newTierId === "agency" && !userData.agency) {
+      updateData.agency = {
+        totalSeats: 6,
+        usedSeats: 0,
+        additionalSeatsPurchased: 0,
+        managedUserIds: [],
+      };
+    }
+
+    await db.collection("users").doc(uid).update(updateData);
+
+    return {
+      success: true,
+      message: "Subscription upgraded successfully",
+      newTier: newTierId,
+    };
+  } catch (error) {
+    console.error("Error upgrading subscription:", error);
+    throw new HttpsError("internal", error.message);
+  }
+});
+
+// ============================================================================
+// AGENCY SEAT FUNCTIONS
+// ============================================================================
+
+/**
+ * Purchase additional seats for agency accounts
+ */
+exports.purchaseAdditionalSeats = onCall(async (request) => {
+  if (!request.auth) {
+    throw new HttpsError("unauthenticated", "User must be logged in");
+  }
+
+  if (!stripe) {
+    throw new HttpsError("unavailable", "Stripe is not configured");
+  }
+
+  const { quantity, successUrl, cancelUrl } = request.data;
+
+  if (!quantity || quantity < 1) {
+    throw new HttpsError("invalid-argument", "quantity must be at least 1");
+  }
+
+  if (!successUrl || !cancelUrl) {
+    throw new HttpsError("invalid-argument", "successUrl and cancelUrl are required");
+  }
+
+  if (!ADDITIONAL_SEAT_PRICE_ID) {
+    throw new HttpsError("unavailable", "Additional seat pricing not configured");
+  }
+
+  const uid = request.auth.uid;
+  const userDoc = await db.collection("users").doc(uid).get();
+
+  if (!userDoc.exists) {
+    throw new HttpsError("not-found", "User not found");
+  }
+
+  const userData = userDoc.data();
+
+  // Verify user has agency subscription
+  if (userData.subscription?.tier !== "agency" || !isSubscriptionActive(userData)) {
+    throw new HttpsError("permission-denied", "Only active agency subscribers can purchase additional seats");
+  }
+
+  try {
+    const customerId = userData.stripeCustomerId;
+
+    if (!customerId) {
+      throw new HttpsError("failed-precondition", "No Stripe customer found");
+    }
+
+    // Create checkout session for additional seats (one-time purchase that adds to subscription)
+    const session = await stripe.checkout.sessions.create({
+      customer: customerId,
+      mode: "payment",
+      payment_method_types: ["card"],
+      line_items: [
+        {
+          price: ADDITIONAL_SEAT_PRICE_ID,
+          quantity: quantity,
+        },
+      ],
+      success_url: successUrl,
+      cancel_url: cancelUrl,
+      metadata: {
+        firebaseUid: uid,
+        type: "additional_seats",
+        quantity: quantity.toString(),
+      },
+    });
+
+    return {
+      success: true,
+      sessionId: session.id,
+      url: session.url,
+    };
+  } catch (error) {
+    console.error("Error creating seats checkout:", error);
+    throw new HttpsError("internal", error.message);
+  }
+});
+
+/**
+ * Assign an agency seat to a client user
+ */
+exports.assignSeatToClient = onCall(async (request) => {
+  if (!request.auth) {
+    throw new HttpsError("unauthenticated", "User must be logged in");
+  }
+
+  const { clientUserId } = request.data;
+
+  if (!clientUserId) {
+    throw new HttpsError("invalid-argument", "clientUserId is required");
+  }
+
+  const agencyUid = request.auth.uid;
+
+  // Get agency user
+  const agencyDoc = await db.collection("users").doc(agencyUid).get();
+  if (!agencyDoc.exists) {
+    throw new HttpsError("not-found", "Agency user not found");
+  }
+
+  const agencyData = agencyDoc.data();
+
+  // Verify agency subscription
+  if (agencyData.subscription?.tier !== "agency" || !isSubscriptionActive(agencyData)) {
+    throw new HttpsError("permission-denied", "Only active agency subscribers can assign seats");
+  }
+
+  // Check available seats
+  const totalSeats = agencyData.agency?.totalSeats || 6;
+  const usedSeats = agencyData.agency?.usedSeats || 0;
+
+  if (usedSeats >= totalSeats) {
+    throw new HttpsError("resource-exhausted", "No available seats. Purchase additional seats.");
+  }
+
+  // Get client user
+  const clientDoc = await db.collection("users").doc(clientUserId).get();
+  if (!clientDoc.exists) {
+    throw new HttpsError("not-found", "Client user not found");
+  }
+
+  const clientData = clientDoc.data();
+
+  // Verify client is in same organisation
+  if (clientData.organisationId !== agencyData.organisationId) {
+    throw new HttpsError("permission-denied", "Client must be in the same organisation");
+  }
+
+  // Verify client role
+  if (clientData.role !== "client") {
+    throw new HttpsError("invalid-argument", "Can only assign seats to client accounts");
+  }
+
+  // Check if client already has a managed subscription or paid subscription
+  if (clientData.managedBy) {
+    throw new HttpsError("already-exists", "Client already has an assigned seat");
+  }
+
+  if (clientData.subscription?.stripeSubscriptionId && clientData.subscription?.status === "active") {
+    throw new HttpsError("already-exists", "Client already has their own active subscription");
+  }
+
+  // Transaction to update both documents
+  const batch = db.batch();
+
+  // Update agency user
+  const managedUserIds = agencyData.agency?.managedUserIds || [];
+  batch.update(db.collection("users").doc(agencyUid), {
+    "agency.usedSeats": admin.firestore.FieldValue.increment(1),
+    "agency.managedUserIds": [...managedUserIds, clientUserId],
+  });
+
+  // Update client user - give them premium-equivalent access
+  batch.update(db.collection("users").doc(clientUserId), {
+    managedBy: {
+      agencyUserId: agencyUid,
+      agencyOrganisationId: agencyData.organisationId,
+      assignedAt: admin.firestore.FieldValue.serverTimestamp(),
+    },
+    subscription: {
+      tier: "premium", // Agency seats give premium access
+      status: "active",
+      stripeSubscriptionId: null, // Managed, not direct subscription
+      stripePriceId: null,
+      currentPeriodStart: agencyData.subscription.currentPeriodStart,
+      currentPeriodEnd: agencyData.subscription.currentPeriodEnd,
+      cancelAtPeriodEnd: false,
+      managedSeat: true,
+      createdAt: admin.firestore.FieldValue.serverTimestamp(),
+      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+    },
+  });
+
+  await batch.commit();
+
+  // Log event
+  await db.collection("subscriptionEvents").add({
+    userId: clientUserId,
+    eventType: "seat_assigned",
+    agencyUserId: agencyUid,
+    metadata: {
+      organisationId: agencyData.organisationId,
+    },
+    createdAt: admin.firestore.FieldValue.serverTimestamp(),
+  });
+
+  return {
+    success: true,
+    message: "Seat assigned successfully",
+    remainingSeats: totalSeats - usedSeats - 1,
+  };
+});
+
+/**
+ * Remove an agency seat from a client user
+ */
+exports.removeSeatFromClient = onCall(async (request) => {
+  if (!request.auth) {
+    throw new HttpsError("unauthenticated", "User must be logged in");
+  }
+
+  const { clientUserId } = request.data;
+
+  if (!clientUserId) {
+    throw new HttpsError("invalid-argument", "clientUserId is required");
+  }
+
+  const agencyUid = request.auth.uid;
+
+  // Get agency user
+  const agencyDoc = await db.collection("users").doc(agencyUid).get();
+  if (!agencyDoc.exists) {
+    throw new HttpsError("not-found", "Agency user not found");
+  }
+
+  const agencyData = agencyDoc.data();
+
+  // Verify agency subscription (allow removal even if expired, for cleanup)
+  if (agencyData.subscription?.tier !== "agency") {
+    throw new HttpsError("permission-denied", "Only agency account holders can remove seats");
+  }
+
+  // Verify this client is managed by this agency
+  const managedUserIds = agencyData.agency?.managedUserIds || [];
+  if (!managedUserIds.includes(clientUserId)) {
+    throw new HttpsError("not-found", "Client is not managed by this agency");
+  }
+
+  // Get client user
+  const clientDoc = await db.collection("users").doc(clientUserId).get();
+  if (!clientDoc.exists) {
+    throw new HttpsError("not-found", "Client user not found");
+  }
+
+  // Transaction to update both documents
+  const batch = db.batch();
+
+  // Update agency user
+  batch.update(db.collection("users").doc(agencyUid), {
+    "agency.usedSeats": admin.firestore.FieldValue.increment(-1),
+    "agency.managedUserIds": managedUserIds.filter((id) => id !== clientUserId),
+  });
+
+  // Update client user - revert to free tier
+  batch.update(db.collection("users").doc(clientUserId), {
+    managedBy: admin.firestore.FieldValue.delete(),
+    subscription: {
+      tier: "free",
+      status: "active",
+      stripeSubscriptionId: null,
+      stripePriceId: null,
+      currentPeriodStart: null,
+      currentPeriodEnd: null,
+      cancelAtPeriodEnd: false,
+      managedSeat: false,
+      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+    },
+  });
+
+  await batch.commit();
+
+  // Log event
+  await db.collection("subscriptionEvents").add({
+    userId: clientUserId,
+    eventType: "seat_removed",
+    agencyUserId: agencyUid,
+    createdAt: admin.firestore.FieldValue.serverTimestamp(),
+  });
+
+  return {
+    success: true,
+    message: "Seat removed successfully",
+  };
+});
+
+/**
+ * Get list of users managed by an agency account
+ */
+exports.getAgencyManagedUsers = onCall(async (request) => {
+  if (!request.auth) {
+    throw new HttpsError("unauthenticated", "User must be logged in");
+  }
+
+  const uid = request.auth.uid;
+  const userDoc = await db.collection("users").doc(uid).get();
+
+  if (!userDoc.exists) {
+    throw new HttpsError("not-found", "User not found");
+  }
+
+  const userData = userDoc.data();
+
+  if (userData.subscription?.tier !== "agency") {
+    throw new HttpsError("permission-denied", "Only agency accounts can access managed users");
+  }
+
+  const managedUserIds = userData.agency?.managedUserIds || [];
+
+  if (managedUserIds.length === 0) {
+    return {
+      success: true,
+      users: [],
+      seatInfo: {
+        total: userData.agency?.totalSeats || 6,
+        used: 0,
+        available: userData.agency?.totalSeats || 6,
+      },
+    };
+  }
+
+  // Fetch managed user details (Firestore 'in' query limited to 10 items)
+  const users = [];
+  const chunks = [];
+  for (let i = 0; i < managedUserIds.length; i += 10) {
+    chunks.push(managedUserIds.slice(i, i + 10));
+  }
+
+  for (const chunk of chunks) {
+    const usersSnapshot = await db
+      .collection("users")
+      .where(admin.firestore.FieldPath.documentId(), "in", chunk)
+      .get();
+
+    for (const doc of usersSnapshot.docs) {
+      const data = doc.data();
+      users.push({
+        uid: doc.id,
+        firstName: data.firstName,
+        lastName: data.lastName,
+        email: data.email,
+        profileAvatar: data.profileAvatar,
+        assignedAt: data.managedBy?.assignedAt,
+      });
+    }
+  }
+
+  return {
+    success: true,
+    users,
+    seatInfo: {
+      total: userData.agency?.totalSeats || 6,
+      used: userData.agency?.usedSeats || 0,
+      available: (userData.agency?.totalSeats || 6) - (userData.agency?.usedSeats || 0),
+    },
+  };
 });
 
 
@@ -3517,3 +4369,2233 @@ exports.getInstagramFollowers = onCall(async (request) => {
     throw new HttpsError("internal", `Failed to fetch Instagram followers: ${error.message}`);
   }
 });
+
+
+// ============================================================================
+// STRIPE CONNECT - MODEL ONBOARDING
+// ============================================================================
+
+/**
+ * Create Stripe Connected Account for model
+ * Called when model wants to set up payouts
+ */
+exports.createStripeConnectedAccount = onCall(async (request) => {
+  if (!request.auth) {
+    throw new HttpsError("unauthenticated", "User must be logged in");
+  }
+
+  if (!stripe) {
+    throw new HttpsError("unavailable", "Stripe is not configured");
+  }
+
+  const uid = request.auth.uid;
+
+  // Verify user is a model
+  const userDoc = await db.collection("users").doc(uid).get();
+  if (!userDoc.exists) {
+    throw new HttpsError("not-found", "User not found");
+  }
+
+  const userData = userDoc.data();
+  if (userData.role !== "model") {
+    throw new HttpsError("permission-denied", "Only models can create payout accounts");
+  }
+
+  // Check if user already has a Stripe account
+  if (userData.stripeAccountId) {
+    throw new HttpsError("already-exists", "Stripe account already exists");
+  }
+
+  try {
+    // Create Express Connected Account
+    const account = await stripe.accounts.create({
+      type: "express",
+      country: userData.country === "United States" ? "US" : "GB", // Default to UK
+      email: userData.email,
+      capabilities: {
+        card_payments: { requested: true },
+        transfers: { requested: true },
+      },
+      business_type: "individual",
+      business_profile: {
+        name: `${userData.firstName} ${userData.lastName}`,
+        product_description: "Modeling services via The Model Cloud",
+      },
+      metadata: {
+        firebaseUid: uid,
+        platform: "model-cloud",
+      },
+    });
+
+    // Save Stripe account ID to user document
+    await db.collection("users").doc(uid).update({
+      stripeAccountId: account.id,
+      stripeAccountStatus: "pending",
+      stripeOnboardingComplete: false,
+      stripePayoutsEnabled: false,
+      stripeChargesEnabled: false,
+      balance: {
+        available: 0,
+        pending: 0,
+        currency: "GBP",
+        lastUpdated: admin.firestore.FieldValue.serverTimestamp(),
+      },
+    });
+
+    // Create account onboarding link
+    const accountLink = await stripe.accountLinks.create({
+      account: account.id,
+      refresh_url: `${process.env.FRONTEND_URL || "https://v4.themodel.cloud"}/payouts?refresh=true`,
+      return_url: `${process.env.FRONTEND_URL || "https://v4.themodel.cloud"}/payouts?success=true`,
+      type: "account_onboarding",
+    });
+
+    return {
+      success: true,
+      accountId: account.id,
+      onboardingUrl: accountLink.url,
+    };
+  } catch (error) {
+    console.error("Error creating Stripe connected account:", error);
+    throw new HttpsError("internal", error.message);
+  }
+});
+
+/**
+ * Generate Stripe Connect onboarding link
+ * Called if model needs to complete/update onboarding
+ */
+exports.createStripeOnboardingLink = onCall(async (request) => {
+  if (!request.auth) {
+    throw new HttpsError("unauthenticated", "User must be logged in");
+  }
+
+  if (!stripe) {
+    throw new HttpsError("unavailable", "Stripe is not configured");
+  }
+
+  const uid = request.auth.uid;
+
+  const userDoc = await db.collection("users").doc(uid).get();
+  if (!userDoc.exists) {
+    throw new HttpsError("not-found", "User not found");
+  }
+
+  const userData = userDoc.data();
+  if (!userData.stripeAccountId) {
+    throw new HttpsError("failed-precondition", "No Stripe account found. Please create one first.");
+  }
+
+  try {
+    const accountLink = await stripe.accountLinks.create({
+      account: userData.stripeAccountId,
+      refresh_url: `${process.env.FRONTEND_URL || "https://v4.themodel.cloud"}/payouts?refresh=true`,
+      return_url: `${process.env.FRONTEND_URL || "https://v4.themodel.cloud"}/payouts?success=true`,
+      type: "account_onboarding",
+    });
+
+    return {
+      success: true,
+      onboardingUrl: accountLink.url,
+    };
+  } catch (error) {
+    console.error("Error creating onboarding link:", error);
+    throw new HttpsError("internal", error.message);
+  }
+});
+
+/**
+ * Generate Stripe Express Dashboard link
+ * Allows models to view their Stripe dashboard
+ */
+exports.createStripeDashboardLink = onCall(async (request) => {
+  if (!request.auth) {
+    throw new HttpsError("unauthenticated", "User must be logged in");
+  }
+
+  if (!stripe) {
+    throw new HttpsError("unavailable", "Stripe is not configured");
+  }
+
+  const uid = request.auth.uid;
+
+  const userDoc = await db.collection("users").doc(uid).get();
+  if (!userDoc.exists) {
+    throw new HttpsError("not-found", "User not found");
+  }
+
+  const userData = userDoc.data();
+  if (!userData.stripeAccountId) {
+    throw new HttpsError("failed-precondition", "No Stripe account found");
+  }
+
+  try {
+    const loginLink = await stripe.accounts.createLoginLink(userData.stripeAccountId);
+
+    return {
+      success: true,
+      dashboardUrl: loginLink.url,
+    };
+  } catch (error) {
+    console.error("Error creating dashboard link:", error);
+    throw new HttpsError("internal", error.message);
+  }
+});
+
+/**
+ * Check Stripe account status
+ * Called to verify onboarding completion
+ */
+exports.getStripeAccountStatus = onCall(async (request) => {
+  if (!request.auth) {
+    throw new HttpsError("unauthenticated", "User must be logged in");
+  }
+
+  if (!stripe) {
+    throw new HttpsError("unavailable", "Stripe is not configured");
+  }
+
+  const uid = request.auth.uid;
+
+  const userDoc = await db.collection("users").doc(uid).get();
+  if (!userDoc.exists) {
+    throw new HttpsError("not-found", "User not found");
+  }
+
+  const userData = userDoc.data();
+  if (!userData.stripeAccountId) {
+    return {
+      success: true,
+      hasAccount: false,
+      status: null,
+    };
+  }
+
+  try {
+    const account = await stripe.accounts.retrieve(userData.stripeAccountId);
+
+    // Update local status if it has changed
+    const newStatus = account.details_submitted ? "active" : "pending";
+    if (
+      userData.stripeAccountStatus !== newStatus ||
+      userData.stripePayoutsEnabled !== account.payouts_enabled ||
+      userData.stripeChargesEnabled !== account.charges_enabled
+    ) {
+      await db.collection("users").doc(uid).update({
+        stripeAccountStatus: newStatus,
+        stripeOnboardingComplete: account.details_submitted,
+        stripePayoutsEnabled: account.payouts_enabled,
+        stripeChargesEnabled: account.charges_enabled,
+      });
+    }
+
+    return {
+      success: true,
+      hasAccount: true,
+      status: newStatus,
+      detailsSubmitted: account.details_submitted,
+      payoutsEnabled: account.payouts_enabled,
+      chargesEnabled: account.charges_enabled,
+      requirements: account.requirements,
+    };
+  } catch (error) {
+    console.error("Error getting Stripe account status:", error);
+    throw new HttpsError("internal", error.message);
+  }
+});
+
+
+// ============================================================================
+// STRIPE - CLIENT PAYMENT METHODS
+// ============================================================================
+
+/**
+ * Create or get Stripe Customer for client
+ */
+exports.createStripeCustomer = onCall(async (request) => {
+  if (!request.auth) {
+    throw new HttpsError("unauthenticated", "User must be logged in");
+  }
+
+  if (!stripe) {
+    throw new HttpsError("unavailable", "Stripe is not configured");
+  }
+
+  const uid = request.auth.uid;
+
+  const userDoc = await db.collection("users").doc(uid).get();
+  if (!userDoc.exists) {
+    throw new HttpsError("not-found", "User not found");
+  }
+
+  const userData = userDoc.data();
+
+  // Check if user already has a Stripe customer
+  if (userData.stripeCustomerId) {
+    return {
+      success: true,
+      customerId: userData.stripeCustomerId,
+      isNew: false,
+    };
+  }
+
+  try {
+    const customer = await stripe.customers.create({
+      email: userData.email,
+      name: userData.companyName || `${userData.firstName} ${userData.lastName}`,
+      metadata: {
+        firebaseUid: uid,
+        role: userData.role,
+        platform: "model-cloud",
+      },
+    });
+
+    // Save customer ID to user document
+    await db.collection("users").doc(uid).update({
+      stripeCustomerId: customer.id,
+      savedPaymentMethods: [],
+    });
+
+    return {
+      success: true,
+      customerId: customer.id,
+      isNew: true,
+    };
+  } catch (error) {
+    console.error("Error creating Stripe customer:", error);
+    throw new HttpsError("internal", error.message);
+  }
+});
+
+/**
+ * Create SetupIntent for saving payment method
+ */
+exports.createSetupIntent = onCall(async (request) => {
+  if (!request.auth) {
+    throw new HttpsError("unauthenticated", "User must be logged in");
+  }
+
+  if (!stripe) {
+    throw new HttpsError("unavailable", "Stripe is not configured");
+  }
+
+  const uid = request.auth.uid;
+
+  const userDoc = await db.collection("users").doc(uid).get();
+  if (!userDoc.exists) {
+    throw new HttpsError("not-found", "User not found");
+  }
+
+  const userData = userDoc.data();
+  let customerId = userData.stripeCustomerId;
+
+  // Create customer if doesn't exist
+  if (!customerId) {
+    const customer = await stripe.customers.create({
+      email: userData.email,
+      name: userData.companyName || `${userData.firstName} ${userData.lastName}`,
+      metadata: {
+        firebaseUid: uid,
+        role: userData.role,
+        platform: "model-cloud",
+      },
+    });
+    customerId = customer.id;
+    await db.collection("users").doc(uid).update({
+      stripeCustomerId: customerId,
+      savedPaymentMethods: [],
+    });
+  }
+
+  try {
+    const setupIntent = await stripe.setupIntents.create({
+      customer: customerId,
+      payment_method_types: ["card"],
+      metadata: {
+        firebaseUid: uid,
+      },
+    });
+
+    return {
+      success: true,
+      clientSecret: setupIntent.client_secret,
+    };
+  } catch (error) {
+    console.error("Error creating setup intent:", error);
+    throw new HttpsError("internal", error.message);
+  }
+});
+
+/**
+ * Get saved payment methods
+ */
+exports.getSavedPaymentMethods = onCall(async (request) => {
+  if (!request.auth) {
+    throw new HttpsError("unauthenticated", "User must be logged in");
+  }
+
+  if (!stripe) {
+    throw new HttpsError("unavailable", "Stripe is not configured");
+  }
+
+  const uid = request.auth.uid;
+
+  const userDoc = await db.collection("users").doc(uid).get();
+  if (!userDoc.exists) {
+    throw new HttpsError("not-found", "User not found");
+  }
+
+  const userData = userDoc.data();
+  if (!userData.stripeCustomerId) {
+    return {
+      success: true,
+      paymentMethods: [],
+    };
+  }
+
+  try {
+    const paymentMethods = await stripe.paymentMethods.list({
+      customer: userData.stripeCustomerId,
+      type: "card",
+    });
+
+    const formattedMethods = paymentMethods.data.map((pm) => ({
+      id: pm.id,
+      brand: pm.card.brand,
+      last4: pm.card.last4,
+      expMonth: pm.card.exp_month,
+      expYear: pm.card.exp_year,
+      isDefault: pm.id === userData.defaultPaymentMethod,
+    }));
+
+    return {
+      success: true,
+      paymentMethods: formattedMethods,
+    };
+  } catch (error) {
+    console.error("Error getting payment methods:", error);
+    throw new HttpsError("internal", error.message);
+  }
+});
+
+/**
+ * Delete a saved payment method
+ */
+exports.deletePaymentMethod = onCall(async (request) => {
+  if (!request.auth) {
+    throw new HttpsError("unauthenticated", "User must be logged in");
+  }
+
+  if (!stripe) {
+    throw new HttpsError("unavailable", "Stripe is not configured");
+  }
+
+  const { paymentMethodId } = request.data;
+  if (!paymentMethodId) {
+    throw new HttpsError("invalid-argument", "Payment method ID is required");
+  }
+
+  const uid = request.auth.uid;
+
+  const userDoc = await db.collection("users").doc(uid).get();
+  if (!userDoc.exists) {
+    throw new HttpsError("not-found", "User not found");
+  }
+
+  try {
+    await stripe.paymentMethods.detach(paymentMethodId);
+
+    // Update user's saved payment methods list
+    const userData = userDoc.data();
+    const updatedMethods = (userData.savedPaymentMethods || []).filter(
+      (id) => id !== paymentMethodId
+    );
+
+    const updates = { savedPaymentMethods: updatedMethods };
+    if (userData.defaultPaymentMethod === paymentMethodId) {
+      updates.defaultPaymentMethod = updatedMethods[0] || null;
+    }
+
+    await db.collection("users").doc(uid).update(updates);
+
+    return { success: true };
+  } catch (error) {
+    console.error("Error deleting payment method:", error);
+    throw new HttpsError("internal", error.message);
+  }
+});
+
+/**
+ * Set default payment method
+ */
+exports.setDefaultPaymentMethod = onCall(async (request) => {
+  if (!request.auth) {
+    throw new HttpsError("unauthenticated", "User must be logged in");
+  }
+
+  const { paymentMethodId } = request.data;
+  if (!paymentMethodId) {
+    throw new HttpsError("invalid-argument", "Payment method ID is required");
+  }
+
+  const uid = request.auth.uid;
+
+  try {
+    await db.collection("users").doc(uid).update({
+      defaultPaymentMethod: paymentMethodId,
+    });
+
+    return { success: true };
+  } catch (error) {
+    console.error("Error setting default payment method:", error);
+    throw new HttpsError("internal", error.message);
+  }
+});
+
+
+// ============================================================================
+// JOB AWARD & PAYMENT
+// ============================================================================
+
+/**
+ * Award job to model (client action)
+ * Creates the award record but doesn't initiate payment
+ */
+exports.awardJobToModel = onCall(async (request) => {
+  if (!request.auth) {
+    throw new HttpsError("unauthenticated", "User must be logged in");
+  }
+
+  const { jobId, modelId, agreedAmount, currency = "GBP" } = request.data;
+
+  if (!jobId || !modelId || !agreedAmount) {
+    throw new HttpsError("invalid-argument", "Job ID, model ID, and agreed amount are required");
+  }
+
+  const uid = request.auth.uid;
+
+  // Get job document
+  const jobDoc = await db.collection("jobs").doc(jobId).get();
+  if (!jobDoc.exists) {
+    throw new HttpsError("not-found", "Job not found");
+  }
+
+  const jobData = jobDoc.data();
+
+  // Verify caller is the job owner
+  if (jobData.userId !== uid) {
+    throw new HttpsError("permission-denied", "Only the job owner can award the job");
+  }
+
+  // Verify job is not already awarded
+  if (jobData.awardedTo) {
+    throw new HttpsError("already-exists", "Job has already been awarded");
+  }
+
+  // Verify model exists and has Stripe account
+  const modelDoc = await db.collection("users").doc(modelId).get();
+  if (!modelDoc.exists) {
+    throw new HttpsError("not-found", "Model not found");
+  }
+
+  const modelData = modelDoc.data();
+  if (modelData.role !== "model") {
+    throw new HttpsError("invalid-argument", "Selected user is not a model");
+  }
+
+  // Check if model has Stripe account set up
+  const hasStripeAccount = modelData.stripeAccountId && modelData.stripePayoutsEnabled;
+
+  // Get client data
+  const clientDoc = await db.collection("users").doc(uid).get();
+  const clientData = clientDoc.data();
+
+  try {
+    // Update job with award information
+    await db.collection("jobs").doc(jobId).update({
+      status: "awarded",
+      awardedTo: {
+        modelId: modelId,
+        modelName: `${modelData.firstName} ${modelData.lastName}`,
+        modelEmail: modelData.email,
+        awardedAt: admin.firestore.FieldValue.serverTimestamp(),
+        awardedBy: uid,
+        agreedAmount: Math.round(agreedAmount * 100), // Store in cents
+        agreedCurrency: currency,
+      },
+      payment: {
+        status: "pending",
+        paymentIntentId: null,
+        clientAmount: Math.round(agreedAmount * 100 * (1 + PLATFORM_FEE_PERCENT)),
+        modelAmount: Math.round(agreedAmount * 100),
+        platformFee: Math.round(agreedAmount * 100 * PLATFORM_FEE_PERCENT),
+        currency: currency,
+        authorizedAt: null,
+        capturedAt: null,
+      },
+      completion: {
+        modelMarkedComplete: false,
+        modelMarkedAt: null,
+        clientConfirmed: false,
+        clientConfirmedAt: null,
+        fundsReleasedAt: null,
+      },
+    });
+
+    // Create notification for model
+    await db.collection("users").doc(modelId).collection("notifications").add({
+      type: "job_awarded",
+      title: "Job Awarded!",
+      message: `You have been awarded the job "${jobData.title}" by ${clientData.companyName || clientData.firstName}`,
+      jobId: jobId,
+      jobReference: jobData.reference,
+      read: false,
+      createdAt: admin.firestore.FieldValue.serverTimestamp(),
+    });
+
+    // Send email to model
+    if (await isEmailEnabled()) {
+      try {
+        await sgMail.send({
+          to: modelData.email,
+          from: sendgridFromEmail,
+          subject: `Job Awarded: ${jobData.title}`,
+          html: `
+            <h2>Congratulations!</h2>
+            <p>You have been awarded the job "${jobData.title}" (${jobData.reference}).</p>
+            <p><strong>Agreed Amount:</strong> ${currency} ${agreedAmount.toFixed(2)}</p>
+            <p>The client will now proceed with payment. Once payment is authorized, you can begin work on the job.</p>
+            <p>Log in to The Model Cloud to view the job details.</p>
+          `,
+        });
+      } catch (emailError) {
+        console.error("Failed to send award email:", emailError);
+      }
+    }
+
+    return {
+      success: true,
+      modelHasStripeAccount: hasStripeAccount,
+      message: hasStripeAccount
+        ? "Job awarded successfully. Proceed to payment."
+        : "Job awarded. Note: Model needs to set up their payout account before funds can be released.",
+    };
+  } catch (error) {
+    console.error("Error awarding job:", error);
+    throw new HttpsError("internal", error.message);
+  }
+});
+
+/**
+ * Create PaymentIntent with manual capture (hold funds)
+ * Called when client confirms payment for awarded job
+ */
+exports.createJobPaymentIntent = onCall(async (request) => {
+  if (!request.auth) {
+    throw new HttpsError("unauthenticated", "User must be logged in");
+  }
+
+  if (!stripe) {
+    throw new HttpsError("unavailable", "Stripe is not configured");
+  }
+
+  const { jobId, paymentMethodId } = request.data;
+
+  if (!jobId) {
+    throw new HttpsError("invalid-argument", "Job ID is required");
+  }
+
+  const uid = request.auth.uid;
+
+  // Get job document
+  const jobDoc = await db.collection("jobs").doc(jobId).get();
+  if (!jobDoc.exists) {
+    throw new HttpsError("not-found", "Job not found");
+  }
+
+  const jobData = jobDoc.data();
+
+  // Verify caller is the job owner
+  if (jobData.userId !== uid) {
+    throw new HttpsError("permission-denied", "Only the job owner can pay for the job");
+  }
+
+  // Verify job is awarded
+  if (!jobData.awardedTo) {
+    throw new HttpsError("failed-precondition", "Job must be awarded before payment");
+  }
+
+  // Verify payment hasn't already been made
+  if (jobData.payment && jobData.payment.status !== "pending") {
+    throw new HttpsError("already-exists", "Payment has already been initiated");
+  }
+
+  // Get client's Stripe customer ID
+  const clientDoc = await db.collection("users").doc(uid).get();
+  const clientData = clientDoc.data();
+
+  if (!clientData.stripeCustomerId) {
+    throw new HttpsError("failed-precondition", "Please add a payment method first");
+  }
+
+  // Get model's Stripe account
+  const modelDoc = await db.collection("users").doc(jobData.awardedTo.modelId).get();
+  const modelData = modelDoc.data();
+
+  if (!modelData.stripeAccountId) {
+    throw new HttpsError("failed-precondition", "Model has not set up their payout account");
+  }
+
+  try {
+    const amountInCents = jobData.payment.clientAmount;
+    const platformFeeInCents = jobData.payment.platformFee;
+    const currency = jobData.payment.currency.toLowerCase();
+
+    // Create PaymentIntent with manual capture
+    const paymentIntentParams = {
+      amount: amountInCents,
+      currency: currency,
+      customer: clientData.stripeCustomerId,
+      capture_method: "manual", // This holds the funds without capturing
+      application_fee_amount: platformFeeInCents,
+      transfer_data: {
+        destination: modelData.stripeAccountId,
+      },
+      metadata: {
+        jobId: jobId,
+        jobReference: jobData.reference,
+        clientId: uid,
+        modelId: jobData.awardedTo.modelId,
+        platform: "model-cloud",
+      },
+      description: `Payment for job ${jobData.reference}: ${jobData.title}`,
+    };
+
+    // Add payment method if provided
+    if (paymentMethodId) {
+      paymentIntentParams.payment_method = paymentMethodId;
+      paymentIntentParams.confirm = true;
+      paymentIntentParams.return_url = `${process.env.FRONTEND_URL || "https://v4.themodel.cloud"}/jobs/${jobId}?payment=success`;
+    }
+
+    const paymentIntent = await stripe.paymentIntents.create(paymentIntentParams);
+
+    // Update job with payment intent ID
+    await db.collection("jobs").doc(jobId).update({
+      "payment.paymentIntentId": paymentIntent.id,
+      "payment.status": paymentIntent.status === "requires_capture" ? "authorized" : "processing",
+    });
+
+    return {
+      success: true,
+      paymentIntentId: paymentIntent.id,
+      clientSecret: paymentIntent.client_secret,
+      status: paymentIntent.status,
+      requiresAction: paymentIntent.status === "requires_action",
+    };
+  } catch (error) {
+    console.error("Error creating payment intent:", error);
+    throw new HttpsError("internal", error.message);
+  }
+});
+
+/**
+ * Confirm payment was authorized successfully
+ * Called after frontend confirms PaymentIntent
+ */
+exports.confirmJobPaymentAuthorized = onCall(async (request) => {
+  if (!request.auth) {
+    throw new HttpsError("unauthenticated", "User must be logged in");
+  }
+
+  if (!stripe) {
+    throw new HttpsError("unavailable", "Stripe is not configured");
+  }
+
+  const { jobId, paymentIntentId } = request.data;
+
+  if (!jobId || !paymentIntentId) {
+    throw new HttpsError("invalid-argument", "Job ID and Payment Intent ID are required");
+  }
+
+  const uid = request.auth.uid;
+
+  // Get job document
+  const jobDoc = await db.collection("jobs").doc(jobId).get();
+  if (!jobDoc.exists) {
+    throw new HttpsError("not-found", "Job not found");
+  }
+
+  const jobData = jobDoc.data();
+
+  // Verify caller is the job owner
+  if (jobData.userId !== uid) {
+    throw new HttpsError("permission-denied", "Only the job owner can confirm payment");
+  }
+
+  try {
+    // Verify PaymentIntent status
+    const paymentIntent = await stripe.paymentIntents.retrieve(paymentIntentId);
+
+    if (paymentIntent.status !== "requires_capture") {
+      throw new HttpsError(
+        "failed-precondition",
+        `Payment is not in correct state: ${paymentIntent.status}`
+      );
+    }
+
+    // Update job status
+    await db.collection("jobs").doc(jobId).update({
+      status: "in_progress",
+      "payment.status": "authorized",
+      "payment.authorizedAt": admin.firestore.FieldValue.serverTimestamp(),
+    });
+
+    // Update model's pending balance
+    const modelId = jobData.awardedTo.modelId;
+    const modelAmount = jobData.payment.modelAmount;
+
+    await db.collection("users").doc(modelId).update({
+      "balance.pending": admin.firestore.FieldValue.increment(modelAmount),
+      "balance.lastUpdated": admin.firestore.FieldValue.serverTimestamp(),
+    });
+
+    // Create transaction record
+    await db.collection("transactions").add({
+      type: "job_payment_authorized",
+      jobId: jobId,
+      jobReference: jobData.reference,
+      clientId: uid,
+      modelId: modelId,
+      amount: jobData.payment.modelAmount,
+      clientAmount: jobData.payment.clientAmount,
+      platformFee: jobData.payment.platformFee,
+      currency: jobData.payment.currency,
+      status: "authorized",
+      stripePaymentIntentId: paymentIntentId,
+      createdAt: admin.firestore.FieldValue.serverTimestamp(),
+    });
+
+    // Notify model
+    await db.collection("users").doc(modelId).collection("notifications").add({
+      type: "payment_authorized",
+      title: "Payment Authorized",
+      message: `Payment for job "${jobData.title}" has been authorized. You can now start working on the job.`,
+      jobId: jobId,
+      jobReference: jobData.reference,
+      amount: modelAmount,
+      currency: jobData.payment.currency,
+      read: false,
+      createdAt: admin.firestore.FieldValue.serverTimestamp(),
+    });
+
+    return {
+      success: true,
+      message: "Payment authorized. Funds are held until job completion.",
+    };
+  } catch (error) {
+    console.error("Error confirming payment authorization:", error);
+    throw new HttpsError("internal", error.message);
+  }
+});
+
+
+// ============================================================================
+// JOB COMPLETION & FUND RELEASE
+// ============================================================================
+
+/**
+ * Model marks job as complete
+ */
+exports.modelMarkJobComplete = onCall(async (request) => {
+  if (!request.auth) {
+    throw new HttpsError("unauthenticated", "User must be logged in");
+  }
+
+  const { jobId } = request.data;
+
+  if (!jobId) {
+    throw new HttpsError("invalid-argument", "Job ID is required");
+  }
+
+  const uid = request.auth.uid;
+
+  // Get job document
+  const jobDoc = await db.collection("jobs").doc(jobId).get();
+  if (!jobDoc.exists) {
+    throw new HttpsError("not-found", "Job not found");
+  }
+
+  const jobData = jobDoc.data();
+
+  // Verify caller is the awarded model
+  if (!jobData.awardedTo || jobData.awardedTo.modelId !== uid) {
+    throw new HttpsError("permission-denied", "Only the awarded model can mark the job as complete");
+  }
+
+  // Verify job is in progress
+  if (jobData.status !== "in_progress") {
+    throw new HttpsError("failed-precondition", "Job must be in progress to mark as complete");
+  }
+
+  // Verify payment was authorized
+  if (jobData.payment.status !== "authorized") {
+    throw new HttpsError("failed-precondition", "Payment must be authorized before marking complete");
+  }
+
+  try {
+    await db.collection("jobs").doc(jobId).update({
+      "completion.modelMarkedComplete": true,
+      "completion.modelMarkedAt": admin.firestore.FieldValue.serverTimestamp(),
+    });
+
+    // Get client info
+    const clientDoc = await db.collection("users").doc(jobData.userId).get();
+    const clientData = clientDoc.data();
+
+    // Notify client
+    await db.collection("users").doc(jobData.userId).collection("notifications").add({
+      type: "job_marked_complete",
+      title: "Job Marked Complete",
+      message: `The model has marked job "${jobData.title}" as complete. Please review and confirm to release payment.`,
+      jobId: jobId,
+      jobReference: jobData.reference,
+      read: false,
+      createdAt: admin.firestore.FieldValue.serverTimestamp(),
+    });
+
+    // Send email to client
+    if (await isEmailEnabled()) {
+      try {
+        await sgMail.send({
+          to: clientData.email,
+          from: sendgridFromEmail,
+          subject: `Job Completed: ${jobData.title}`,
+          html: `
+            <h2>Job Marked as Complete</h2>
+            <p>The model has marked job "${jobData.title}" (${jobData.reference}) as complete.</p>
+            <p>Please log in to The Model Cloud to review the work and confirm completion to release the payment.</p>
+            <p><strong>Note:</strong> If you do not confirm within 14 days, the funds will be automatically released to the model.</p>
+          `,
+        });
+      } catch (emailError) {
+        console.error("Failed to send completion email:", emailError);
+      }
+    }
+
+    return {
+      success: true,
+      message: "Job marked as complete. The client has been notified to confirm and release payment.",
+    };
+  } catch (error) {
+    console.error("Error marking job complete:", error);
+    throw new HttpsError("internal", error.message);
+  }
+});
+
+/**
+ * Client confirms job completion (releases funds)
+ */
+exports.clientConfirmJobComplete = onCall(async (request) => {
+  if (!request.auth) {
+    throw new HttpsError("unauthenticated", "User must be logged in");
+  }
+
+  if (!stripe) {
+    throw new HttpsError("unavailable", "Stripe is not configured");
+  }
+
+  const { jobId } = request.data;
+
+  if (!jobId) {
+    throw new HttpsError("invalid-argument", "Job ID is required");
+  }
+
+  const uid = request.auth.uid;
+
+  // Get job document
+  const jobDoc = await db.collection("jobs").doc(jobId).get();
+  if (!jobDoc.exists) {
+    throw new HttpsError("not-found", "Job not found");
+  }
+
+  const jobData = jobDoc.data();
+
+  // Verify caller is the job owner
+  if (jobData.userId !== uid) {
+    throw new HttpsError("permission-denied", "Only the job owner can confirm completion");
+  }
+
+  // Verify model has marked complete
+  if (!jobData.completion.modelMarkedComplete) {
+    throw new HttpsError("failed-precondition", "Model must mark the job as complete first");
+  }
+
+  // Verify payment is authorized
+  if (jobData.payment.status !== "authorized") {
+    throw new HttpsError("failed-precondition", "Payment must be authorized");
+  }
+
+  try {
+    // Capture the PaymentIntent
+    const paymentIntent = await stripe.paymentIntents.capture(jobData.payment.paymentIntentId);
+
+    if (paymentIntent.status !== "succeeded") {
+      throw new Error(`Payment capture failed: ${paymentIntent.status}`);
+    }
+
+    // Update job status
+    await db.collection("jobs").doc(jobId).update({
+      status: "completed",
+      "payment.status": "captured",
+      "payment.capturedAt": admin.firestore.FieldValue.serverTimestamp(),
+      "completion.clientConfirmed": true,
+      "completion.clientConfirmedAt": admin.firestore.FieldValue.serverTimestamp(),
+      "completion.fundsReleasedAt": admin.firestore.FieldValue.serverTimestamp(),
+    });
+
+    // Update model's balance (move from pending to available)
+    const modelId = jobData.awardedTo.modelId;
+    const modelAmount = jobData.payment.modelAmount;
+
+    await db.collection("users").doc(modelId).update({
+      "balance.pending": admin.firestore.FieldValue.increment(-modelAmount),
+      "balance.available": admin.firestore.FieldValue.increment(modelAmount),
+      "balance.lastUpdated": admin.firestore.FieldValue.serverTimestamp(),
+    });
+
+    // Update transaction record
+    const transactionQuery = await db
+      .collection("transactions")
+      .where("jobId", "==", jobId)
+      .where("type", "==", "job_payment_authorized")
+      .limit(1)
+      .get();
+
+    if (!transactionQuery.empty) {
+      await transactionQuery.docs[0].ref.update({
+        status: "completed",
+        type: "job_payment_completed",
+        completedAt: admin.firestore.FieldValue.serverTimestamp(),
+      });
+    }
+
+    // Notify model
+    const modelDoc = await db.collection("users").doc(modelId).get();
+    const modelData = modelDoc.data();
+
+    await db.collection("users").doc(modelId).collection("notifications").add({
+      type: "funds_released",
+      title: "Funds Released!",
+      message: `Payment of ${jobData.payment.currency} ${(modelAmount / 100).toFixed(2)} for job "${jobData.title}" has been released to your account.`,
+      jobId: jobId,
+      jobReference: jobData.reference,
+      amount: modelAmount,
+      currency: jobData.payment.currency,
+      read: false,
+      createdAt: admin.firestore.FieldValue.serverTimestamp(),
+    });
+
+    // Send email to model
+    if (await isEmailEnabled()) {
+      try {
+        await sgMail.send({
+          to: modelData.email,
+          from: sendgridFromEmail,
+          subject: `Payment Released: ${jobData.title}`,
+          html: `
+            <h2>Payment Released!</h2>
+            <p>The client has confirmed completion of job "${jobData.title}" (${jobData.reference}).</p>
+            <p><strong>Amount:</strong> ${jobData.payment.currency} ${(modelAmount / 100).toFixed(2)}</p>
+            <p>The funds are now available in your Model Cloud balance and can be withdrawn to your bank account.</p>
+            <p>Log in to The Model Cloud to view your balance and request a withdrawal.</p>
+          `,
+        });
+      } catch (emailError) {
+        console.error("Failed to send funds released email:", emailError);
+      }
+    }
+
+    return {
+      success: true,
+      message: "Payment released successfully. The model has been notified.",
+    };
+  } catch (error) {
+    console.error("Error releasing funds:", error);
+    throw new HttpsError("internal", error.message);
+  }
+});
+
+/**
+ * Admin force release or cancel funds (dispute resolution)
+ */
+exports.adminManageJobPayment = onCall(async (request) => {
+  if (!request.auth) {
+    throw new HttpsError("unauthenticated", "User must be logged in");
+  }
+
+  if (!stripe) {
+    throw new HttpsError("unavailable", "Stripe is not configured");
+  }
+
+  const { jobId, action, refundPercentage = 100 } = request.data;
+
+  if (!jobId || !action) {
+    throw new HttpsError("invalid-argument", "Job ID and action are required");
+  }
+
+  if (!["release", "cancel", "partial_refund"].includes(action)) {
+    throw new HttpsError("invalid-argument", "Invalid action. Must be: release, cancel, or partial_refund");
+  }
+
+  const uid = request.auth.uid;
+
+  // Verify admin role
+  const adminDoc = await db.collection("users").doc(uid).get();
+  if (!adminDoc.exists) {
+    throw new HttpsError("not-found", "User not found");
+  }
+
+  const adminData = adminDoc.data();
+  if (!["admin", "super admin"].includes(adminData.role)) {
+    throw new HttpsError("permission-denied", "Only admins can manage job payments");
+  }
+
+  // Get job document
+  const jobDoc = await db.collection("jobs").doc(jobId).get();
+  if (!jobDoc.exists) {
+    throw new HttpsError("not-found", "Job not found");
+  }
+
+  const jobData = jobDoc.data();
+
+  if (!jobData.payment || !jobData.payment.paymentIntentId) {
+    throw new HttpsError("failed-precondition", "No payment found for this job");
+  }
+
+  try {
+    const paymentIntentId = jobData.payment.paymentIntentId;
+    const modelId = jobData.awardedTo.modelId;
+    const modelAmount = jobData.payment.modelAmount;
+
+    if (action === "release") {
+      // Capture the payment and release to model
+      const paymentIntent = await stripe.paymentIntents.capture(paymentIntentId);
+
+      await db.collection("jobs").doc(jobId).update({
+        status: "completed",
+        "payment.status": "captured",
+        "payment.capturedAt": admin.firestore.FieldValue.serverTimestamp(),
+        "completion.fundsReleasedAt": admin.firestore.FieldValue.serverTimestamp(),
+        "completion.releasedByAdmin": uid,
+      });
+
+      await db.collection("users").doc(modelId).update({
+        "balance.pending": admin.firestore.FieldValue.increment(-modelAmount),
+        "balance.available": admin.firestore.FieldValue.increment(modelAmount),
+        "balance.lastUpdated": admin.firestore.FieldValue.serverTimestamp(),
+      });
+
+      // Log admin action
+      await db.collection("adminLogs").add({
+        action: "force_release_payment",
+        adminUid: uid,
+        adminEmail: adminData.email,
+        adminName: `${adminData.firstName} ${adminData.lastName}`,
+        jobId: jobId,
+        jobReference: jobData.reference,
+        amount: modelAmount,
+        timestamp: admin.firestore.FieldValue.serverTimestamp(),
+      });
+
+      return { success: true, message: "Funds released to model" };
+
+    } else if (action === "cancel") {
+      // Cancel the payment intent and refund client
+      await stripe.paymentIntents.cancel(paymentIntentId);
+
+      await db.collection("jobs").doc(jobId).update({
+        status: "cancelled",
+        "payment.status": "cancelled",
+        "payment.cancelledAt": admin.firestore.FieldValue.serverTimestamp(),
+        "payment.cancelledByAdmin": uid,
+      });
+
+      await db.collection("users").doc(modelId).update({
+        "balance.pending": admin.firestore.FieldValue.increment(-modelAmount),
+        "balance.lastUpdated": admin.firestore.FieldValue.serverTimestamp(),
+      });
+
+      // Log admin action
+      await db.collection("adminLogs").add({
+        action: "cancel_payment",
+        adminUid: uid,
+        adminEmail: adminData.email,
+        adminName: `${adminData.firstName} ${adminData.lastName}`,
+        jobId: jobId,
+        jobReference: jobData.reference,
+        amount: modelAmount,
+        timestamp: admin.firestore.FieldValue.serverTimestamp(),
+      });
+
+      return { success: true, message: "Payment cancelled and client refunded" };
+
+    } else if (action === "partial_refund") {
+      // Capture with partial amount
+      const captureAmount = Math.round(jobData.payment.clientAmount * (refundPercentage / 100));
+      const modelReceives = Math.round(modelAmount * (refundPercentage / 100));
+
+      const paymentIntent = await stripe.paymentIntents.capture(paymentIntentId, {
+        amount_to_capture: captureAmount,
+      });
+
+      await db.collection("jobs").doc(jobId).update({
+        status: "completed",
+        "payment.status": "partial_captured",
+        "payment.capturedAmount": captureAmount,
+        "payment.refundedAmount": jobData.payment.clientAmount - captureAmount,
+        "payment.capturedAt": admin.firestore.FieldValue.serverTimestamp(),
+        "payment.partialRefundByAdmin": uid,
+      });
+
+      await db.collection("users").doc(modelId).update({
+        "balance.pending": admin.firestore.FieldValue.increment(-modelAmount),
+        "balance.available": admin.firestore.FieldValue.increment(modelReceives),
+        "balance.lastUpdated": admin.firestore.FieldValue.serverTimestamp(),
+      });
+
+      // Log admin action
+      await db.collection("adminLogs").add({
+        action: "partial_refund",
+        adminUid: uid,
+        adminEmail: adminData.email,
+        adminName: `${adminData.firstName} ${adminData.lastName}`,
+        jobId: jobId,
+        jobReference: jobData.reference,
+        originalAmount: modelAmount,
+        refundPercentage: refundPercentage,
+        modelReceives: modelReceives,
+        timestamp: admin.firestore.FieldValue.serverTimestamp(),
+      });
+
+      return {
+        success: true,
+        message: `Partial payment processed. Model receives ${refundPercentage}% (${modelReceives / 100})`,
+      };
+    }
+  } catch (error) {
+    console.error("Error managing job payment:", error);
+    throw new HttpsError("internal", error.message);
+  }
+});
+
+
+// ============================================================================
+// WITHDRAWALS
+// ============================================================================
+
+/**
+ * Get model's balance summary
+ */
+exports.getModelBalance = onCall(async (request) => {
+  if (!request.auth) {
+    throw new HttpsError("unauthenticated", "User must be logged in");
+  }
+
+  const uid = request.auth.uid;
+
+  const userDoc = await db.collection("users").doc(uid).get();
+  if (!userDoc.exists) {
+    throw new HttpsError("not-found", "User not found");
+  }
+
+  const userData = userDoc.data();
+
+  if (userData.role !== "model") {
+    throw new HttpsError("permission-denied", "Only models have a balance");
+  }
+
+  const balance = userData.balance || {
+    available: 0,
+    pending: 0,
+    currency: "GBP",
+  };
+
+  return {
+    success: true,
+    balance: {
+      available: balance.available,
+      pending: balance.pending,
+      currency: balance.currency || "GBP",
+      lastUpdated: balance.lastUpdated,
+    },
+    withdrawalFeePercent: WITHDRAWAL_FEE_PERCENT * 100,
+  };
+});
+
+/**
+ * Request withdrawal to bank account
+ */
+exports.requestWithdrawal = onCall(async (request) => {
+  if (!request.auth) {
+    throw new HttpsError("unauthenticated", "User must be logged in");
+  }
+
+  if (!stripe) {
+    throw new HttpsError("unavailable", "Stripe is not configured");
+  }
+
+  const { amount } = request.data;
+
+  if (!amount || amount <= 0) {
+    throw new HttpsError("invalid-argument", "Valid withdrawal amount is required");
+  }
+
+  const amountInCents = Math.round(amount * 100);
+  const uid = request.auth.uid;
+
+  const userDoc = await db.collection("users").doc(uid).get();
+  if (!userDoc.exists) {
+    throw new HttpsError("not-found", "User not found");
+  }
+
+  const userData = userDoc.data();
+
+  if (userData.role !== "model") {
+    throw new HttpsError("permission-denied", "Only models can request withdrawals");
+  }
+
+  // Check available balance
+  const availableBalance = userData.balance?.available || 0;
+  if (amountInCents > availableBalance) {
+    throw new HttpsError(
+      "failed-precondition",
+      `Insufficient balance. Available: ${(availableBalance / 100).toFixed(2)}`
+    );
+  }
+
+  // Check Stripe account
+  if (!userData.stripeAccountId || !userData.stripePayoutsEnabled) {
+    throw new HttpsError("failed-precondition", "Please complete your payout account setup first");
+  }
+
+  // Calculate fee
+  const feeInCents = Math.round(amountInCents * WITHDRAWAL_FEE_PERCENT);
+  const netAmountInCents = amountInCents - feeInCents;
+
+  try {
+    // Create a transfer to the connected account
+    // Note: The funds were already transferred when payment was captured,
+    // so we just need to trigger a payout from their connected account balance
+    const payout = await stripe.payouts.create(
+      {
+        amount: netAmountInCents,
+        currency: (userData.balance?.currency || "GBP").toLowerCase(),
+        metadata: {
+          firebaseUid: uid,
+          withdrawalId: `wd_${Date.now()}`,
+          platform: "model-cloud",
+        },
+      },
+      {
+        stripeAccount: userData.stripeAccountId,
+      }
+    );
+
+    // Deduct from available balance
+    await db.collection("users").doc(uid).update({
+      "balance.available": admin.firestore.FieldValue.increment(-amountInCents),
+      "balance.lastUpdated": admin.firestore.FieldValue.serverTimestamp(),
+    });
+
+    // Create withdrawal record
+    const withdrawalRef = await db.collection("withdrawals").add({
+      modelId: uid,
+      stripeAccountId: userData.stripeAccountId,
+      amount: amountInCents,
+      fee: feeInCents,
+      netAmount: netAmountInCents,
+      currency: userData.balance?.currency || "GBP",
+      status: "processing",
+      stripePayoutId: payout.id,
+      requestedAt: admin.firestore.FieldValue.serverTimestamp(),
+      processedAt: null,
+    });
+
+    // Create transaction record
+    await db.collection("transactions").add({
+      type: "withdrawal",
+      modelId: uid,
+      amount: amountInCents,
+      fee: feeInCents,
+      netAmount: netAmountInCents,
+      currency: userData.balance?.currency || "GBP",
+      status: "processing",
+      stripePayoutId: payout.id,
+      withdrawalId: withdrawalRef.id,
+      createdAt: admin.firestore.FieldValue.serverTimestamp(),
+    });
+
+    return {
+      success: true,
+      withdrawalId: withdrawalRef.id,
+      amount: amountInCents,
+      fee: feeInCents,
+      netAmount: netAmountInCents,
+      message: `Withdrawal of ${(netAmountInCents / 100).toFixed(2)} initiated. Funds will arrive in 1-2 business days.`,
+    };
+  } catch (error) {
+    console.error("Error processing withdrawal:", error);
+    throw new HttpsError("internal", error.message);
+  }
+});
+
+/**
+ * Get withdrawal history
+ */
+exports.getWithdrawalHistory = onCall(async (request) => {
+  if (!request.auth) {
+    throw new HttpsError("unauthenticated", "User must be logged in");
+  }
+
+  const { limit = 50 } = request.data;
+  const uid = request.auth.uid;
+
+  try {
+    const withdrawalsSnapshot = await db
+      .collection("withdrawals")
+      .where("modelId", "==", uid)
+      .orderBy("requestedAt", "desc")
+      .limit(limit)
+      .get();
+
+    const withdrawals = withdrawalsSnapshot.docs.map((doc) => ({
+      id: doc.id,
+      ...doc.data(),
+      requestedAt: doc.data().requestedAt?.toDate?.()?.toISOString() || null,
+      processedAt: doc.data().processedAt?.toDate?.()?.toISOString() || null,
+    }));
+
+    return {
+      success: true,
+      withdrawals,
+    };
+  } catch (error) {
+    console.error("Error getting withdrawal history:", error);
+    throw new HttpsError("internal", error.message);
+  }
+});
+
+/**
+ * Get transaction history
+ */
+exports.getTransactionHistory = onCall(async (request) => {
+  if (!request.auth) {
+    throw new HttpsError("unauthenticated", "User must be logged in");
+  }
+
+  const { limit = 50 } = request.data;
+  const uid = request.auth.uid;
+
+  const userDoc = await db.collection("users").doc(uid).get();
+  const userData = userDoc.data();
+
+  try {
+    let query;
+    if (userData.role === "model") {
+      query = db.collection("transactions").where("modelId", "==", uid);
+    } else {
+      query = db.collection("transactions").where("clientId", "==", uid);
+    }
+
+    const transactionsSnapshot = await query
+      .orderBy("createdAt", "desc")
+      .limit(limit)
+      .get();
+
+    const transactions = transactionsSnapshot.docs.map((doc) => ({
+      id: doc.id,
+      ...doc.data(),
+      createdAt: doc.data().createdAt?.toDate?.()?.toISOString() || null,
+      completedAt: doc.data().completedAt?.toDate?.()?.toISOString() || null,
+    }));
+
+    return {
+      success: true,
+      transactions,
+    };
+  } catch (error) {
+    console.error("Error getting transaction history:", error);
+    throw new HttpsError("internal", error.message);
+  }
+});
+
+
+// ============================================================================
+// STRIPE WEBHOOKS
+// ============================================================================
+
+/**
+ * Stripe webhook handler
+ * Handles events from Stripe for payment status updates
+ */
+exports.stripeWebhook = onRequest(
+  { cors: false },
+  async (req, res) => {
+    if (req.method !== "POST") {
+      res.status(405).send("Method Not Allowed");
+      return;
+    }
+
+    if (!stripe) {
+      res.status(500).send("Stripe not configured");
+      return;
+    }
+
+    const sig = req.headers["stripe-signature"];
+    const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
+
+    if (!webhookSecret) {
+      console.error("Stripe webhook secret not configured");
+      res.status(500).send("Webhook secret not configured");
+      return;
+    }
+
+    let event;
+
+    try {
+      event = stripe.webhooks.constructEvent(req.rawBody, sig, webhookSecret);
+    } catch (err) {
+      console.error("Webhook signature verification failed:", err.message);
+      res.status(400).send(`Webhook Error: ${err.message}`);
+      return;
+    }
+
+    // Check for duplicate events (idempotency)
+    const eventRef = db.collection("stripeWebhookEvents").doc(event.id);
+    const existingEvent = await eventRef.get();
+
+    if (existingEvent.exists && existingEvent.data().processed) {
+      console.log(`Event ${event.id} already processed`);
+      res.status(200).send("Already processed");
+      return;
+    }
+
+    // Store the event for idempotency
+    await eventRef.set({
+      eventId: event.id,
+      type: event.type,
+      processed: false,
+      receivedAt: admin.firestore.FieldValue.serverTimestamp(),
+      data: event.data.object,
+    });
+
+    try {
+      // Handle different event types
+      switch (event.type) {
+        case "payment_intent.succeeded":
+          await handlePaymentIntentSucceeded(event.data.object);
+          break;
+
+        case "payment_intent.payment_failed":
+          await handlePaymentIntentFailed(event.data.object);
+          break;
+
+        case "payment_intent.canceled":
+          await handlePaymentIntentCanceled(event.data.object);
+          break;
+
+        case "account.updated":
+          await handleAccountUpdated(event.data.object);
+          break;
+
+        case "payout.paid":
+          await handlePayoutPaid(event.data.object);
+          break;
+
+        case "payout.failed":
+          await handlePayoutFailed(event.data.object);
+          break;
+
+        // Subscription events
+        case "checkout.session.completed":
+          await handleCheckoutSessionCompleted(event.data.object);
+          break;
+
+        case "customer.subscription.created":
+          await handleSubscriptionCreated(event.data.object);
+          break;
+
+        case "customer.subscription.updated":
+          await handleSubscriptionUpdated(event.data.object);
+          break;
+
+        case "customer.subscription.deleted":
+          await handleSubscriptionDeleted(event.data.object);
+          break;
+
+        case "invoice.payment_succeeded":
+          await handleInvoicePaymentSucceeded(event.data.object);
+          break;
+
+        case "invoice.payment_failed":
+          await handleInvoicePaymentFailed(event.data.object);
+          break;
+
+        default:
+          console.log(`Unhandled event type: ${event.type}`);
+      }
+
+      // Mark event as processed
+      await eventRef.update({
+        processed: true,
+        processedAt: admin.firestore.FieldValue.serverTimestamp(),
+      });
+
+      res.status(200).send("OK");
+    } catch (error) {
+      console.error(`Error processing webhook event ${event.type}:`, error);
+      await eventRef.update({
+        processed: false,
+        error: error.message,
+      });
+      res.status(500).send(`Error: ${error.message}`);
+    }
+  }
+);
+
+// Webhook helper functions
+async function handlePaymentIntentSucceeded(paymentIntent) {
+  console.log("PaymentIntent succeeded:", paymentIntent.id);
+  // This is called when a payment is captured
+  // Most of our logic is in the clientConfirmJobComplete function
+  // This webhook can be used for additional verification or logging
+}
+
+async function handlePaymentIntentFailed(paymentIntent) {
+  console.log("PaymentIntent failed:", paymentIntent.id);
+
+  const jobId = paymentIntent.metadata?.jobId;
+  if (!jobId) return;
+
+  await db.collection("jobs").doc(jobId).update({
+    "payment.status": "failed",
+    "payment.failedAt": admin.firestore.FieldValue.serverTimestamp(),
+    "payment.failureMessage": paymentIntent.last_payment_error?.message || "Payment failed",
+  });
+}
+
+async function handlePaymentIntentCanceled(paymentIntent) {
+  console.log("PaymentIntent canceled:", paymentIntent.id);
+
+  const jobId = paymentIntent.metadata?.jobId;
+  if (!jobId) return;
+
+  const jobDoc = await db.collection("jobs").doc(jobId).get();
+  if (!jobDoc.exists) return;
+
+  const jobData = jobDoc.data();
+
+  // Update job status
+  await db.collection("jobs").doc(jobId).update({
+    status: "awarded", // Revert to awarded state
+    "payment.status": "cancelled",
+    "payment.cancelledAt": admin.firestore.FieldValue.serverTimestamp(),
+  });
+
+  // Remove from model's pending balance if applicable
+  if (jobData.awardedTo && jobData.payment?.status === "authorized") {
+    await db.collection("users").doc(jobData.awardedTo.modelId).update({
+      "balance.pending": admin.firestore.FieldValue.increment(-jobData.payment.modelAmount),
+      "balance.lastUpdated": admin.firestore.FieldValue.serverTimestamp(),
+    });
+  }
+}
+
+async function handleAccountUpdated(account) {
+  console.log("Account updated:", account.id);
+
+  // Find the user with this Stripe account
+  const usersSnapshot = await db
+    .collection("users")
+    .where("stripeAccountId", "==", account.id)
+    .limit(1)
+    .get();
+
+  if (usersSnapshot.empty) return;
+
+  const userDoc = usersSnapshot.docs[0];
+  const newStatus = account.details_submitted ? "active" : "pending";
+
+  await userDoc.ref.update({
+    stripeAccountStatus: newStatus,
+    stripeOnboardingComplete: account.details_submitted,
+    stripePayoutsEnabled: account.payouts_enabled,
+    stripeChargesEnabled: account.charges_enabled,
+  });
+}
+
+async function handlePayoutPaid(payout) {
+  console.log("Payout paid:", payout.id);
+
+  // Update withdrawal record
+  const withdrawalSnapshot = await db
+    .collection("withdrawals")
+    .where("stripePayoutId", "==", payout.id)
+    .limit(1)
+    .get();
+
+  if (!withdrawalSnapshot.empty) {
+    await withdrawalSnapshot.docs[0].ref.update({
+      status: "completed",
+      processedAt: admin.firestore.FieldValue.serverTimestamp(),
+    });
+
+    // Update transaction record
+    const transactionSnapshot = await db
+      .collection("transactions")
+      .where("stripePayoutId", "==", payout.id)
+      .limit(1)
+      .get();
+
+    if (!transactionSnapshot.empty) {
+      await transactionSnapshot.docs[0].ref.update({
+        status: "completed",
+        completedAt: admin.firestore.FieldValue.serverTimestamp(),
+      });
+    }
+  }
+}
+
+async function handlePayoutFailed(payout) {
+  console.log("Payout failed:", payout.id);
+
+  // Update withdrawal record
+  const withdrawalSnapshot = await db
+    .collection("withdrawals")
+    .where("stripePayoutId", "==", payout.id)
+    .limit(1)
+    .get();
+
+  if (!withdrawalSnapshot.empty) {
+    const withdrawalDoc = withdrawalSnapshot.docs[0];
+    const withdrawalData = withdrawalDoc.data();
+
+    await withdrawalDoc.ref.update({
+      status: "failed",
+      failureReason: payout.failure_message || "Payout failed",
+      processedAt: admin.firestore.FieldValue.serverTimestamp(),
+    });
+
+    // Refund the balance to the model
+    await db.collection("users").doc(withdrawalData.modelId).update({
+      "balance.available": admin.firestore.FieldValue.increment(withdrawalData.amount),
+      "balance.lastUpdated": admin.firestore.FieldValue.serverTimestamp(),
+    });
+
+    // Update transaction record
+    const transactionSnapshot = await db
+      .collection("transactions")
+      .where("stripePayoutId", "==", payout.id)
+      .limit(1)
+      .get();
+
+    if (!transactionSnapshot.empty) {
+      await transactionSnapshot.docs[0].ref.update({
+        status: "failed",
+        failureReason: payout.failure_message || "Payout failed",
+      });
+    }
+  }
+}
+
+// ============================================================================
+// SUBSCRIPTION WEBHOOK HANDLERS
+// ============================================================================
+
+async function handleCheckoutSessionCompleted(session) {
+  console.log("Checkout session completed:", session.id);
+
+  const firebaseUid = session.metadata?.firebaseUid;
+  if (!firebaseUid) {
+    console.log("No Firebase UID in session metadata");
+    return;
+  }
+
+  // Handle additional seats purchase
+  if (session.metadata?.type === "additional_seats") {
+    const quantity = parseInt(session.metadata.quantity, 10);
+
+    await db.collection("users").doc(firebaseUid).update({
+      "agency.totalSeats": admin.firestore.FieldValue.increment(quantity),
+      "agency.additionalSeatsPurchased": admin.firestore.FieldValue.increment(quantity),
+    });
+
+    await db.collection("subscriptionEvents").add({
+      userId: firebaseUid,
+      eventType: "seats_purchased",
+      metadata: { quantity },
+      stripeEventId: session.id,
+      createdAt: admin.firestore.FieldValue.serverTimestamp(),
+    });
+  }
+  // Regular subscription checkout is handled by subscription.created event
+}
+
+async function handleSubscriptionCreated(subscription) {
+  console.log("Subscription created:", subscription.id);
+
+  const firebaseUid = subscription.metadata?.firebaseUid;
+  const tier = subscription.metadata?.tier;
+
+  if (!firebaseUid) {
+    console.log("No Firebase UID in subscription metadata");
+    return;
+  }
+
+  const updateData = {
+    subscription: {
+      tier: tier || "starter",
+      status: subscription.status,
+      stripeSubscriptionId: subscription.id,
+      stripePriceId: subscription.items.data[0]?.price?.id || null,
+      currentPeriodStart: admin.firestore.Timestamp.fromMillis(subscription.current_period_start * 1000),
+      currentPeriodEnd: admin.firestore.Timestamp.fromMillis(subscription.current_period_end * 1000),
+      cancelAtPeriodEnd: subscription.cancel_at_period_end,
+      managedSeat: false,
+      createdAt: admin.firestore.FieldValue.serverTimestamp(),
+      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+    },
+  };
+
+  // Initialize agency fields if applicable
+  if (tier === "agency") {
+    updateData.agency = {
+      totalSeats: 6,
+      usedSeats: 0,
+      additionalSeatsPurchased: 0,
+      managedUserIds: [],
+    };
+  }
+
+  await db.collection("users").doc(firebaseUid).update(updateData);
+
+  await db.collection("subscriptionEvents").add({
+    userId: firebaseUid,
+    eventType: "subscription_created",
+    newTier: tier,
+    stripeEventId: subscription.id,
+    createdAt: admin.firestore.FieldValue.serverTimestamp(),
+  });
+}
+
+async function handleSubscriptionUpdated(subscription) {
+  console.log("Subscription updated:", subscription.id);
+
+  // Find user by subscription ID
+  const usersSnapshot = await db
+    .collection("users")
+    .where("subscription.stripeSubscriptionId", "==", subscription.id)
+    .limit(1)
+    .get();
+
+  if (usersSnapshot.empty) {
+    console.log("No user found for subscription:", subscription.id);
+    return;
+  }
+
+  const userDoc = usersSnapshot.docs[0];
+  const userData = userDoc.data();
+
+  // Determine tier from price
+  let tier = userData.subscription?.tier || "starter";
+  const priceId = subscription.items.data[0]?.price?.id;
+
+  for (const [tierKey, tierConfig] of Object.entries(SUBSCRIPTION_TIERS)) {
+    if (tierConfig.stripePriceId === priceId) {
+      tier = tierKey;
+      break;
+    }
+  }
+
+  await userDoc.ref.update({
+    "subscription.tier": tier,
+    "subscription.status": subscription.status,
+    "subscription.stripePriceId": priceId,
+    "subscription.currentPeriodStart": admin.firestore.Timestamp.fromMillis(subscription.current_period_start * 1000),
+    "subscription.currentPeriodEnd": admin.firestore.Timestamp.fromMillis(subscription.current_period_end * 1000),
+    "subscription.cancelAtPeriodEnd": subscription.cancel_at_period_end,
+    "subscription.cancelledAt": subscription.canceled_at
+      ? admin.firestore.Timestamp.fromMillis(subscription.canceled_at * 1000)
+      : null,
+    "subscription.updatedAt": admin.firestore.FieldValue.serverTimestamp(),
+  });
+
+  // Update managed users' subscription end dates if agency
+  if (tier === "agency" && userData.agency?.managedUserIds?.length > 0) {
+    const batch = db.batch();
+    for (const managedUserId of userData.agency.managedUserIds) {
+      batch.update(db.collection("users").doc(managedUserId), {
+        "subscription.currentPeriodEnd": admin.firestore.Timestamp.fromMillis(subscription.current_period_end * 1000),
+        "subscription.updatedAt": admin.firestore.FieldValue.serverTimestamp(),
+      });
+    }
+    await batch.commit();
+  }
+}
+
+async function handleSubscriptionDeleted(subscription) {
+  console.log("Subscription deleted:", subscription.id);
+
+  const usersSnapshot = await db
+    .collection("users")
+    .where("subscription.stripeSubscriptionId", "==", subscription.id)
+    .limit(1)
+    .get();
+
+  if (usersSnapshot.empty) {
+    console.log("No user found for subscription:", subscription.id);
+    return;
+  }
+
+  const userDoc = usersSnapshot.docs[0];
+  const userData = userDoc.data();
+  const previousTier = userData.subscription?.tier;
+
+  // If agency, handle managed users - revert them to free tier
+  if (previousTier === "agency" && userData.agency?.managedUserIds?.length > 0) {
+    const batch = db.batch();
+
+    for (const managedUserId of userData.agency.managedUserIds) {
+      batch.update(db.collection("users").doc(managedUserId), {
+        managedBy: admin.firestore.FieldValue.delete(),
+        subscription: {
+          tier: "free",
+          status: "active",
+          stripeSubscriptionId: null,
+          stripePriceId: null,
+          currentPeriodStart: null,
+          currentPeriodEnd: null,
+          cancelAtPeriodEnd: false,
+          managedSeat: false,
+          updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        },
+      });
+    }
+
+    await batch.commit();
+  }
+
+  // Revert user to free tier
+  await userDoc.ref.update({
+    subscription: {
+      tier: "free",
+      status: "active",
+      stripeSubscriptionId: null,
+      stripePriceId: null,
+      currentPeriodStart: null,
+      currentPeriodEnd: null,
+      cancelAtPeriodEnd: false,
+      managedSeat: false,
+      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+    },
+    // Clear agency data
+    agency: admin.firestore.FieldValue.delete(),
+  });
+
+  await db.collection("subscriptionEvents").add({
+    userId: userDoc.id,
+    eventType: "subscription_cancelled",
+    previousTier,
+    newTier: "free",
+    stripeEventId: subscription.id,
+    createdAt: admin.firestore.FieldValue.serverTimestamp(),
+  });
+}
+
+async function handleInvoicePaymentSucceeded(invoice) {
+  console.log("Invoice payment succeeded:", invoice.id);
+
+  // Subscription invoices are handled by subscription.updated
+  // This is mainly for logging/audit
+  if (invoice.subscription) {
+    const usersSnapshot = await db
+      .collection("users")
+      .where("subscription.stripeSubscriptionId", "==", invoice.subscription)
+      .limit(1)
+      .get();
+
+    if (!usersSnapshot.empty) {
+      await db.collection("subscriptionEvents").add({
+        userId: usersSnapshot.docs[0].id,
+        eventType: "invoice_paid",
+        metadata: {
+          invoiceId: invoice.id,
+          amountPaid: invoice.amount_paid,
+          currency: invoice.currency,
+        },
+        stripeEventId: invoice.id,
+        createdAt: admin.firestore.FieldValue.serverTimestamp(),
+      });
+    }
+  }
+}
+
+async function handleInvoicePaymentFailed(invoice) {
+  console.log("Invoice payment failed:", invoice.id);
+
+  if (!invoice.subscription) return;
+
+  const usersSnapshot = await db
+    .collection("users")
+    .where("subscription.stripeSubscriptionId", "==", invoice.subscription)
+    .limit(1)
+    .get();
+
+  if (usersSnapshot.empty) return;
+
+  const userDoc = usersSnapshot.docs[0];
+
+  await userDoc.ref.update({
+    "subscription.status": "past_due",
+    "subscription.updatedAt": admin.firestore.FieldValue.serverTimestamp(),
+  });
+
+  await db.collection("subscriptionEvents").add({
+    userId: userDoc.id,
+    eventType: "payment_failed",
+    metadata: {
+      invoiceId: invoice.id,
+      attemptCount: invoice.attempt_count,
+    },
+    stripeEventId: invoice.id,
+    createdAt: admin.firestore.FieldValue.serverTimestamp(),
+  });
+
+  // Send notification to user about failed payment
+  await db.collection("users").doc(userDoc.id).collection("notifications").add({
+    type: "payment_failed",
+    title: "Payment Failed",
+    message: "Your subscription payment failed. Please update your payment method to avoid service interruption.",
+    read: false,
+    createdAt: admin.firestore.FieldValue.serverTimestamp(),
+  });
+}
+
+
+// ============================================================================
+// SCHEDULED FUNCTIONS
+// ============================================================================
+
+/**
+ * Auto-release funds for jobs where model marked complete 14+ days ago
+ * Runs daily at midnight
+ */
+exports.autoReleaseFunds = onSchedule(
+  {
+    schedule: "0 0 * * *", // Every day at midnight
+    timeZone: "Europe/London",
+    retryCount: 3,
+  },
+  async (event) => {
+    if (!stripe) {
+      console.log("Stripe not configured, skipping auto-release");
+      return;
+    }
+
+    console.log("Running auto-release check...");
+
+    // Find jobs that are:
+    // 1. In progress
+    // 2. Payment authorized
+    // 3. Model marked complete 14+ days ago
+    // 4. Client hasn't confirmed
+    const fourteenDaysAgo = new Date();
+    fourteenDaysAgo.setDate(fourteenDaysAgo.getDate() - 14);
+
+    try {
+      const jobsSnapshot = await db
+        .collection("jobs")
+        .where("status", "==", "in_progress")
+        .where("payment.status", "==", "authorized")
+        .where("completion.modelMarkedComplete", "==", true)
+        .where("completion.clientConfirmed", "==", false)
+        .get();
+
+      let releasedCount = 0;
+
+      for (const jobDoc of jobsSnapshot.docs) {
+        const jobData = jobDoc.data();
+        const modelMarkedAt = jobData.completion.modelMarkedAt?.toDate?.();
+
+        if (!modelMarkedAt || modelMarkedAt > fourteenDaysAgo) {
+          continue; // Not yet 14 days
+        }
+
+        console.log(`Auto-releasing funds for job ${jobDoc.id} (${jobData.reference})`);
+
+        try {
+          // Capture the PaymentIntent
+          const paymentIntent = await stripe.paymentIntents.capture(
+            jobData.payment.paymentIntentId
+          );
+
+          if (paymentIntent.status !== "succeeded") {
+            console.error(`Failed to capture payment for job ${jobDoc.id}: ${paymentIntent.status}`);
+            continue;
+          }
+
+          // Update job status
+          await jobDoc.ref.update({
+            status: "completed",
+            "payment.status": "captured",
+            "payment.capturedAt": admin.firestore.FieldValue.serverTimestamp(),
+            "completion.fundsReleasedAt": admin.firestore.FieldValue.serverTimestamp(),
+            "completion.autoReleased": true,
+          });
+
+          // Update model's balance
+          const modelId = jobData.awardedTo.modelId;
+          const modelAmount = jobData.payment.modelAmount;
+
+          await db.collection("users").doc(modelId).update({
+            "balance.pending": admin.firestore.FieldValue.increment(-modelAmount),
+            "balance.available": admin.firestore.FieldValue.increment(modelAmount),
+            "balance.lastUpdated": admin.firestore.FieldValue.serverTimestamp(),
+          });
+
+          // Update transaction record
+          const transactionQuery = await db
+            .collection("transactions")
+            .where("jobId", "==", jobDoc.id)
+            .where("type", "==", "job_payment_authorized")
+            .limit(1)
+            .get();
+
+          if (!transactionQuery.empty) {
+            await transactionQuery.docs[0].ref.update({
+              status: "completed",
+              type: "job_payment_completed",
+              completedAt: admin.firestore.FieldValue.serverTimestamp(),
+              autoReleased: true,
+            });
+          }
+
+          // Notify model
+          await db.collection("users").doc(modelId).collection("notifications").add({
+            type: "funds_auto_released",
+            title: "Funds Auto-Released!",
+            message: `Payment for job "${jobData.title}" has been automatically released after 14 days.`,
+            jobId: jobDoc.id,
+            jobReference: jobData.reference,
+            amount: modelAmount,
+            currency: jobData.payment.currency,
+            read: false,
+            createdAt: admin.firestore.FieldValue.serverTimestamp(),
+          });
+
+          // Notify client
+          await db.collection("users").doc(jobData.userId).collection("notifications").add({
+            type: "funds_auto_released",
+            title: "Payment Auto-Released",
+            message: `Payment for job "${jobData.title}" was automatically released after 14 days without response.`,
+            jobId: jobDoc.id,
+            jobReference: jobData.reference,
+            read: false,
+            createdAt: admin.firestore.FieldValue.serverTimestamp(),
+          });
+
+          releasedCount++;
+        } catch (err) {
+          console.error(`Error auto-releasing job ${jobDoc.id}:`, err);
+        }
+      }
+
+      console.log(`Auto-release complete. Released funds for ${releasedCount} jobs.`);
+    } catch (error) {
+      console.error("Error in auto-release scheduled function:", error);
+    }
+  }
+);
+
+/**
+ * Check for expired subscriptions and mark them as expired
+ * Runs daily at 1 AM
+ */
+exports.checkSubscriptionExpiry = onSchedule(
+  {
+    schedule: "0 1 * * *", // Every day at 1 AM
+    timeZone: "Europe/London",
+    retryCount: 3,
+  },
+  async (event) => {
+    console.log("Running subscription expiry check...");
+
+    const now = new Date();
+
+    try {
+      // Find subscriptions that have expired (currentPeriodEnd < now and status is still active)
+      const expiredSnapshot = await db
+        .collection("users")
+        .where("subscription.status", "==", "active")
+        .where("subscription.currentPeriodEnd", "<", admin.firestore.Timestamp.fromDate(now))
+        .get();
+
+      let updatedCount = 0;
+
+      for (const userDoc of expiredSnapshot.docs) {
+        const userData = userDoc.data();
+
+        // Skip free tier users (they don't have expiry)
+        if (userData.subscription?.tier === "free") continue;
+
+        // Skip managed seats (they're handled by agency expiry)
+        if (userData.subscription?.managedSeat) continue;
+
+        console.log(`Marking subscription expired for user: ${userDoc.id}`);
+
+        await userDoc.ref.update({
+          "subscription.status": "expired",
+          "subscription.updatedAt": admin.firestore.FieldValue.serverTimestamp(),
+        });
+
+        // If agency, expire managed users too
+        if (userData.subscription?.tier === "agency" && userData.agency?.managedUserIds?.length > 0) {
+          const batch = db.batch();
+
+          for (const managedUserId of userData.agency.managedUserIds) {
+            batch.update(db.collection("users").doc(managedUserId), {
+              "subscription.status": "expired",
+              "subscription.updatedAt": admin.firestore.FieldValue.serverTimestamp(),
+            });
+          }
+
+          await batch.commit();
+        }
+
+        // Send notification
+        await db.collection("users").doc(userDoc.id).collection("notifications").add({
+          type: "subscription_expired",
+          title: "Subscription Expired",
+          message: "Your subscription has expired. Please renew to continue accessing premium features.",
+          read: false,
+          createdAt: admin.firestore.FieldValue.serverTimestamp(),
+        });
+
+        // Log event
+        await db.collection("subscriptionEvents").add({
+          userId: userDoc.id,
+          eventType: "subscription_expired",
+          previousTier: userData.subscription?.tier,
+          createdAt: admin.firestore.FieldValue.serverTimestamp(),
+        });
+
+        updatedCount++;
+      }
+
+      console.log(`Subscription expiry check complete. Updated ${updatedCount} users.`);
+    } catch (error) {
+      console.error("Error in subscription expiry check:", error);
+    }
+  }
+);

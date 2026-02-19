@@ -11,7 +11,7 @@ import MDInput from "components/MDInput";
 import MDButton from "components/MDButton";
 
 //Logo
-import { ReactComponent as Logo } from "assets/images/logo-rectangle-dark.png";
+import Logo from "assets/images/logo-rectangle-dark.png";
 
 // Layout wrapper
 import IllustrationLayout from "layouts/authentication/components/IllustrationLayout";
@@ -98,7 +98,7 @@ function Illustration() {
       title={
         <>
           <MDBox display="flex" justifyContent="center" mb={2}>
-            <Logo style={{ height: 120 }} /> {/* Adjust height as needed */}
+            <img src={Logo} style={{ height: 50 }} alt="The Model Cloud Logo" />
           </MDBox>
           Sign In
         </>

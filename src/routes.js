@@ -71,6 +71,9 @@ import SharedListView from "layouts/favourites/shared";
 import ZCardBuilder from "layouts/zcard";
 import ZCardView from "layouts/zcard/view";
 
+// Payment layouts
+import Payouts from "layouts/payouts";
+
 // Material Dashboard 3 PRO React components
 import MDAvatar from "components/MDAvatar";
 
@@ -419,17 +422,31 @@ const routes = [
   },
 
   // ============================================================
-  // INVOICES SECTION
+  // PAYOUTS SECTION (Models only)
   // ============================================================
   {
     type: "collapse",
-    name: "Invoices",
-    key: "invoices",
-    icon: <Icon fontSize="small">receipt</Icon>,
+    name: "Payouts",
+    key: "payouts",
+    icon: <Icon fontSize="small">account_balance_wallet</Icon>,
+    roles: ["model"],
+    noCollapse: true,
+    route: "/payouts",
+    component: <Payouts />,
+  },
+
+  // ============================================================
+  // PAYMENTS & INVOICES SECTION (Clients only)
+  // ============================================================
+  {
+    type: "collapse",
+    name: "Payments & Invoices",
+    key: "payments-invoices",
+    icon: <Icon fontSize="small">credit_card</Icon>,
     roles: ["client", "account manager"],
     noCollapse: true,
     route: "/invoices",
-    component: <Billing />, // Use billing as placeholder
+    component: <Billing />,
   },
 
   // ============================================================

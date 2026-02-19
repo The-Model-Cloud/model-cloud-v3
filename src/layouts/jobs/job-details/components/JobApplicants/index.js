@@ -9,12 +9,13 @@ import Icon from "@mui/material/Icon";
 import Chip from "@mui/material/Chip";
 import MDBox from "components/MDBox";
 import MDTypography from "components/MDTypography";
+import MDButton from "components/MDButton";
 import ProfileAvatar from "components/Profile/ProfileAvatar";
 
 // DataTable
 import DataTable from "examples/Tables/DataTable";
 
-function JobApplicants({ job, models }) {
+function JobApplicants({ job, models, onAwardClick, isOwner: isOwnerProp }) {
   const [currentUser, setCurrentUser] = useState(null);
   const [invitedModelIds, setInvitedModelIds] = useState([]);
 
@@ -44,12 +45,20 @@ function JobApplicants({ job, models }) {
     fetchInvitations();
   }, [job?.id]);
 
-  const isOwner = currentUser && job?.userId === currentUser.uid;
+  // Use prop if provided, otherwise calculate
+  const isOwner = isOwnerProp !== undefined ? isOwnerProp : (currentUser && job?.userId === currentUser.uid);
 
   // Don't render anything if not the job owner
   if (!isOwner) {
     return null;
   }
+
+  // Handle award click
+  const handleAwardClick = (modelData) => {
+    if (onAwardClick) {
+      onAwardClick(modelData);
+    }
+  };
 
   // Build table data
   const tableData = {
@@ -110,6 +119,26 @@ function JobApplicants({ job, models }) {
             {value || "—"}
           </MDTypography>
         ),
+      },
+      {
+        Header: "Actions",
+        accessor: "actions",
+        align: "center",
+        Cell: ({ row }) => {
+          const modelData = models.find((m) => m.uid === row.original.uid);
+          return (
+            <MDButton
+              variant="gradient"
+              color="success"
+              size="small"
+              onClick={() => handleAwardClick(modelData)}
+              disabled={!onAwardClick}
+            >
+              <Icon sx={{ mr: 0.5 }}>emoji_events</Icon>
+              Award
+            </MDButton>
+          );
+        },
       },
     ],
     rows: models.map((model) => ({

@@ -42,6 +42,9 @@ import JobInfo from "./components/JobInfo";
 import JobApplicants from "./components/JobApplicants";
 import MatchingModels from "./components/MatchingModels";
 import ShortlistForJobModal from "components/Favourites/ShortlistForJobModal";
+import AwardJobModal from "./components/AwardJobModal";
+import JobPaymentSection from "./components/JobPaymentSection";
+import JobCompletionSection from "./components/JobCompletionSection";
 
 // Favourites utilities
 import { getListsForJob } from "utils/favourites";
@@ -76,6 +79,40 @@ function JobDetails() {
     const [isCreatingThread, setIsCreatingThread] = useState(false);
     const [shortlistModalOpen, setShortlistModalOpen] = useState(false);
     const [linkedShortlist, setLinkedShortlist] = useState(null);
+    const [awardModalOpen, setAwardModalOpen] = useState(false);
+    const [selectedModelForAward, setSelectedModelForAward] = useState(null);
+
+    // Check if current user is job owner
+    const isJobOwner = model && job && job.userId === model.uid;
+    // Check if current user is the awarded model
+    const isAwardedModel = model && job?.awardedTo?.modelId === model.uid;
+
+    // Function to refresh job data
+    const refreshJob = async () => {
+        const jobRef = collection(db, "jobs");
+        const q = query(jobRef, where("reference", "==", reference));
+        const querySnapshot = await getDocs(q);
+        if (!querySnapshot.empty) {
+            const docSnap = querySnapshot.docs[0];
+            const jobData = { id: docSnap.id, ...docSnap.data() };
+            setJob(jobData);
+        }
+    };
+
+    // Handle award button click from applicant list
+    const handleAwardClick = (applicantModel) => {
+        setSelectedModelForAward(applicantModel);
+        setAwardModalOpen(true);
+    };
+
+    // Handle successful job award
+    const handleAwardSuccess = (result) => {
+        setSnackMessage("Job awarded successfully! The model has been notified.");
+        setSnackOpen(true);
+        setAwardModalOpen(false);
+        setSelectedModelForAward(null);
+        refreshJob();
+    };
 
     useEffect(() => {
         const fetchCurrentModel = async () => {
@@ -540,11 +577,37 @@ function JobDetails() {
                             </MDBox>
                         </Card>
 
-                        {/* Applicants Section - separate card */}
-                        <JobApplicants job={job} models={models} />
+                        {/* Payment Section - show if job is awarded */}
+                        {job.awardedTo && (
+                            <JobPaymentSection
+                                job={job}
+                                isOwner={isJobOwner}
+                                onPaymentComplete={refreshJob}
+                            />
+                        )}
 
-                        {/* Matching Models Section - for job owner */}
-                        <MatchingModels job={job} />
+                        {/* Completion Section - show if payment is authorized */}
+                        {job.awardedTo && job.payment?.status === "authorized" && (
+                            <JobCompletionSection
+                                job={job}
+                                isOwner={isJobOwner}
+                                isAwardedModel={isAwardedModel}
+                                onCompletionUpdate={refreshJob}
+                            />
+                        )}
+
+                        {/* Applicants Section - separate card (only show if not awarded) */}
+                        {!job.awardedTo && (
+                            <JobApplicants
+                                job={job}
+                                models={models}
+                                onAwardClick={handleAwardClick}
+                                isOwner={isJobOwner}
+                            />
+                        )}
+
+                        {/* Matching Models Section - for job owner (only show if not awarded) */}
+                        {!job.awardedTo && <MatchingModels job={job} />}
 
                         <Snackbar
                             open={snackOpen}
@@ -658,6 +721,20 @@ function JobDetails() {
                             setLinkedShortlist(null);
                         }
                     }}
+                />
+            )}
+
+            {/* Award Job Modal */}
+            {job && selectedModelForAward && (
+                <AwardJobModal
+                    open={awardModalOpen}
+                    onClose={() => {
+                        setAwardModalOpen(false);
+                        setSelectedModelForAward(null);
+                    }}
+                    job={job}
+                    model={selectedModelForAward}
+                    onAwardSuccess={handleAwardSuccess}
                 />
             )}
 

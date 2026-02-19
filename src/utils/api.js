@@ -719,3 +719,436 @@ export const getInstagramFollowers = async (username) => {
     throw error;
   }
 };
+
+
+// ============================================================================
+// STRIPE CONNECT - MODEL ONBOARDING
+// ============================================================================
+
+/**
+ * Create Stripe Connected Account for model
+ * @returns {Promise<{success: boolean, accountId: string, onboardingUrl: string}>}
+ */
+export const createStripeConnectedAccount = async () => {
+  try {
+    const result = await callCloudFunction("createStripeConnectedAccount", {});
+
+    if (result.error && !result.success) {
+      throw new Error(result.error);
+    }
+
+    return result;
+  } catch (error) {
+    console.error("Failed to create Stripe connected account:", error);
+    throw error;
+  }
+};
+
+/**
+ * Get Stripe onboarding link for model
+ * @returns {Promise<{success: boolean, onboardingUrl: string}>}
+ */
+export const createStripeOnboardingLink = async () => {
+  try {
+    const result = await callCloudFunction("createStripeOnboardingLink", {});
+
+    if (result.error && !result.success) {
+      throw new Error(result.error);
+    }
+
+    return result;
+  } catch (error) {
+    console.error("Failed to create Stripe onboarding link:", error);
+    throw error;
+  }
+};
+
+/**
+ * Get Stripe Express Dashboard link for model
+ * @returns {Promise<{success: boolean, dashboardUrl: string}>}
+ */
+export const createStripeDashboardLink = async () => {
+  try {
+    const result = await callCloudFunction("createStripeDashboardLink", {});
+
+    if (result.error && !result.success) {
+      throw new Error(result.error);
+    }
+
+    return result;
+  } catch (error) {
+    console.error("Failed to create Stripe dashboard link:", error);
+    throw error;
+  }
+};
+
+/**
+ * Get Stripe account status for model
+ * @returns {Promise<{success: boolean, hasAccount: boolean, status: string, payoutsEnabled: boolean}>}
+ */
+export const getStripeAccountStatus = async () => {
+  try {
+    const result = await callCloudFunction("getStripeAccountStatus", {});
+
+    if (result.error && !result.success) {
+      throw new Error(result.error);
+    }
+
+    return result;
+  } catch (error) {
+    console.error("Failed to get Stripe account status:", error);
+    throw error;
+  }
+};
+
+
+// ============================================================================
+// STRIPE - CLIENT PAYMENT METHODS
+// ============================================================================
+
+/**
+ * Create or get Stripe Customer for client
+ * @returns {Promise<{success: boolean, customerId: string, isNew: boolean}>}
+ */
+export const createStripeCustomer = async () => {
+  try {
+    const result = await callCloudFunction("createStripeCustomer", {});
+
+    if (result.error && !result.success) {
+      throw new Error(result.error);
+    }
+
+    return result;
+  } catch (error) {
+    console.error("Failed to create Stripe customer:", error);
+    throw error;
+  }
+};
+
+/**
+ * Create SetupIntent for saving payment method
+ * @returns {Promise<{success: boolean, clientSecret: string}>}
+ */
+export const createSetupIntent = async () => {
+  try {
+    const result = await callCloudFunction("createSetupIntent", {});
+
+    if (result.error && !result.success) {
+      throw new Error(result.error);
+    }
+
+    return result;
+  } catch (error) {
+    console.error("Failed to create setup intent:", error);
+    throw error;
+  }
+};
+
+/**
+ * Get saved payment methods for client
+ * @returns {Promise<{success: boolean, paymentMethods: Array}>}
+ */
+export const getSavedPaymentMethods = async () => {
+  try {
+    const result = await callCloudFunction("getSavedPaymentMethods", {});
+
+    if (result.error && !result.success) {
+      throw new Error(result.error);
+    }
+
+    return result;
+  } catch (error) {
+    console.error("Failed to get saved payment methods:", error);
+    throw error;
+  }
+};
+
+/**
+ * Delete a saved payment method
+ * @param {string} paymentMethodId - Payment method ID to delete
+ * @returns {Promise<{success: boolean}>}
+ */
+export const deletePaymentMethod = async (paymentMethodId) => {
+  try {
+    const result = await callCloudFunction("deletePaymentMethod", {
+      paymentMethodId,
+    });
+
+    if (result.error && !result.success) {
+      throw new Error(result.error);
+    }
+
+    return result;
+  } catch (error) {
+    console.error("Failed to delete payment method:", error);
+    throw error;
+  }
+};
+
+/**
+ * Set default payment method for client
+ * @param {string} paymentMethodId - Payment method ID to set as default
+ * @returns {Promise<{success: boolean}>}
+ */
+export const setDefaultPaymentMethod = async (paymentMethodId) => {
+  try {
+    const result = await callCloudFunction("setDefaultPaymentMethod", {
+      paymentMethodId,
+    });
+
+    if (result.error && !result.success) {
+      throw new Error(result.error);
+    }
+
+    return result;
+  } catch (error) {
+    console.error("Failed to set default payment method:", error);
+    throw error;
+  }
+};
+
+
+// ============================================================================
+// JOB AWARD & PAYMENT
+// ============================================================================
+
+/**
+ * Award job to a model
+ * @param {string} jobId - Job ID
+ * @param {string} modelId - Model user ID
+ * @param {number} agreedAmount - Agreed payment amount
+ * @param {string} currency - Currency code (GBP, EUR, USD)
+ * @returns {Promise<{success: boolean, modelHasStripeAccount: boolean}>}
+ */
+export const awardJobToModel = async (jobId, modelId, agreedAmount, currency = "GBP") => {
+  try {
+    const result = await callCloudFunction("awardJobToModel", {
+      jobId,
+      modelId,
+      agreedAmount,
+      currency,
+    });
+
+    if (result.error && !result.success) {
+      throw new Error(result.error);
+    }
+
+    return result;
+  } catch (error) {
+    console.error("Failed to award job to model:", error);
+    throw error;
+  }
+};
+
+/**
+ * Create PaymentIntent for job payment (holds funds)
+ * @param {string} jobId - Job ID
+ * @param {string} paymentMethodId - Optional payment method ID
+ * @returns {Promise<{success: boolean, paymentIntentId: string, clientSecret: string}>}
+ */
+export const createJobPaymentIntent = async (jobId, paymentMethodId = null) => {
+  try {
+    const result = await callCloudFunction("createJobPaymentIntent", {
+      jobId,
+      paymentMethodId,
+    });
+
+    if (result.error && !result.success) {
+      throw new Error(result.error);
+    }
+
+    return result;
+  } catch (error) {
+    console.error("Failed to create job payment intent:", error);
+    throw error;
+  }
+};
+
+/**
+ * Confirm job payment was authorized
+ * @param {string} jobId - Job ID
+ * @param {string} paymentIntentId - Payment Intent ID
+ * @returns {Promise<{success: boolean}>}
+ */
+export const confirmJobPaymentAuthorized = async (jobId, paymentIntentId) => {
+  try {
+    const result = await callCloudFunction("confirmJobPaymentAuthorized", {
+      jobId,
+      paymentIntentId,
+    });
+
+    if (result.error && !result.success) {
+      throw new Error(result.error);
+    }
+
+    return result;
+  } catch (error) {
+    console.error("Failed to confirm job payment authorization:", error);
+    throw error;
+  }
+};
+
+
+// ============================================================================
+// JOB COMPLETION & FUND RELEASE
+// ============================================================================
+
+/**
+ * Model marks job as complete
+ * @param {string} jobId - Job ID
+ * @returns {Promise<{success: boolean}>}
+ */
+export const modelMarkJobComplete = async (jobId) => {
+  try {
+    const result = await callCloudFunction("modelMarkJobComplete", {
+      jobId,
+    });
+
+    if (result.error && !result.success) {
+      throw new Error(result.error);
+    }
+
+    return result;
+  } catch (error) {
+    console.error("Failed to mark job as complete:", error);
+    throw error;
+  }
+};
+
+/**
+ * Client confirms job completion and releases funds
+ * @param {string} jobId - Job ID
+ * @returns {Promise<{success: boolean}>}
+ */
+export const clientConfirmJobComplete = async (jobId) => {
+  try {
+    const result = await callCloudFunction("clientConfirmJobComplete", {
+      jobId,
+    });
+
+    if (result.error && !result.success) {
+      throw new Error(result.error);
+    }
+
+    return result;
+  } catch (error) {
+    console.error("Failed to confirm job completion:", error);
+    throw error;
+  }
+};
+
+/**
+ * Admin manage job payment (release, cancel, or partial refund)
+ * @param {string} jobId - Job ID
+ * @param {string} action - Action to take: 'release', 'cancel', or 'partial_refund'
+ * @param {number} refundPercentage - For partial refund, percentage to capture (1-100)
+ * @returns {Promise<{success: boolean}>}
+ */
+export const adminManageJobPayment = async (jobId, action, refundPercentage = 100) => {
+  try {
+    const result = await callCloudFunction("adminManageJobPayment", {
+      jobId,
+      action,
+      refundPercentage,
+    });
+
+    if (result.error && !result.success) {
+      throw new Error(result.error);
+    }
+
+    return result;
+  } catch (error) {
+    console.error("Failed to manage job payment:", error);
+    throw error;
+  }
+};
+
+
+// ============================================================================
+// WITHDRAWALS
+// ============================================================================
+
+/**
+ * Get model's balance
+ * @returns {Promise<{success: boolean, balance: {available: number, pending: number, currency: string}}>}
+ */
+export const getModelBalance = async () => {
+  try {
+    const result = await callCloudFunction("getModelBalance", {});
+
+    if (result.error && !result.success) {
+      throw new Error(result.error);
+    }
+
+    return result;
+  } catch (error) {
+    console.error("Failed to get model balance:", error);
+    throw error;
+  }
+};
+
+/**
+ * Request withdrawal to bank account
+ * @param {number} amount - Amount to withdraw (in main currency units, e.g., pounds)
+ * @returns {Promise<{success: boolean, withdrawalId: string, fee: number, netAmount: number}>}
+ */
+export const requestWithdrawal = async (amount) => {
+  try {
+    const result = await callCloudFunction("requestWithdrawal", {
+      amount,
+    });
+
+    if (result.error && !result.success) {
+      throw new Error(result.error);
+    }
+
+    return result;
+  } catch (error) {
+    console.error("Failed to request withdrawal:", error);
+    throw error;
+  }
+};
+
+/**
+ * Get withdrawal history for model
+ * @param {number} limit - Maximum number of records to return
+ * @returns {Promise<{success: boolean, withdrawals: Array}>}
+ */
+export const getWithdrawalHistory = async (limit = 50) => {
+  try {
+    const result = await callCloudFunction("getWithdrawalHistory", {
+      limit,
+    });
+
+    if (result.error && !result.success) {
+      throw new Error(result.error);
+    }
+
+    return result;
+  } catch (error) {
+    console.error("Failed to get withdrawal history:", error);
+    throw error;
+  }
+};
+
+/**
+ * Get transaction history
+ * @param {number} limit - Maximum number of records to return
+ * @returns {Promise<{success: boolean, transactions: Array}>}
+ */
+export const getTransactionHistory = async (limit = 50) => {
+  try {
+    const result = await callCloudFunction("getTransactionHistory", {
+      limit,
+    });
+
+    if (result.error && !result.success) {
+      throw new Error(result.error);
+    }
+
+    return result;
+  } catch (error) {
+    console.error("Failed to get transaction history:", error);
+    throw error;
+  }
+};
