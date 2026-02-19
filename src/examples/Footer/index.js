@@ -88,9 +88,9 @@ function Footer({ company, links }) {
 Footer.defaultProps = {
   company: { href: "https://themodel.cloud", name: "The Model Cloud" },
   links: [
-    { href: "http://themodel.cloud/about-us", name: "About Us" },
-    { href: "http://themodel.cloud/blog", name: "Blog" },
-    { href: "#", name: `Version ${version}` },
+    { href: "https://themodel.cloud/about-us", name: "About Us" },
+    { href: "https://themodel.cloud/blog", name: "Blog" },
+    { name: `Version ${version}` },
   ],
 };
 
