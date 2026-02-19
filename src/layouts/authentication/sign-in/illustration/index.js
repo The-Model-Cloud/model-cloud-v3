@@ -11,7 +11,7 @@ import MDInput from "components/MDInput";
 import MDButton from "components/MDButton";
 
 //Logo
-import { ReactComponent as Logo } from "assets/images/logo-rectangle-dark.svg";
+import { ReactComponent as Logo } from "assets/images/logo-rectangle-dark.png";
 
 // Layout wrapper
 import IllustrationLayout from "layouts/authentication/components/IllustrationLayout";

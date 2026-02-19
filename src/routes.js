@@ -672,6 +672,15 @@ const routes = [
   },
   {
     type: "collapse",
+    name: "User Settings",
+    key: "admin-user-settings",
+    route: "/admin/user/:uid/settings",
+    component: <ModelSettingsProxy />,
+    roles: ADMIN_ROLES,
+    invisible: true,
+  },
+  {
+    type: "collapse",
     name: "Organisation Detail",
     key: "organisation-detail",
     route: "/admin/organisations/:orgId",

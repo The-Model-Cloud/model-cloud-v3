@@ -167,11 +167,52 @@ service cloud.firestore {
     // ============================================================================
     // ADMIN LOGS - Audit trail for admin actions
     // ============================================================================
-    
+
     match /adminLogs/{logId} {
       allow read: if isAdmin();
       allow create: if isAdmin();
       allow update, delete: if false;
+    }
+
+    // ============================================================================
+    // ORGANISATIONS - Company/Organisation records
+    // ============================================================================
+
+    match /organisations/{orgId} {
+      // Admins and account managers can read organisations
+      allow read: if isAuthenticated() &&
+        (isAdmin() || getUserRole() == "account manager");
+
+      // Only admins can create organisations
+      allow create: if isAdmin();
+
+      // Only admins can update organisations
+      allow update: if isAdmin();
+
+      // Only super admins can delete organisations
+      allow delete: if isSuperAdmin();
+    }
+
+    // ============================================================================
+    // CMS - Public Website Content Management
+    // ============================================================================
+
+    // CMS Pages - Public read for published pages, super admin write
+    match /cmsPages/{pageId} {
+      allow read: if resource.data.published == true || isSuperAdmin();
+      allow create, update, delete: if isSuperAdmin();
+    }
+
+    // Pricing Tiers - Public read for published tiers, super admin write
+    match /pricingTiers/{tierId} {
+      allow read: if resource.data.published == true || isSuperAdmin();
+      allow create, update, delete: if isSuperAdmin();
+    }
+
+    // Contact Form Submissions - Anyone can create, only admins can read/manage
+    match /contactSubmissions/{submissionId} {
+      allow create: if true;
+      allow read, update, delete: if isAdmin();
     }
   }
 }

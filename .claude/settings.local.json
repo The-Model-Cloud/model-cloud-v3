@@ -15,7 +15,10 @@
       "Bash(git stash:*)",
       "Bash(npm install:*)",
       "Bash(node:*)",
-      "Bash(firebase deploy:*)"
+      "Bash(firebase deploy:*)",
+      "Bash(ls -la \"d:\\\\Development\\\\model-cloud-v4\\\\src\\\\layouts\\\\messages\\\\components\"\" 2>&1 || echo \"Directory not found \")",
+      "Bash(dir:*)",
+      "Bash(chmod +x \"d:\\\\Development\\\\model-cloud-v4\\\\.git\\\\hooks\\\\pre-commit\")"
     ]
   }
 }

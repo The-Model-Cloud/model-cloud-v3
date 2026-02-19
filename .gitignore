@@ -38,3 +38,4 @@ firestore.indexes.json
 nul
 serviceAccountKey.json
 .htpasswd
+.claude/settings.local.json

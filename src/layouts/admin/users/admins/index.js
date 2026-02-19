@@ -11,6 +11,7 @@ import Alert from "@mui/material/Alert";
 import Chip from "@mui/material/Chip";
 import MDBox from "components/MDBox";
 import MDTypography from "components/MDTypography";
+import { useNavigate } from "react-router-dom";
 
 // Dashboard layout components
 import DashboardLayout from "examples/LayoutContainers/DashboardLayout";
@@ -59,7 +60,9 @@ const formatRole = (role) => {
 };
 
 function AllAdmins() {
+  const navigate = useNavigate();
   const { user: currentUser } = useAuth();
+  const isSuperAdmin = currentUser?.role === "super admin";
   const [tableData, setTableData] = useState({ columns: [], rows: [] });
   const [rawAdmins, setRawAdmins] = useState([]);
   const { deleteUser, deleting, error: deleteError, clearError } = useDeleteUser();
@@ -299,7 +302,34 @@ function AllAdmins() {
   useEffect(() => {
     setTableData({
       columns: [
-        { Header: "Name", accessor: "name", Cell: ({ row }) => row.original.name || "—" },
+        {
+          Header: "Name",
+          accessor: "name",
+          Cell: ({ row }) => {
+            const { uid, name, role } = row.original;
+            const isTargetSuperAdmin = role === "super admin";
+            // Only super admins can view/edit other super admin details
+            const canViewDetails = isSuperAdmin || !isTargetSuperAdmin;
+
+            if (canViewDetails) {
+              return (
+                <MDTypography
+                  variant="button"
+                  fontWeight="regular"
+                  sx={{
+                    color: "#1976d2",
+                    cursor: "pointer",
+                    "&:hover": { textDecoration: "underline" },
+                  }}
+                  onClick={() => navigate(`/admin/user/${uid}/settings`)}
+                >
+                  {name || "—"}
+                </MDTypography>
+              );
+            }
+            return name || "—";
+          },
+        },
         { Header: "Email", accessor: "email" },
         {
           Header: "Role",
@@ -335,32 +365,38 @@ function AllAdmins() {
           width: "18%",
           Cell: ({ row }) => {
             const user = row.original;
-            const isSuperAdmin = user.role === "super admin";
+            const isTargetSuperAdmin = user.role === "super admin";
             const isCurrentUser = user.uid === currentUser?.uid;
+            // Only super admins can edit other super admin details
+            const canEdit = isSuperAdmin || !isTargetSuperAdmin;
 
             return (
               <MDBox display="flex" gap={0.5}>
-                <Tooltip title="Reset Password">
-                  <IconButton size="small" onClick={() => handleResetPasswordClick(user)} sx={{ color: "#1976d2" }}>
-                    <Icon fontSize="small">lock_reset</Icon>
-                  </IconButton>
-                </Tooltip>
-                <Tooltip title="Change Email">
-                  <IconButton size="small" onClick={() => handleChangeEmailClick(user)} sx={{ color: "#1976d2" }}>
-                    <Icon fontSize="small">email</Icon>
-                  </IconButton>
-                </Tooltip>
-                <Tooltip title="Change Name">
-                  <IconButton size="small" onClick={() => handleChangeNameClick(user)} sx={{ color: "#1976d2" }}>
-                    <Icon fontSize="small">badge</Icon>
-                  </IconButton>
-                </Tooltip>
-                <Tooltip title="Change Location">
-                  <IconButton size="small" onClick={() => handleChangeLocationClick(user)} sx={{ color: "#1976d2" }}>
-                    <Icon fontSize="small">location_on</Icon>
-                  </IconButton>
-                </Tooltip>
-                {!isSuperAdmin && !isCurrentUser && (
+                {canEdit && (
+                  <>
+                    <Tooltip title="Reset Password">
+                      <IconButton size="small" onClick={() => handleResetPasswordClick(user)} sx={{ color: "#1976d2" }}>
+                        <Icon fontSize="small">lock_reset</Icon>
+                      </IconButton>
+                    </Tooltip>
+                    <Tooltip title="Change Email">
+                      <IconButton size="small" onClick={() => handleChangeEmailClick(user)} sx={{ color: "#1976d2" }}>
+                        <Icon fontSize="small">email</Icon>
+                      </IconButton>
+                    </Tooltip>
+                    <Tooltip title="Change Name">
+                      <IconButton size="small" onClick={() => handleChangeNameClick(user)} sx={{ color: "#1976d2" }}>
+                        <Icon fontSize="small">badge</Icon>
+                      </IconButton>
+                    </Tooltip>
+                    <Tooltip title="Change Location">
+                      <IconButton size="small" onClick={() => handleChangeLocationClick(user)} sx={{ color: "#1976d2" }}>
+                        <Icon fontSize="small">location_on</Icon>
+                      </IconButton>
+                    </Tooltip>
+                  </>
+                )}
+                {!isTargetSuperAdmin && !isCurrentUser && (
                   <Tooltip title="Delete Admin">
                     <IconButton size="small" onClick={() => handleDeleteClick(user)} sx={{ color: "#d32f2f" }}>
                       <Icon fontSize="small">delete</Icon>
@@ -374,7 +410,7 @@ function AllAdmins() {
       ],
       rows: rawAdmins,
     });
-  }, [rawAdmins, handleDeleteClick, handleResetPasswordClick, handleChangeEmailClick, handleChangeNameClick, handleChangeLocationClick, currentUser]);
+  }, [rawAdmins, handleDeleteClick, handleResetPasswordClick, handleChangeEmailClick, handleChangeNameClick, handleChangeLocationClick, currentUser, isSuperAdmin, navigate]);
 
   return (
     <DashboardLayout>

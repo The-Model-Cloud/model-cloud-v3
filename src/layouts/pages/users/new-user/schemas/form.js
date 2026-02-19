@@ -30,7 +30,28 @@ const form = {
     },
     company: {
       name: "company",
-      label: "Company",
+      label: "Company Name",
+      type: "text",
+    },
+    yearEstablished: {
+      name: "yearEstablished",
+      label: "Year Established",
+      type: "text",
+      invalidMsg: "Please enter a valid year (e.g. 2010)",
+    },
+    companyNumber: {
+      name: "companyNumber",
+      label: "Company Number",
+      type: "text",
+    },
+    registeredAddress: {
+      name: "registeredAddress",
+      label: "Registered Address",
+      type: "text",
+    },
+    vatNumber: {
+      name: "vatNumber",
+      label: "VAT Number",
       type: "text",
     },
     email: {

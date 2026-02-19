@@ -98,6 +98,7 @@ const STATUS_OPTIONS = [
 function AllUsers() {
   const navigate = useNavigate();
   const { user: currentUser } = useAuth();
+  const isSuperAdmin = currentUser?.role === "super admin";
   const [tableData, setTableData] = useState({ columns: [], rows: [] });
   const [rawUsers, setRawUsers] = useState([]);
   const [filteredUsers, setFilteredUsers] = useState([]);
@@ -625,7 +626,15 @@ function AllUsers() {
           accessor: "name",
           Cell: ({ row }) => {
             const { uid, name, role } = row.original;
-            if (role === "model") {
+            const isTargetSuperAdmin = role === "super admin";
+            // Only super admins can view/edit other super admin details
+            const canViewDetails = isSuperAdmin || !isTargetSuperAdmin;
+
+            if (canViewDetails) {
+              // Use /admin/model/ for models, /admin/user/ for other user types
+              const route = role === "model"
+                ? `/admin/model/${uid}/settings`
+                : `/admin/user/${uid}/settings`;
               return (
                 <MDTypography
                   variant="button"
@@ -635,7 +644,7 @@ function AllUsers() {
                     cursor: "pointer",
                     "&:hover": { textDecoration: "underline" },
                   }}
-                  onClick={() => navigate(`/admin/model/${uid}/settings`)}
+                  onClick={() => navigate(route)}
                 >
                   {name || "—"}
                 </MDTypography>
@@ -700,13 +709,15 @@ function AllUsers() {
           width: "20%",
           Cell: ({ row }) => {
             const user = row.original;
-            const isSuperAdmin = user.role === "super admin";
+            const isTargetSuperAdmin = user.role === "super admin";
             const isCurrentUser = user.uid === currentUser?.uid;
             const isModel = user.role === "model";
+            // Only super admins can edit other super admin details
+            const canEdit = isSuperAdmin || !isTargetSuperAdmin;
 
             return (
               <MDBox display="flex" gap={0.5}>
-                {isModel && (
+                {isModel && canEdit && (
                   <Tooltip title={user.verified ? "Unverify Model" : "Verify Model"}>
                     <IconButton
                       size="small"
@@ -717,43 +728,47 @@ function AllUsers() {
                     </IconButton>
                   </Tooltip>
                 )}
-                <Tooltip title="Reset Password">
-                  <IconButton
-                    size="small"
-                    onClick={() => handleResetPasswordClick(user)}
-                    sx={{ color: "#1976d2" }}
-                  >
-                    <Icon fontSize="small">lock_reset</Icon>
-                  </IconButton>
-                </Tooltip>
-                <Tooltip title="Change Email">
-                  <IconButton
-                    size="small"
-                    onClick={() => handleChangeEmailClick(user)}
-                    sx={{ color: "#1976d2" }}
-                  >
-                    <Icon fontSize="small">email</Icon>
-                  </IconButton>
-                </Tooltip>
-                <Tooltip title="Change Name">
-                  <IconButton
-                    size="small"
-                    onClick={() => handleChangeNameClick(user)}
-                    sx={{ color: "#1976d2" }}
-                  >
-                    <Icon fontSize="small">badge</Icon>
-                  </IconButton>
-                </Tooltip>
-                <Tooltip title="Change Location">
-                  <IconButton
-                    size="small"
-                    onClick={() => handleChangeLocationClick(user)}
-                    sx={{ color: "#1976d2" }}
-                  >
-                    <Icon fontSize="small">location_on</Icon>
-                  </IconButton>
-                </Tooltip>
-                {!isSuperAdmin && !isCurrentUser && (
+                {canEdit && (
+                  <>
+                    <Tooltip title="Reset Password">
+                      <IconButton
+                        size="small"
+                        onClick={() => handleResetPasswordClick(user)}
+                        sx={{ color: "#1976d2" }}
+                      >
+                        <Icon fontSize="small">lock_reset</Icon>
+                      </IconButton>
+                    </Tooltip>
+                    <Tooltip title="Change Email">
+                      <IconButton
+                        size="small"
+                        onClick={() => handleChangeEmailClick(user)}
+                        sx={{ color: "#1976d2" }}
+                      >
+                        <Icon fontSize="small">email</Icon>
+                      </IconButton>
+                    </Tooltip>
+                    <Tooltip title="Change Name">
+                      <IconButton
+                        size="small"
+                        onClick={() => handleChangeNameClick(user)}
+                        sx={{ color: "#1976d2" }}
+                      >
+                        <Icon fontSize="small">badge</Icon>
+                      </IconButton>
+                    </Tooltip>
+                    <Tooltip title="Change Location">
+                      <IconButton
+                        size="small"
+                        onClick={() => handleChangeLocationClick(user)}
+                        sx={{ color: "#1976d2" }}
+                      >
+                        <Icon fontSize="small">location_on</Icon>
+                      </IconButton>
+                    </Tooltip>
+                  </>
+                )}
+                {!isTargetSuperAdmin && !isCurrentUser && (
                   <Tooltip title="Delete User">
                     <IconButton
                       size="small"
@@ -780,6 +795,7 @@ function AllUsers() {
     handleChangeLocationClick,
     handleToggleVerification,
     currentUser,
+    isSuperAdmin,
     selectedModels,
     allModels,
     handleSelectAllModels,

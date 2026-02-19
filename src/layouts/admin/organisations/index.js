@@ -45,6 +45,7 @@ function Organisations() {
       try {
         // Fetch all organisations from the organisations collection
         let allOrganisations = await getAllOrganisations();
+        console.log("📋 Organisations fetched:", allOrganisations.length, allOrganisations);
 
         // For account managers, filter to only their organisation
         if (isAccountManager && currentUser?.organisationId) {

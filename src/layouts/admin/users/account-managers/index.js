@@ -10,6 +10,7 @@ import Snackbar from "@mui/material/Snackbar";
 import Alert from "@mui/material/Alert";
 import MDBox from "components/MDBox";
 import MDTypography from "components/MDTypography";
+import { useNavigate } from "react-router-dom";
 
 // Dashboard layout components
 import DashboardLayout from "examples/LayoutContainers/DashboardLayout";
@@ -35,6 +36,7 @@ import { logAdminAction, ADMIN_ACTIONS } from "utils/adminLogs";
 import { useAuth } from "context/AuthContext";
 
 function AllAccountManagers() {
+  const navigate = useNavigate();
   const { user: currentUser } = useAuth();
   const [tableData, setTableData] = useState({ columns: [], rows: [] });
   const [rawUsers, setRawUsers] = useState([]);
@@ -276,7 +278,27 @@ function AllAccountManagers() {
   useEffect(() => {
     setTableData({
       columns: [
-        { Header: "Name", accessor: "name", Cell: ({ row }) => row.original.name || "—" },
+        {
+          Header: "Name",
+          accessor: "name",
+          Cell: ({ row }) => {
+            const { uid, name } = row.original;
+            return (
+              <MDTypography
+                variant="button"
+                fontWeight="regular"
+                sx={{
+                  color: "#1976d2",
+                  cursor: "pointer",
+                  "&:hover": { textDecoration: "underline" },
+                }}
+                onClick={() => navigate(`/admin/user/${uid}/settings`)}
+              >
+                {name || "—"}
+              </MDTypography>
+            );
+          },
+        },
         { Header: "Email", accessor: "email" },
         { Header: "Company", accessor: "company" },
         { Header: "Phone", accessor: "phone" },
@@ -340,7 +362,7 @@ function AllAccountManagers() {
       ],
       rows: rawUsers,
     });
-  }, [rawUsers, handleDeleteClick, handleResetPasswordClick, handleChangeEmailClick, handleChangeNameClick, handleChangeLocationClick]);
+  }, [rawUsers, handleDeleteClick, handleResetPasswordClick, handleChangeEmailClick, handleChangeNameClick, handleChangeLocationClick, navigate]);
 
   return (
     <DashboardLayout>

@@ -20,9 +20,7 @@ import IconButton from "@mui/material/IconButton";
 import CircularProgress from "@mui/material/CircularProgress";
 import Snackbar from "@mui/material/Snackbar";
 import Alert from "@mui/material/Alert";
-import FormControl from "@mui/material/FormControl";
-import Select from "@mui/material/Select";
-import MenuItem from "@mui/material/MenuItem";
+import Autocomplete from "@mui/material/Autocomplete";
 
 // Material Dashboard components
 import MDBox from "components/MDBox";
@@ -377,22 +375,39 @@ function BrowseModels() {
                 />
 
                 {/* Sort By */}
-                <FormControl size="small" sx={{ minWidth: 140 }}>
-                  <Select
-                    value={sortBy}
-                    onChange={(e) => setSortBy(e.target.value)}
-                    displayEmpty
-                    startAdornment={
-                      <InputAdornment position="start">
-                        <Icon fontSize="small">sort</Icon>
-                      </InputAdornment>
-                    }
-                  >
-                    <MenuItem value="firstName">First Name</MenuItem>
-                    <MenuItem value="lastName">Last Name</MenuItem>
-                    <MenuItem value="location">Location</MenuItem>
-                  </Select>
-                </FormControl>
+                <Autocomplete
+                  value={
+                    [
+                      { value: "firstName", label: "First Name" },
+                      { value: "lastName", label: "Last Name" },
+                      { value: "location", label: "Location" },
+                    ].find((opt) => opt.value === sortBy) || null
+                  }
+                  options={[
+                    { value: "firstName", label: "First Name" },
+                    { value: "lastName", label: "Last Name" },
+                    { value: "location", label: "Location" },
+                  ]}
+                  getOptionLabel={(option) => option.label}
+                  onChange={(_, option) => setSortBy(option?.value || "firstName")}
+                  disableClearable
+                  size="small"
+                  sx={{ minWidth: 160 }}
+                  renderInput={(params) => (
+                    <TextField
+                      {...params}
+                      label="Sort By"
+                      InputProps={{
+                        ...params.InputProps,
+                        startAdornment: (
+                          <InputAdornment position="start">
+                            <Icon fontSize="small">sort</Icon>
+                          </InputAdornment>
+                        ),
+                      }}
+                    />
+                  )}
+                />
 
                 {/* Filter Toggle Button */}
                 <IconButton

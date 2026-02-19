@@ -22,6 +22,9 @@ import pxToRem from "assets/theme/functions/pxToRem";
 const { transparent } = colors;
 
 const select = {
+  defaultProps: {
+    variant: "outlined",
+  },
   styleOverrides: {
     select: {
       display: "grid",
@@ -41,7 +44,7 @@ const select = {
     },
 
     icon: {
-      display: "none",
+      color: "inherit",
     },
   },
 };

@@ -45,6 +45,12 @@ import validations from "layouts/pages/users/new-user/schemas/validations";
 import form from "layouts/pages/users/new-user/schemas/form";
 import initialValues from "layouts/pages/users/new-user/schemas/initialValues";
 
+// Auth context
+import { useAuth } from "context/AuthContext";
+
+// Organisation utilities
+import { getOrCreateOrganisation, updateOrganisationUserCount } from "utils/organisations";
+
 function getSteps() {
   return ["User Info", "Address", "Social", "Profile"];
 }
@@ -71,22 +77,54 @@ function NewUser() {
   const currentValidation = validations[activeStep];
   const isLastStep = activeStep === steps.length - 1;
 
-  const sleep = (ms) =>
-    new Promise((resolve) => {
-      setTimeout(resolve, ms);
-    });
+  // Get current user for organisation creation
+  const { user } = useAuth();
+
   const handleBack = () => setActiveStep(activeStep - 1);
 
   const submitForm = async (values, actions) => {
-    await sleep(1000);
+    try {
+      // Handle organisation creation/linking if company name is provided
+      let organisationId = null;
+      if (values.company) {
+        const org = await getOrCreateOrganisation(
+          values.company,
+          {
+            yearEstablished: values.yearEstablished || null,
+            companyNumber: values.companyNumber || null,
+            registeredAddress: values.registeredAddress || null,
+            vatNumber: values.vatNumber || null,
+          },
+          user?.uid
+        );
 
-    // eslint-disable-next-line no-alert
-    alert(JSON.stringify(values, null, 2));
+        if (org) {
+          organisationId = org.id;
+          // Update user count for the organisation
+          await updateOrganisationUserCount(org.id, 1);
+        }
+      }
 
-    actions.setSubmitting(false);
-    actions.resetForm();
+      // Prepare user data with organisation reference
+      const userData = {
+        ...values,
+        organisationId,
+      };
 
-    setActiveStep(0);
+      // TODO: Implement actual user creation logic here
+      // For now, just log the data
+      console.log("User data to create:", userData);
+
+      // eslint-disable-next-line no-alert
+      alert(JSON.stringify(userData, null, 2));
+
+      actions.setSubmitting(false);
+      actions.resetForm();
+      setActiveStep(0);
+    } catch (error) {
+      console.error("Error creating user:", error);
+      actions.setSubmitting(false);
+    }
   };
 
   const handleSubmit = (values, actions) => {
@@ -115,7 +153,7 @@ function NewUser() {
               validationSchema={currentValidation}
               onSubmit={handleSubmit}
             >
-              {({ values, errors, touched, isSubmitting, setValues }) => (
+              {({ values, errors, touched, isSubmitting, setValues, setFieldValue }) => (
                 <Form id={formId} autoComplete="off">
                   <Card sx={{ height: "100%" }}>
                     <MDBox mx={2} mt={2}>
@@ -135,6 +173,7 @@ function NewUser() {
                           formField,
                           errors,
                           setValues,
+                          setFieldValue,
                         })}
                         <MDBox
                           mt={2}
