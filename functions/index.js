@@ -7238,3 +7238,121 @@ exports.checkSubscriptionExpiry = onSchedule(
     }
   }
 );
+
+
+// ============================================================================
+// PUBLIC API - RANDOM MODEL IMAGES
+// ============================================================================
+
+/**
+ * Get random model profile images for public pages (sign-in, sign-up, etc.)
+ * This is an unauthenticated endpoint for use on public-facing pages
+ * @param {number} count - Number of random images to return (default: 1, max: 10)
+ * @returns {Object} - Array of image URLs with face-focused transformations
+ */
+exports.getRandomModelImages = onRequest({
+  cors: true,
+  timeoutSeconds: 30,
+}, async (req, res) => {
+  try {
+    const count = Math.min(Math.max(parseInt(req.query.count) || 1, 1), 10);
+
+    // Get verified models with profile avatars
+    const modelsSnapshot = await db.collection("users")
+      .where("role", "==", "model")
+      .where("verified", "==", true)
+      .limit(100)
+      .get();
+
+    // Filter to only models with profile avatars
+    const modelsWithAvatars = [];
+    modelsSnapshot.forEach((doc) => {
+      const data = doc.data();
+      if (data.profileAvatar && data.profileAvatar.includes("cloudinary")) {
+        modelsWithAvatars.push({
+          url: data.profileAvatar,
+          name: `${data.firstName || ""} ${data.lastName || ""}`.trim(),
+        });
+      }
+    });
+
+    if (modelsWithAvatars.length === 0) {
+      return res.status(200).json({
+        success: true,
+        images: [],
+        message: "No model images available",
+      });
+    }
+
+    // Shuffle and pick random images
+    const shuffled = modelsWithAvatars.sort(() => Math.random() - 0.5);
+    const selected = shuffled.slice(0, Math.min(count, shuffled.length));
+
+    // Apply face-focused Cloudinary transformations to each URL
+    const cloudName = process.env.CLOUDINARY_CLOUD_NAME;
+    const transformedImages = selected.map((model) => {
+      // Parse the existing Cloudinary URL and add face-focused transformations
+      // Original: https://res.cloudinary.com/{cloud}/image/upload/{existing_transforms}/v{version}/{public_id}.{format}
+      // Target: https://res.cloudinary.com/{cloud}/image/upload/c_fill,g_face,w_1200,h_1600,q_auto,f_auto/{public_id}
+
+      let transformedUrl = model.url;
+
+      // Check if it's a Cloudinary URL
+      if (model.url.includes("cloudinary.com") && model.url.includes("/upload/")) {
+        // Extract parts of the URL
+        const uploadIndex = model.url.indexOf("/upload/");
+        const baseUrl = model.url.substring(0, uploadIndex + 8); // includes "/upload/"
+        const afterUpload = model.url.substring(uploadIndex + 8);
+
+        // Find the public_id (remove any existing transformations)
+        // Transformations don't contain "v" followed by numbers at the start
+        let publicIdPart = afterUpload;
+
+        // If there are existing transformations, find where the public_id starts
+        // The public_id usually starts with "v" + version number or the folder path
+        const versionMatch = afterUpload.match(/v\d+\//);
+        if (versionMatch) {
+          const versionIndex = afterUpload.indexOf(versionMatch[0]);
+          if (versionIndex > 0) {
+            // There are transformations before the version
+            publicIdPart = afterUpload.substring(versionIndex);
+          }
+        } else {
+          // Look for folder paths like "users/models/..."
+          const folderMatch = afterUpload.match(/users\//);
+          if (folderMatch) {
+            const folderIndex = afterUpload.indexOf(folderMatch[0]);
+            if (folderIndex > 0) {
+              publicIdPart = afterUpload.substring(folderIndex);
+            }
+          }
+        }
+
+        // Build new URL with face-focused transformations
+        // c_fill: crop to fill the dimensions
+        // g_face: gravity focused on detected face
+        // w_1200,h_1600: portrait dimensions (3:4 aspect ratio)
+        // q_auto: automatic quality optimization
+        // f_auto: automatic format (webp, avif, etc.)
+        transformedUrl = `${baseUrl}c_fill,g_face,w_1200,h_1600,q_auto,f_auto/${publicIdPart}`;
+      }
+
+      return {
+        url: transformedUrl,
+        originalUrl: model.url,
+      };
+    });
+
+    return res.status(200).json({
+      success: true,
+      images: transformedImages,
+      total: modelsWithAvatars.length,
+    });
+  } catch (error) {
+    console.error("Error getting random model images:", error);
+    return res.status(500).json({
+      success: false,
+      error: error.message,
+    });
+  }
+});

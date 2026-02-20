@@ -15,7 +15,9 @@ import Logo from "assets/images/logo-rectangle-dark.png";
 
 // Layout wrapper
 import IllustrationLayout from "layouts/authentication/components/IllustrationLayout";
-import bgImage from "assets/images/illustrations/signup-image-1.png";
+
+// Fallback image in case API fails
+import fallbackImage from "assets/images/illustrations/signup-image-1.png";
 
 // Firebase
 import { signInWithEmailAndPassword } from "firebase/auth";
@@ -28,6 +30,25 @@ function Illustration() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
+  const [bgImage, setBgImage] = useState(fallbackImage);
+
+  // Fetch random model profile image for background
+  useEffect(() => {
+    const fetchRandomImage = async () => {
+      try {
+        const response = await fetch(
+          `https://us-central1-${process.env.REACT_APP_FIREBASE_PROJECT_ID}.cloudfunctions.net/getRandomModelImages?count=1`
+        );
+        const data = await response.json();
+        if (data.success && data.images?.length > 0) {
+          setBgImage(data.images[0].url);
+        }
+      } catch (err) {
+        console.log("Using fallback background image");
+      }
+    };
+    fetchRandomImage();
+  }, []);
 
   // Load saved credentials on component mount
   useEffect(() => {
