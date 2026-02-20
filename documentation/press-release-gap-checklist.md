@@ -176,7 +176,7 @@ This checklist tracks the gaps between the February 2026 press release claims an
 - [x] **Jobs linked to organisations** - COMPLETED 2026-02-20
   - Jobs now capture `organisationId` and `teamId` from user at creation
   - My Jobs page has "Organisation" filter to view all org jobs
-  - Migration script available: `migrateJobsToOrganisations()`
+  - Migration executed: 8 of 10 jobs linked to organisations
   - Firestore rules updated for org-based access
 
 - [ ] **Organisation-level analytics** - No org-scoped reporting

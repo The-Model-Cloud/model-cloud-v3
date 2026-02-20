@@ -255,21 +255,28 @@ firestore.rules
 
 **Migration Script:**
 ```javascript
-// Run via admin: migrateJobsToOrganisations({ dryRun: true/false })
+// Run via: node scripts/migrate-jobs.js
 // For each job:
 //   1. Get job.userId
 //   2. Get user document
 //   3. If user.organisationId exists, update job.organisationId
 ```
 
+**Migration Results (2026-02-20):**
+- Total jobs: 10
+- Updated with organisationId: 8
+- Skipped (user has no org): 2
+
 **Acceptance Criteria:**
 - [x] New jobs capture organisationId from creator
-- [x] Existing jobs backfilled with organisationId (migration script created)
+- [x] Existing jobs backfilled with organisationId
 - [x] Organisation members can view all org jobs
 - [x] My Jobs page has "Organisation Jobs" tab
 - [x] Firestore rules enforce org-based access
 
 **Status: COMPLETE** (2026-02-20)
+- Migration script: `scripts/migrate-jobs.js`
+- Migration executed successfully
 
 ---
 
