@@ -15,6 +15,7 @@ import PhotoCamera from "@mui/icons-material/PhotoCamera";
 import ProfileAvatar from "components/Profile/ProfileAvatar";
 import { currencies, rateTypes } from "config/paymentOptions";
 import { logAdminAction, ADMIN_ACTIONS } from "utils/adminLogs";
+import { getOrCreateOrganisation } from "utils/organisations";
 
 // Import countries and cities
 import { getCountries, getCities } from "countries-cities";
@@ -62,7 +63,11 @@ function BasicInfo() {
   });
 
   const [userRole, setUserRole] = useState(null);
+  const [currentUserRole, setCurrentUserRole] = useState(null); // The logged-in user's role
   const [adminData, setAdminData] = useState(null); // Store admin info for logging
+
+  // Check if current user can edit company name (only admin/super admin)
+  const canEditCompanyName = ["admin", "super admin"].includes(currentUserRole?.toLowerCase());
 
   useEffect(() => {
     const fetchUser = async () => {
@@ -116,8 +121,19 @@ function BasicInfo() {
           const adminRef = doc(db, "users", currentUser.uid);
           const adminSnap = await getDoc(adminRef);
           if (adminSnap.exists()) {
-            setAdminData({ uid: currentUser.uid, ...adminSnap.data() });
+            const adminInfo = adminSnap.data();
+            setAdminData({ uid: currentUser.uid, ...adminInfo });
+            setCurrentUserRole(adminInfo.role);
           }
+        }
+      }
+
+      // Always fetch current user's role if not admin editing
+      if (!isAdminEdit && currentUser) {
+        const currentUserRef = doc(db, "users", currentUser.uid);
+        const currentUserSnap = await getDoc(currentUserRef);
+        if (currentUserSnap.exists()) {
+          setCurrentUserRole(currentUserSnap.data().role);
         }
       }
     };
@@ -256,6 +272,90 @@ function BasicInfo() {
       await updateDoc(ref, { city: value });
       if (isAdminEdit && oldCity !== value) {
         await logAdminEdit("city", oldCity, value);
+      }
+    }
+  };
+
+  // Track original company name for comparison on blur
+  const [originalCompanyName, setOriginalCompanyName] = useState("");
+
+  // Update original company name when profile loads
+  useEffect(() => {
+    setOriginalCompanyName(profile.companyName);
+  }, [profile.companyName]);
+
+  // Handle Company Name typing - only updates local state
+  const handleCompanyNameChange = (e) => {
+    const value = e.target.value;
+    setProfile((prev) => ({ ...prev, companyName: value }));
+  };
+
+  // Handle Company Name blur - saves to Firestore and creates/links organisation
+  const handleCompanyNameBlur = async () => {
+    const value = profile.companyName;
+    const oldValue = originalCompanyName;
+
+    // Skip if no change
+    if (value === oldValue) return;
+
+    if (targetUid && canEditCompanyName) {
+      const ref = doc(db, "users", targetUid);
+
+      // If company name is being set/changed, create or get the organisation
+      if (value && value.trim()) {
+        try {
+          // Get or create the organisation
+          const org = await getOrCreateOrganisation(
+            value.trim(),
+            {
+              companyNumber: profile.companyNumber || "",
+              yearEstablished: profile.yearEstablished || "",
+              registeredAddress: profile.registeredAddress || "",
+              vatNumber: profile.vatNumber || "",
+            },
+            currentUser?.uid || ""
+          );
+
+          // Update user with company name AND organisation ID
+          await updateDoc(ref, {
+            companyName: value,
+            organisationId: org.id,
+          });
+
+          // Update original for next comparison
+          setOriginalCompanyName(value);
+
+          // Log admin edit
+          if (isAdminEdit && oldValue !== value) {
+            await logAdminEdit("companyName", oldValue, value);
+            await logAdminAction({
+              adminUid: adminData?.uid || currentUser?.uid,
+              adminEmail: adminData?.email || currentUser?.email,
+              adminName: `${adminData?.firstName || ""} ${adminData?.lastName || ""}`.trim() || "Admin",
+              action: ADMIN_ACTIONS.EDIT_MODEL,
+              description: `Linked user to organisation: ${org.companyName}`,
+              details: {
+                userUid: targetUid,
+                userEmail: profile.email,
+                userName: `${profile.firstName} ${profile.lastName}`.trim(),
+                organisationId: org.id,
+                organisationName: org.companyName,
+              },
+            });
+          }
+        } catch (error) {
+          console.error("Error linking to organisation:", error);
+          // Still update the company name even if org creation fails
+          await updateDoc(ref, { companyName: value });
+          setOriginalCompanyName(value);
+        }
+      } else {
+        // Empty company name - just update the field
+        await updateDoc(ref, { companyName: value });
+        setOriginalCompanyName(value);
+        if (isAdminEdit && oldValue !== value) {
+          await logAdminEdit("companyName", oldValue, value);
+        }
       }
     }
   };
@@ -540,7 +640,7 @@ function BasicInfo() {
             </>
           )}
         </Grid>
-        {userRole === "client" || userRole === "super admin" || userRole === "admin" ? (
+        {userRole === "client" || userRole === "account manager" || userRole === "super admin" || userRole === "admin" ? (
           <Grid container mt={1} spacing={3}>
             <Grid item xs={12} sm={6}>
               <FormField
@@ -551,7 +651,17 @@ function BasicInfo() {
               />
             </Grid>
             <Grid item xs={12} sm={6}>
-              <FormField label="Company Name" value={profile.companyName} onChange={handleChange("companyName")} />
+              <FormField
+                label="Company Name"
+                value={profile.companyName}
+                onChange={canEditCompanyName ? handleCompanyNameChange : undefined}
+                onBlur={canEditCompanyName ? handleCompanyNameBlur : undefined}
+                InputProps={{
+                  readOnly: !canEditCompanyName,
+                }}
+                disabled={!canEditCompanyName}
+                helperText={!canEditCompanyName ? "Only administrators can change this field" : "Saves when you click away"}
+              />
             </Grid>
             <Grid item xs={12} sm={6}>
               <FormField label="Year Established" value={profile.yearEstablished} onChange={handleChange("yearEstablished")} />

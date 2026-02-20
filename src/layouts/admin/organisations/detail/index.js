@@ -1,9 +1,17 @@
 import { useEffect, useState, useCallback } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import { getFirestore, doc, updateDoc } from "firebase/firestore";
-import { getOrganisationById, getOrganisationUsers } from "utils/organisations";
+import { getFirestore, doc, updateDoc, Timestamp } from "firebase/firestore";
+import {
+  getOrganisationById,
+  getOrganisationUsers,
+  updateOrganisation,
+  ORG_TIERS,
+  TIER_CONFIG,
+  getPricingTiers,
+  isOrganisationExpired,
+} from "utils/organisations";
 
-// MUI and MD components
+// MUI components
 import Card from "@mui/material/Card";
 import Grid from "@mui/material/Grid";
 import Icon from "@mui/material/Icon";
@@ -13,6 +21,15 @@ import Snackbar from "@mui/material/Snackbar";
 import Alert from "@mui/material/Alert";
 import Chip from "@mui/material/Chip";
 import Divider from "@mui/material/Divider";
+import Dialog from "@mui/material/Dialog";
+import DialogTitle from "@mui/material/DialogTitle";
+import DialogContent from "@mui/material/DialogContent";
+import DialogActions from "@mui/material/DialogActions";
+import TextField from "@mui/material/TextField";
+import MenuItem from "@mui/material/MenuItem";
+import CircularProgress from "@mui/material/CircularProgress";
+
+// Material Dashboard components
 import MDBox from "components/MDBox";
 import MDTypography from "components/MDTypography";
 import MDButton from "components/MDButton";
@@ -51,6 +68,24 @@ function OrganisationDetail() {
   const [loading, setLoading] = useState(true);
   const { deleteUser, deleting, error: deleteError, clearError } = useDeleteUser();
 
+  // Pricing tiers from Firestore
+  const [pricingTiers, setPricingTiers] = useState(TIER_CONFIG);
+
+  // Edit organisation dialog state
+  const [editDialogOpen, setEditDialogOpen] = useState(false);
+  const [editLoading, setEditLoading] = useState(false);
+  const [editError, setEditError] = useState("");
+  const [editData, setEditData] = useState({
+    companyName: "",
+    companyNumber: "",
+    registeredAddress: "",
+    vatNumber: "",
+    tier: "starter",
+    licenceLimit: 5,
+    expiryDate: "",
+    status: "active",
+  });
+
   // Dialog states
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [resetPasswordDialogOpen, setResetPasswordDialogOpen] = useState(false);
@@ -74,7 +109,102 @@ function OrganisationDetail() {
   const userRole = currentUser?.role?.toLowerCase();
   const isAdmin = userRole === "admin" || userRole === "super admin";
 
-  // Action handlers
+  // Format date for input
+  const formatDateForInput = (timestamp) => {
+    if (!timestamp) return "";
+    const date = timestamp?.toDate ? timestamp.toDate() : new Date(timestamp);
+    return date.toISOString().split("T")[0];
+  };
+
+  // Format date for display
+  const formatDate = (timestamp) => {
+    if (!timestamp) return "—";
+    const date = timestamp?.toDate ? timestamp.toDate() : new Date(timestamp);
+    return date.toLocaleDateString("en-GB", {
+      day: "numeric",
+      month: "short",
+      year: "numeric",
+    });
+  };
+
+  // Open edit dialog
+  const handleEditClick = () => {
+    if (organisation) {
+      setEditData({
+        companyName: organisation.companyName || "",
+        companyNumber: organisation.companyNumber || "",
+        registeredAddress: organisation.registeredAddress || "",
+        vatNumber: organisation.vatNumber || "",
+        tier: organisation.tier || "starter",
+        licenceLimit: organisation.licenceLimit || 5,
+        expiryDate: formatDateForInput(organisation.expiryDate),
+        status: organisation.status || "active",
+      });
+      setEditError("");
+      setEditDialogOpen(true);
+    }
+  };
+
+  // Handle edit save
+  const handleEditSave = async () => {
+    if (!editData.companyName.trim()) {
+      setEditError("Company name is required");
+      return;
+    }
+
+    setEditLoading(true);
+    setEditError("");
+
+    try {
+      const updates = {
+        companyName: editData.companyName.trim(),
+        companyNumber: editData.companyNumber.trim(),
+        registeredAddress: editData.registeredAddress.trim(),
+        vatNumber: editData.vatNumber.trim(),
+        tier: editData.tier,
+        licenceLimit: parseInt(editData.licenceLimit, 10) || 5,
+        expiryDate: editData.expiryDate ? Timestamp.fromDate(new Date(editData.expiryDate)) : null,
+        status: editData.status,
+      };
+
+      await updateOrganisation(orgId, updates);
+
+      // Update local state
+      setOrganisation((prev) => ({ ...prev, ...updates }));
+      setEditDialogOpen(false);
+      setSuccessMessage("Organisation settings updated successfully");
+    } catch (error) {
+      console.error("Error updating organisation:", error);
+      setEditError(error.message || "Failed to update organisation");
+    } finally {
+      setEditLoading(false);
+    }
+  };
+
+  // Fetch pricing tiers on mount
+  useEffect(() => {
+    const fetchTiers = async () => {
+      try {
+        const tiers = await getPricingTiers();
+        setPricingTiers(tiers);
+      } catch (error) {
+        console.error("Error fetching pricing tiers:", error);
+      }
+    };
+    fetchTiers();
+  }, []);
+
+  // Handle tier change in edit dialog
+  const handleTierChange = (tier) => {
+    const tierConfig = pricingTiers[tier] || pricingTiers.starter;
+    setEditData({
+      ...editData,
+      tier,
+      licenceLimit: tier === "custom" ? editData.licenceLimit : (tierConfig?.defaultLicences || 5),
+    });
+  };
+
+  // Action handlers for users
   const handleDeleteClick = useCallback((user) => {
     setSelectedUser(user);
     setDeleteDialogOpen(true);
@@ -279,7 +409,6 @@ function OrganisationDetail() {
       setLoading(true);
 
       try {
-        // Fetch organisation from organisations collection
         const orgData = await getOrganisationById(orgId);
 
         if (!orgData) {
@@ -288,10 +417,8 @@ function OrganisationDetail() {
           return;
         }
 
-        // Fetch users for this organisation
         const orgUsers = await getOrganisationUsers(orgId);
 
-        // Format users with additional fields
         const formattedUsers = orgUsers.map((userData) => ({
           uid: userData.uid,
           firstName: userData.firstName || "",
@@ -421,13 +548,28 @@ function OrganisationDetail() {
     handleChangeLocationClick,
   ]);
 
-  // Get role badge color
-  const getRoleColor = (role) => {
-    const colorMap = {
-      client: "info",
-      "account manager": "warning",
-    };
-    return colorMap[role] || "default";
+  // Get tier chip
+  const getTierChip = (tier) => {
+    const config = pricingTiers[tier] || pricingTiers.starter || TIER_CONFIG.starter;
+    return (
+      <Chip
+        label={config.name}
+        size="small"
+        color={config.color}
+      />
+    );
+  };
+
+  // Get status chip
+  const getStatusChip = () => {
+    if (!organisation) return null;
+    if (isOrganisationExpired(organisation)) {
+      return <Chip label="Expired" size="small" color="error" />;
+    }
+    if (organisation.status === "suspended") {
+      return <Chip label="Suspended" size="small" color="warning" />;
+    }
+    return <Chip label="Active" size="small" color="success" />;
   };
 
   return (
@@ -450,18 +592,38 @@ function OrganisationDetail() {
         {/* Organisation Details Card */}
         <Card sx={{ mb: 3 }}>
           <MDBox p={3}>
-            <MDBox display="flex" alignItems="center" mb={2}>
-              <Icon fontSize="large" sx={{ mr: 2, color: "info.main" }}>
-                business
-              </Icon>
-              <MDTypography variant="h4" fontWeight="medium">
-                {organisation?.companyName || "Loading..."}
-              </MDTypography>
+            <MDBox display="flex" justifyContent="space-between" alignItems="flex-start" mb={2}>
+              <MDBox display="flex" alignItems="center">
+                <Icon fontSize="large" sx={{ mr: 2, color: "info.main" }}>
+                  business
+                </Icon>
+                <MDBox>
+                  <MDTypography variant="h4" fontWeight="medium">
+                    {organisation?.companyName || "Loading..."}
+                  </MDTypography>
+                  <MDBox display="flex" alignItems="center" gap={1} mt={0.5}>
+                    {organisation && getTierChip(organisation.tier)}
+                    {getStatusChip()}
+                  </MDBox>
+                </MDBox>
+              </MDBox>
+              {isAdmin && organisation && (
+                <MDButton
+                  variant="outlined"
+                  color="info"
+                  size="small"
+                  startIcon={<Icon>edit</Icon>}
+                  onClick={handleEditClick}
+                >
+                  Edit Settings
+                </MDButton>
+              )}
             </MDBox>
 
             <Divider sx={{ my: 2 }} />
 
             <Grid container spacing={3}>
+              {/* Company Details */}
               <Grid item xs={12} md={6}>
                 <MDBox mb={2}>
                   <MDTypography variant="button" color="text" fontWeight="regular">
@@ -475,14 +637,14 @@ function OrganisationDetail() {
               <Grid item xs={12} md={6}>
                 <MDBox mb={2}>
                   <MDTypography variant="button" color="text" fontWeight="regular">
-                    Year Established
+                    VAT Number
                   </MDTypography>
                   <MDTypography variant="body2" fontWeight="medium">
-                    {organisation?.yearEstablished || "—"}
+                    {organisation?.vatNumber || "—"}
                   </MDTypography>
                 </MDBox>
               </Grid>
-              <Grid item xs={12} md={6}>
+              <Grid item xs={12}>
                 <MDBox mb={2}>
                   <MDTypography variant="button" color="text" fontWeight="regular">
                     Registered Address
@@ -492,13 +654,43 @@ function OrganisationDetail() {
                   </MDTypography>
                 </MDBox>
               </Grid>
-              <Grid item xs={12} md={6}>
+
+              <Grid item xs={12}>
+                <Divider />
+              </Grid>
+
+              {/* Subscription Details */}
+              <Grid item xs={12} md={4}>
                 <MDBox mb={2}>
                   <MDTypography variant="button" color="text" fontWeight="regular">
-                    VAT Number
+                    Tier
+                  </MDTypography>
+                  <MDBox mt={0.5}>
+                    {organisation && getTierChip(organisation.tier)}
+                  </MDBox>
+                </MDBox>
+              </Grid>
+              <Grid item xs={12} md={4}>
+                <MDBox mb={2}>
+                  <MDTypography variant="button" color="text" fontWeight="regular">
+                    Licences
                   </MDTypography>
                   <MDTypography variant="body2" fontWeight="medium">
-                    {organisation?.vatNumber || "—"}
+                    {users.length} / {organisation?.licenceLimit || "∞"} used
+                  </MDTypography>
+                </MDBox>
+              </Grid>
+              <Grid item xs={12} md={4}>
+                <MDBox mb={2}>
+                  <MDTypography variant="button" color="text" fontWeight="regular">
+                    Expiry Date
+                  </MDTypography>
+                  <MDTypography
+                    variant="body2"
+                    fontWeight="medium"
+                    color={isOrganisationExpired(organisation) ? "error" : "text"}
+                  >
+                    {formatDate(organisation?.expiryDate)}
                   </MDTypography>
                 </MDBox>
               </Grid>
@@ -523,7 +715,162 @@ function OrganisationDetail() {
       </MDBox>
       <Footer />
 
-      {/* Dialogs */}
+      {/* Edit Organisation Dialog */}
+      <Dialog
+        open={editDialogOpen}
+        onClose={() => !editLoading && setEditDialogOpen(false)}
+        maxWidth="md"
+        fullWidth
+      >
+        <DialogTitle>
+          <MDBox display="flex" alignItems="center" gap={1}>
+            <Icon color="info">settings</Icon>
+            <MDTypography variant="h5">Edit Organisation Settings</MDTypography>
+          </MDBox>
+        </DialogTitle>
+        <DialogContent>
+          {editError && (
+            <Alert severity="error" sx={{ mb: 2 }}>
+              {editError}
+            </Alert>
+          )}
+          <Grid container spacing={2} sx={{ mt: 0.5 }}>
+            <Grid item xs={12} md={6}>
+              <TextField
+                label="Company Name"
+                value={editData.companyName}
+                onChange={(e) => setEditData({ ...editData, companyName: e.target.value })}
+                fullWidth
+                required
+                disabled={editLoading}
+              />
+            </Grid>
+            <Grid item xs={12} md={6}>
+              <TextField
+                label="Company Number"
+                value={editData.companyNumber}
+                onChange={(e) => setEditData({ ...editData, companyNumber: e.target.value })}
+                fullWidth
+                disabled={editLoading}
+              />
+            </Grid>
+            <Grid item xs={12}>
+              <TextField
+                label="Registered Address"
+                value={editData.registeredAddress}
+                onChange={(e) => setEditData({ ...editData, registeredAddress: e.target.value })}
+                fullWidth
+                multiline
+                rows={2}
+                disabled={editLoading}
+              />
+            </Grid>
+            <Grid item xs={12} md={6}>
+              <TextField
+                label="VAT Number"
+                value={editData.vatNumber}
+                onChange={(e) => setEditData({ ...editData, vatNumber: e.target.value })}
+                fullWidth
+                disabled={editLoading}
+              />
+            </Grid>
+            <Grid item xs={12} md={6}>
+              <TextField
+                select
+                label="Status"
+                value={editData.status}
+                onChange={(e) => setEditData({ ...editData, status: e.target.value })}
+                fullWidth
+                disabled={editLoading}
+              >
+                <MenuItem value="active">Active</MenuItem>
+                <MenuItem value="suspended">Suspended</MenuItem>
+              </TextField>
+            </Grid>
+
+            <Grid item xs={12}>
+              <Divider sx={{ my: 1 }} />
+              <MDTypography variant="button" fontWeight="medium" color="text">
+                Subscription Settings
+              </MDTypography>
+            </Grid>
+
+            <Grid item xs={12} md={6}>
+              <TextField
+                select
+                label="Tier"
+                value={editData.tier}
+                onChange={(e) => handleTierChange(e.target.value)}
+                fullWidth
+                disabled={editLoading}
+              >
+                {Object.entries(pricingTiers).map(([key, config]) => (
+                  <MenuItem key={key} value={key}>
+                    <MDBox>
+                      <MDTypography variant="button" fontWeight="medium">
+                        {config.name}
+                      </MDTypography>
+                      <MDTypography variant="caption" color="text" display="block">
+                        {config.description}
+                        {key !== "custom" && ` (default: ${config.defaultLicences} seats)`}
+                      </MDTypography>
+                    </MDBox>
+                  </MenuItem>
+                ))}
+              </TextField>
+            </Grid>
+            <Grid item xs={12} md={6}>
+              <TextField
+                label="Licence Limit (Seats)"
+                type="number"
+                value={editData.licenceLimit}
+                onChange={(e) => setEditData({ ...editData, licenceLimit: e.target.value })}
+                fullWidth
+                disabled={editLoading}
+                inputProps={{ min: 1 }}
+                helperText={
+                  editData.tier === "custom"
+                    ? `Currently using ${users.length} of custom seats`
+                    : `Currently using ${users.length}. Default for ${pricingTiers[editData.tier]?.name || "Starter"}: ${pricingTiers[editData.tier]?.defaultLicences || 5}`
+                }
+              />
+            </Grid>
+            <Grid item xs={12} md={6}>
+              <TextField
+                label="Expiry Date"
+                type="date"
+                value={editData.expiryDate}
+                onChange={(e) => setEditData({ ...editData, expiryDate: e.target.value })}
+                fullWidth
+                disabled={editLoading}
+                InputLabelProps={{ shrink: true }}
+                helperText="Leave blank for no expiry"
+              />
+            </Grid>
+          </Grid>
+        </DialogContent>
+        <DialogActions sx={{ p: 2, pt: 0 }}>
+          <MDButton
+            variant="outlined"
+            color="secondary"
+            onClick={() => setEditDialogOpen(false)}
+            disabled={editLoading}
+          >
+            Cancel
+          </MDButton>
+          <MDButton
+            variant="gradient"
+            color="info"
+            onClick={handleEditSave}
+            disabled={editLoading || !editData.companyName.trim()}
+            startIcon={editLoading ? <CircularProgress size={16} color="inherit" /> : <Icon>save</Icon>}
+          >
+            {editLoading ? "Saving..." : "Save Changes"}
+          </MDButton>
+        </DialogActions>
+      </Dialog>
+
+      {/* User Dialogs */}
       <DeleteUserDialog
         open={deleteDialogOpen}
         onClose={handleCloseDeleteDialog}

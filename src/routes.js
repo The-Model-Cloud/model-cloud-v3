@@ -387,19 +387,6 @@ const routes = [
   },
 
   // ============================================================
-  // ORGANISATIONS SECTION (For Admins only - account managers use the "Organisation" menu)
-  // ============================================================
-  {
-    type: "collapse",
-    name: "Organisations",
-    key: "organisations",
-    icon: <Icon fontSize="small">corporate_fare</Icon>,
-    roles: ADMIN_ROLES,
-    noCollapse: true,
-    route: "/admin/organisations",
-    component: <Organisations />,
-  },
-
   // ============================================================
   // CASTINGS SECTION
   // ============================================================
@@ -542,6 +529,13 @@ const routes = [
         route: "/admin/dashboard",
         component: <AdminDashboard />,
         icon: <Icon fontSize="small">space_dashboard</Icon>,
+      },
+      {
+        name: "Organisations",
+        key: "organisations",
+        route: "/admin/organisations",
+        component: <Organisations />,
+        icon: <Icon fontSize="small">corporate_fare</Icon>,
       },
       {
         name: "Model Data",

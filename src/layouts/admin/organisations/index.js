@@ -1,15 +1,35 @@
 import { useEffect, useState, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
-import { getAllOrganisations, getOrganisationUsers } from "utils/organisations";
+import {
+  getAllOrganisations,
+  getOrganisationUsers,
+  createOrganisation,
+  ORG_TIERS,
+  TIER_CONFIG,
+  getPricingTiers,
+  isOrganisationExpired,
+} from "utils/organisations";
 
-// MUI and MD components
+// MUI components
 import Card from "@mui/material/Card";
 import Icon from "@mui/material/Icon";
 import IconButton from "@mui/material/IconButton";
 import Tooltip from "@mui/material/Tooltip";
 import Chip from "@mui/material/Chip";
+import Dialog from "@mui/material/Dialog";
+import DialogTitle from "@mui/material/DialogTitle";
+import DialogContent from "@mui/material/DialogContent";
+import DialogActions from "@mui/material/DialogActions";
+import TextField from "@mui/material/TextField";
+import MenuItem from "@mui/material/MenuItem";
+import Grid from "@mui/material/Grid";
+import Alert from "@mui/material/Alert";
+import CircularProgress from "@mui/material/CircularProgress";
+
+// Material Dashboard components
 import MDBox from "components/MDBox";
 import MDTypography from "components/MDTypography";
+import MDButton from "components/MDButton";
 
 // Dashboard layout components
 import DashboardLayout from "examples/LayoutContainers/DashboardLayout";
@@ -27,6 +47,24 @@ function Organisations() {
   const [organisations, setOrganisations] = useState([]);
   const [loading, setLoading] = useState(true);
 
+  // Pricing tiers from Firestore
+  const [pricingTiers, setPricingTiers] = useState(TIER_CONFIG);
+
+  // Create dialog state
+  const [createDialogOpen, setCreateDialogOpen] = useState(false);
+  const [creating, setCreating] = useState(false);
+  const [createError, setCreateError] = useState("");
+  const [newOrg, setNewOrg] = useState({
+    companyName: "",
+    companyNumber: "",
+    registeredAddress: "",
+    vatNumber: "",
+    tier: ORG_TIERS.STARTER,
+    licenceLimit: TIER_CONFIG.starter.defaultLicences,
+    expiryDate: "",
+    customLicences: false,
+  });
+
   // Determine user role
   const userRole = currentUser?.role?.toLowerCase();
   const isAdmin = userRole === "admin" || userRole === "super admin";
@@ -37,15 +75,94 @@ function Organisations() {
     navigate(`/admin/organisations/${org.id}`);
   }, [navigate]);
 
+  // Fetch pricing tiers on mount
+  useEffect(() => {
+    const fetchTiers = async () => {
+      try {
+        const tiers = await getPricingTiers();
+        setPricingTiers(tiers);
+      } catch (error) {
+        console.error("Error fetching pricing tiers:", error);
+        // Fallback is already set as initial state
+      }
+    };
+    fetchTiers();
+  }, []);
+
+  // Handle tier change - update licence limit to default (unless custom)
+  const handleTierChange = (tier) => {
+    const tierConfig = pricingTiers[tier] || pricingTiers.starter;
+    setNewOrg({
+      ...newOrg,
+      tier,
+      licenceLimit: tierConfig?.defaultLicences || 5,
+      customLicences: tier === "custom",
+    });
+  };
+
+  // Handle create organisation
+  const handleCreateOrganisation = async () => {
+    if (!newOrg.companyName.trim()) {
+      setCreateError("Company name is required");
+      return;
+    }
+
+    setCreating(true);
+    setCreateError("");
+
+    try {
+      const orgData = {
+        companyName: newOrg.companyName.trim(),
+        companyNumber: newOrg.companyNumber.trim(),
+        registeredAddress: newOrg.registeredAddress.trim(),
+        vatNumber: newOrg.vatNumber.trim(),
+        tier: newOrg.tier,
+        licenceLimit: parseInt(newOrg.licenceLimit, 10) || 5,
+        expiryDate: newOrg.expiryDate ? new Date(newOrg.expiryDate) : null,
+        createdBy: currentUser?.uid || "",
+      };
+
+      const created = await createOrganisation(orgData);
+
+      // Add to local list
+      setOrganisations((prev) => [
+        {
+          ...created,
+          contactName: "—",
+          phone: "—",
+          userCount: 0,
+          users: [],
+        },
+        ...prev,
+      ]);
+
+      // Close dialog and reset form
+      setCreateDialogOpen(false);
+      setNewOrg({
+        companyName: "",
+        companyNumber: "",
+        registeredAddress: "",
+        vatNumber: "",
+        tier: ORG_TIERS.STARTER,
+        licenceLimit: pricingTiers.starter?.defaultLicences || 5,
+        expiryDate: "",
+        customLicences: false,
+      });
+    } catch (error) {
+      console.error("Error creating organisation:", error);
+      setCreateError(error.message || "Failed to create organisation");
+    } finally {
+      setCreating(false);
+    }
+  };
+
   // Fetch organisations on mount
   useEffect(() => {
     const fetchOrganisations = async () => {
       setLoading(true);
 
       try {
-        // Fetch all organisations from the organisations collection
         let allOrganisations = await getAllOrganisations();
-        console.log("📋 Organisations fetched:", allOrganisations.length, allOrganisations);
 
         // For account managers, filter to only their organisation
         if (isAccountManager && currentUser?.organisationId) {
@@ -70,7 +187,7 @@ function Organisations() {
                 : "—",
               phone: primaryContact?.phone || "—",
               userCount: users.length,
-              users, // Store users for reference
+              users,
             };
           })
         );
@@ -88,6 +205,41 @@ function Organisations() {
     }
   }, [currentUser, isAccountManager]);
 
+  // Format date for display
+  const formatDate = (timestamp) => {
+    if (!timestamp) return "—";
+    const date = timestamp?.toDate ? timestamp.toDate() : new Date(timestamp);
+    return date.toLocaleDateString("en-GB", {
+      day: "numeric",
+      month: "short",
+      year: "numeric",
+    });
+  };
+
+  // Get status chip for organisation
+  const getStatusChip = (org) => {
+    if (isOrganisationExpired(org)) {
+      return <Chip label="Expired" size="small" color="error" />;
+    }
+    if (org.status === "suspended") {
+      return <Chip label="Suspended" size="small" color="warning" />;
+    }
+    return <Chip label="Active" size="small" color="success" />;
+  };
+
+  // Get tier chip
+  const getTierChip = (tier) => {
+    const config = pricingTiers[tier] || pricingTiers.starter || TIER_CONFIG.starter;
+    return (
+      <Chip
+        label={config.name}
+        size="small"
+        color={config.color}
+        variant="outlined"
+      />
+    );
+  };
+
   // Update table data when organisations change
   useEffect(() => {
     setTableData({
@@ -102,9 +254,7 @@ function Organisations() {
                 color: "info.main",
                 cursor: "pointer",
                 fontWeight: "medium",
-                "&:hover": {
-                  textDecoration: "underline",
-                },
+                "&:hover": { textDecoration: "underline" },
               }}
               onClick={() => handleViewOrganisation(row.original)}
             >
@@ -113,37 +263,65 @@ function Organisations() {
           ),
         },
         {
-          Header: "Contact Name",
+          Header: "Tier",
+          accessor: "tier",
+          width: "10%",
+          Cell: ({ row }) => getTierChip(row.original.tier || "starter"),
+        },
+        {
+          Header: "Licences",
+          accessor: "licences",
+          width: "10%",
+          Cell: ({ row }) => {
+            const used = row.original.userCount || 0;
+            const limit = row.original.licenceLimit || "∞";
+            const isNearLimit = limit !== "∞" && used >= limit * 0.8;
+            const isAtLimit = limit !== "∞" && used >= limit;
+            return (
+              <MDTypography
+                variant="caption"
+                fontWeight="medium"
+                color={isAtLimit ? "error" : isNearLimit ? "warning" : "text"}
+              >
+                {used} / {limit}
+              </MDTypography>
+            );
+          },
+        },
+        {
+          Header: "Status",
+          accessor: "status",
+          width: "10%",
+          Cell: ({ row }) => getStatusChip(row.original),
+        },
+        {
+          Header: "Expiry",
+          accessor: "expiryDate",
+          width: "12%",
+          Cell: ({ row }) => {
+            const expiry = row.original.expiryDate;
+            if (!expiry) return <MDTypography variant="caption" color="text">—</MDTypography>;
+            const isExpired = isOrganisationExpired(row.original);
+            return (
+              <MDTypography
+                variant="caption"
+                color={isExpired ? "error" : "text"}
+                fontWeight={isExpired ? "medium" : "regular"}
+              >
+                {formatDate(expiry)}
+              </MDTypography>
+            );
+          },
+        },
+        {
+          Header: "Contact",
           accessor: "contactName",
           Cell: ({ row }) => row.original.contactName || "—",
         },
         {
-          Header: "Company Number",
-          accessor: "companyNumber",
-          Cell: ({ row }) => row.original.companyNumber || "—",
-        },
-        {
-          Header: "Phone Number",
-          accessor: "phone",
-          Cell: ({ row }) => row.original.phone || "—",
-        },
-        {
-          Header: "Users",
-          accessor: "userCount",
-          width: "10%",
-          Cell: ({ row }) => (
-            <Chip
-              label={row.original.userCount}
-              size="small"
-              color="primary"
-              variant="outlined"
-            />
-          ),
-        },
-        {
           Header: "Actions",
           accessor: "actions",
-          width: "10%",
+          width: "8%",
           Cell: ({ row }) => {
             const org = row.original;
             return (
@@ -164,22 +342,34 @@ function Organisations() {
       ],
       rows: organisations,
     });
-  }, [organisations, handleViewOrganisation]);
+  }, [organisations, handleViewOrganisation, pricingTiers]);
 
   return (
     <DashboardLayout>
       <DashboardNavbar />
       <MDBox pt={6} pb={3}>
         <Card>
-          <MDBox p={3} lineHeight={1}>
-            <MDTypography variant="h5" fontWeight="medium">
-              {isAccountManager ? "My Organisation" : "Organisations"}
-            </MDTypography>
-            <MDTypography variant="button" color="text">
-              {loading
-                ? "Loading..."
-                : `${organisations.length} organisation${organisations.length !== 1 ? "s" : ""} found`}
-            </MDTypography>
+          <MDBox p={3} lineHeight={1} display="flex" justifyContent="space-between" alignItems="center">
+            <MDBox>
+              <MDTypography variant="h5" fontWeight="medium">
+                {isAccountManager ? "My Organisation" : "Organisations"}
+              </MDTypography>
+              <MDTypography variant="button" color="text">
+                {loading
+                  ? "Loading..."
+                  : `${organisations.length} organisation${organisations.length !== 1 ? "s" : ""} found`}
+              </MDTypography>
+            </MDBox>
+            {isAdmin && (
+              <MDButton
+                variant="gradient"
+                color="primary"
+                startIcon={<Icon>add</Icon>}
+                onClick={() => setCreateDialogOpen(true)}
+              >
+                Create Organisation
+              </MDButton>
+            )}
           </MDBox>
           <DataTable
             table={tableData}
@@ -188,6 +378,143 @@ function Organisations() {
           />
         </Card>
       </MDBox>
+
+      {/* Create Organisation Dialog */}
+      <Dialog
+        open={createDialogOpen}
+        onClose={() => !creating && setCreateDialogOpen(false)}
+        maxWidth="md"
+        fullWidth
+      >
+        <DialogTitle>
+          <MDBox display="flex" alignItems="center" gap={1}>
+            <Icon color="primary">business</Icon>
+            <MDTypography variant="h5">Create New Organisation</MDTypography>
+          </MDBox>
+        </DialogTitle>
+        <DialogContent>
+          {createError && (
+            <Alert severity="error" sx={{ mb: 2 }}>
+              {createError}
+            </Alert>
+          )}
+          <Grid container spacing={2} sx={{ mt: 0.5 }}>
+            <Grid item xs={12} md={6}>
+              <TextField
+                label="Company Name"
+                value={newOrg.companyName}
+                onChange={(e) => setNewOrg({ ...newOrg, companyName: e.target.value })}
+                fullWidth
+                required
+                disabled={creating}
+              />
+            </Grid>
+            <Grid item xs={12} md={6}>
+              <TextField
+                label="Company Number"
+                value={newOrg.companyNumber}
+                onChange={(e) => setNewOrg({ ...newOrg, companyNumber: e.target.value })}
+                fullWidth
+                disabled={creating}
+                placeholder="e.g. 12345678"
+              />
+            </Grid>
+            <Grid item xs={12}>
+              <TextField
+                label="Registered Address"
+                value={newOrg.registeredAddress}
+                onChange={(e) => setNewOrg({ ...newOrg, registeredAddress: e.target.value })}
+                fullWidth
+                multiline
+                rows={2}
+                disabled={creating}
+              />
+            </Grid>
+            <Grid item xs={12} md={6}>
+              <TextField
+                label="VAT Number"
+                value={newOrg.vatNumber}
+                onChange={(e) => setNewOrg({ ...newOrg, vatNumber: e.target.value })}
+                fullWidth
+                disabled={creating}
+                placeholder="e.g. GB123456789"
+              />
+            </Grid>
+            <Grid item xs={12} md={6}>
+              <TextField
+                select
+                label="Tier"
+                value={newOrg.tier}
+                onChange={(e) => handleTierChange(e.target.value)}
+                fullWidth
+                disabled={creating}
+              >
+                {Object.entries(pricingTiers).map(([key, config]) => (
+                  <MenuItem key={key} value={key}>
+                    <MDBox>
+                      <MDTypography variant="button" fontWeight="medium">
+                        {config.name}
+                      </MDTypography>
+                      <MDTypography variant="caption" color="text" display="block">
+                        {config.description}
+                        {key !== "custom" && ` (default: ${config.defaultLicences} licences)`}
+                      </MDTypography>
+                    </MDBox>
+                  </MenuItem>
+                ))}
+              </TextField>
+            </Grid>
+            <Grid item xs={12} md={6}>
+              <TextField
+                label="Licence Limit (Seats)"
+                type="number"
+                value={newOrg.licenceLimit}
+                onChange={(e) => setNewOrg({ ...newOrg, licenceLimit: e.target.value, customLicences: true })}
+                fullWidth
+                disabled={creating}
+                inputProps={{ min: 1 }}
+                helperText={
+                  newOrg.tier === "custom"
+                    ? "Set custom number of seats"
+                    : `Default for ${pricingTiers[newOrg.tier]?.name || "Starter"}: ${pricingTiers[newOrg.tier]?.defaultLicences || 5}. Edit to override.`
+                }
+              />
+            </Grid>
+            <Grid item xs={12} md={6}>
+              <TextField
+                label="Expiry Date"
+                type="date"
+                value={newOrg.expiryDate}
+                onChange={(e) => setNewOrg({ ...newOrg, expiryDate: e.target.value })}
+                fullWidth
+                disabled={creating}
+                InputLabelProps={{ shrink: true }}
+                helperText="Leave blank for no expiry"
+              />
+            </Grid>
+          </Grid>
+        </DialogContent>
+        <DialogActions sx={{ p: 2, pt: 0 }}>
+          <MDButton
+            variant="outlined"
+            color="secondary"
+            onClick={() => setCreateDialogOpen(false)}
+            disabled={creating}
+          >
+            Cancel
+          </MDButton>
+          <MDButton
+            variant="gradient"
+            color="primary"
+            onClick={handleCreateOrganisation}
+            disabled={creating || !newOrg.companyName.trim()}
+            startIcon={creating ? <CircularProgress size={16} color="inherit" /> : <Icon>add</Icon>}
+          >
+            {creating ? "Creating..." : "Create Organisation"}
+          </MDButton>
+        </DialogActions>
+      </Dialog>
+
       <Footer />
     </DashboardLayout>
   );

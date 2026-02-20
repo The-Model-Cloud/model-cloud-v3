@@ -15,6 +15,163 @@ import {
 } from "firebase/firestore";
 
 // ============================================================================
+// ORGANISATION TIERS
+// ============================================================================
+
+/**
+ * Organisation tier definitions (legacy - prefer fetching from Firestore)
+ */
+export const ORG_TIERS = {
+  DEMO: "demo",
+  STARTER: "starter",
+  PROFESSIONAL: "professional",
+  ENTERPRISE: "enterprise",
+  AGENCY: "agency",
+  CUSTOM: "custom",
+};
+
+/**
+ * Fallback tier config - used if Firestore pricingTiers collection is unavailable
+ */
+export const TIER_CONFIG_FALLBACK = {
+  demo: {
+    name: "Demo",
+    description: "Trial account for evaluation",
+    defaultLicences: 3,
+    color: "warning",
+    order: 0,
+  },
+  starter: {
+    name: "Starter",
+    description: "For small teams",
+    defaultLicences: 5,
+    color: "info",
+    order: 1,
+  },
+  professional: {
+    name: "Professional",
+    description: "For growing businesses",
+    defaultLicences: 15,
+    color: "primary",
+    order: 2,
+  },
+  enterprise: {
+    name: "Enterprise",
+    description: "For large organisations",
+    defaultLicences: 50,
+    color: "success",
+    order: 3,
+  },
+  agency: {
+    name: "Agency",
+    description: "For agencies managing multiple clients",
+    defaultLicences: 100,
+    color: "secondary",
+    order: 4,
+  },
+  custom: {
+    name: "Custom",
+    description: "Custom licence configuration",
+    defaultLicences: 10,
+    color: "default",
+    order: 5,
+  },
+};
+
+// Export as TIER_CONFIG for backwards compatibility
+export const TIER_CONFIG = TIER_CONFIG_FALLBACK;
+
+// Cache for pricing tiers from Firestore
+let cachedPricingTiers = null;
+let cacheTimestamp = null;
+const CACHE_DURATION = 5 * 60 * 1000; // 5 minutes
+
+/**
+ * Fetch pricing tiers from Firestore pricingTiers collection
+ * Falls back to TIER_CONFIG_FALLBACK if collection doesn't exist
+ * @param {boolean} forceRefresh - Force refresh the cache
+ * @returns {Promise<Object>} Tier configuration object
+ */
+export async function getPricingTiers(forceRefresh = false) {
+  // Return cached data if still valid
+  if (!forceRefresh && cachedPricingTiers && cacheTimestamp) {
+    const now = Date.now();
+    if (now - cacheTimestamp < CACHE_DURATION) {
+      return cachedPricingTiers;
+    }
+  }
+
+  try {
+    const db = getFirestore();
+    const tiersRef = collection(db, "pricingTiers");
+    const snapshot = await getDocs(tiersRef);
+
+    if (snapshot.empty) {
+      // Collection doesn't exist or is empty - use fallback
+      cachedPricingTiers = TIER_CONFIG_FALLBACK;
+      cacheTimestamp = Date.now();
+      return TIER_CONFIG_FALLBACK;
+    }
+
+    // Build tier config from Firestore documents
+    const tiers = {};
+    snapshot.docs.forEach((docSnap) => {
+      const data = docSnap.data();
+      const tierId = docSnap.id; // e.g., "demo", "starter", etc.
+      tiers[tierId] = {
+        name: data.name || tierId,
+        description: data.description || "",
+        defaultLicences: data.defaultLicences || data.seats || 5,
+        color: data.color || "info",
+        order: data.order ?? 99,
+        price: data.price || null,
+        priceMonthly: data.priceMonthly || null,
+        priceAnnual: data.priceAnnual || null,
+        features: data.features || [],
+      };
+    });
+
+    // Add custom tier if not present
+    if (!tiers.custom) {
+      tiers.custom = TIER_CONFIG_FALLBACK.custom;
+    }
+
+    // Sort by order
+    const sortedTiers = Object.fromEntries(
+      Object.entries(tiers).sort((a, b) => (a[1].order || 99) - (b[1].order || 99))
+    );
+
+    cachedPricingTiers = sortedTiers;
+    cacheTimestamp = Date.now();
+    return sortedTiers;
+  } catch (error) {
+    console.error("Error fetching pricing tiers:", error);
+    // Return fallback on error
+    cachedPricingTiers = TIER_CONFIG_FALLBACK;
+    cacheTimestamp = Date.now();
+    return TIER_CONFIG_FALLBACK;
+  }
+}
+
+/**
+ * Get a specific tier's configuration
+ * @param {string} tierId - Tier ID (e.g., "starter", "enterprise")
+ * @returns {Promise<Object>} Tier configuration
+ */
+export async function getTierConfig(tierId) {
+  const tiers = await getPricingTiers();
+  return tiers[tierId] || tiers.starter || TIER_CONFIG_FALLBACK.starter;
+}
+
+/**
+ * Clear the pricing tiers cache
+ */
+export function clearPricingTiersCache() {
+  cachedPricingTiers = null;
+  cacheTimestamp = null;
+}
+
+// ============================================================================
 // ORGANISATION ROLES & PERMISSIONS
 // ============================================================================
 
@@ -71,6 +228,9 @@ export const ROLE_PERMISSIONS = {
  * @param {string} orgData.yearEstablished - Year company was established (optional)
  * @param {string} orgData.registeredAddress - Registered address (optional)
  * @param {string} orgData.vatNumber - VAT number (optional)
+ * @param {string} orgData.tier - Organisation tier: demo, starter, professional, enterprise, agency (optional)
+ * @param {number} orgData.licenceLimit - Maximum number of users allowed (optional)
+ * @param {Date|Timestamp} orgData.expiryDate - Account expiry date for demo/trial (optional)
  * @param {string} orgData.createdBy - UID of user creating the org (optional)
  * @returns {Promise<{id: string, ...orgData}>} Created organisation with ID
  */
@@ -81,12 +241,20 @@ export async function createOrganisation(orgData) {
   // Generate new document reference with auto ID
   const newOrgRef = doc(orgsRef);
 
+  // Determine default licence limit based on tier
+  const tier = orgData.tier || ORG_TIERS.STARTER;
+  const defaultLicences = TIER_CONFIG[tier]?.defaultLicences || 5;
+
   const organisation = {
     companyName: orgData.companyName.trim(),
     companyNumber: orgData.companyNumber || "",
     yearEstablished: orgData.yearEstablished || "",
     registeredAddress: orgData.registeredAddress || "",
     vatNumber: orgData.vatNumber || "",
+    tier: tier,
+    licenceLimit: orgData.licenceLimit ?? defaultLicences,
+    expiryDate: orgData.expiryDate || null,
+    status: "active", // active, suspended, expired
     createdAt: Timestamp.now(),
     createdBy: orgData.createdBy || "",
     userCount: 0, // Track number of users in this org
@@ -98,6 +266,42 @@ export async function createOrganisation(orgData) {
     id: newOrgRef.id,
     ...organisation,
   };
+}
+
+/**
+ * Check if an organisation has exceeded its licence limit
+ * @param {string} orgId - Organisation ID
+ * @returns {Promise<{canAddUser: boolean, currentCount: number, limit: number}>}
+ */
+export async function checkLicenceLimit(orgId) {
+  const org = await getOrganisationById(orgId);
+  if (!org) {
+    return { canAddUser: false, currentCount: 0, limit: 0 };
+  }
+
+  const currentCount = org.userCount || 0;
+  const limit = org.licenceLimit || 999; // Default to high number if not set
+
+  return {
+    canAddUser: currentCount < limit,
+    currentCount,
+    limit,
+  };
+}
+
+/**
+ * Check if an organisation has expired
+ * @param {Object} org - Organisation object
+ * @returns {boolean}
+ */
+export function isOrganisationExpired(org) {
+  if (!org?.expiryDate) return false;
+
+  const expiryDate = org.expiryDate?.toDate
+    ? org.expiryDate.toDate()
+    : new Date(org.expiryDate);
+
+  return expiryDate < new Date();
 }
 
 /**
