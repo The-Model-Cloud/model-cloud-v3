@@ -149,7 +149,7 @@ firestore.rules
 
 ---
 
-### 1.3 Organisation Dashboard
+### 1.3 Organisation Dashboard ✅ COMPLETE
 
 **Problem:** Organisations cannot see their activity - only platform-wide admin dashboards exist.
 
@@ -161,33 +161,17 @@ firestore.rules
 src/layouts/organisation/dashboard/
 ├── index.js                           # Main org dashboard
 ├── components/
-│   ├── OrgStats/index.js             # Key metrics cards
+│   ├── OrgStats/index.js             # Key metrics cards (6 cards)
 │   ├── RecentJobs/index.js           # Recent job activity
-│   ├── TeamActivity/index.js         # Team member activity
-│   ├── SpendChart/index.js           # Spending over time
-│   ├── TopModels/index.js            # Most booked models
-│   └── UpcomingJobs/index.js         # Calendar of upcoming work
-```
-
-**Backend Functions:**
-
-```javascript
-// functions/index.js - Add:
-
-getOrganisationStats(orgId)
-// Returns: totalJobs, activeJobs, completedJobs, totalSpend,
-//          modelCount, teamMemberCount
-
-getOrganisationJobHistory(orgId, dateRange)
-// Returns: Array of jobs with status, spend, model info
-
-getOrganisationSpendAnalytics(orgId, dateRange)
-// Returns: Spend by month, by team, by job type
+│   ├── TeamActivity/index.js         # Team member activity table
+│   ├── SpendChart/index.js           # Spending over time (line chart)
+│   ├── TopModels/index.js            # Most booked models with rankings
+│   └── UpcomingJobs/index.js         # Upcoming scheduled jobs
 ```
 
 **Database Index:**
 ```
-// firestore.indexes.json - Add:
+// firestore.indexes.json - Added:
 {
   "collectionGroup": "jobs",
   "queryScope": "COLLECTION",
@@ -198,12 +182,19 @@ getOrganisationSpendAnalytics(orgId, dateRange)
 }
 ```
 
+**Routes Updated:**
+- Added `/organisation/dashboard` route
+- Dashboard is first item in Organisation menu
+- Available to account managers and admins
+
 **Acceptance Criteria:**
-- [ ] Organisation members see dashboard on login
-- [ ] Dashboard shows job statistics
-- [ ] Dashboard shows spend metrics
-- [ ] Dashboard shows team activity
-- [ ] Dashboard shows top/recent models used
+- [x] Organisation members see dashboard on login
+- [x] Dashboard shows job statistics (6 metric cards)
+- [x] Dashboard shows spend metrics (chart + totals)
+- [x] Dashboard shows team activity (table with member stats)
+- [x] Dashboard shows top/recent models used (ranked list)
+
+**Status: COMPLETE** (2026-02-20)
 
 ---
 

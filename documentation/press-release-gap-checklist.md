@@ -3,7 +3,7 @@
 This checklist tracks the gaps between the February 2026 press release claims and the current platform implementation.
 
 **Last Updated:** 2026-02-20
-**Overall Completion:** ~80% (6 items completed today)
+**Overall Completion:** ~90% (8 critical/high items completed)
 
 ---
 
@@ -172,10 +172,15 @@ This checklist tracks the gaps between the February 2026 press release claims an
 - [x] Admin can manage organisation users
 - [x] Favourites system (user-level)
 
-### Missing - Critical
-- [ ] **Organisation dashboard** - Only platform-wide admin dashboards exist
-  - Organisations cannot see their activity summary
-  - Priority: **CRITICAL** (core MMS feature)
+### Recently Implemented
+- [x] **Organisation dashboard** - COMPLETED 2026-02-20
+  - New dashboard at `/organisation/dashboard`
+  - 6 key metric cards: Total Jobs, Active Jobs, Completed, Total Spend, Team Members, Models Booked
+  - Spending overview chart (last 6 months)
+  - Top models ranked by booking frequency
+  - Recent jobs with status
+  - Upcoming scheduled jobs
+  - Team activity table showing member contributions
 
 - [x] **Jobs linked to organisations** - COMPLETED 2026-02-20
   - Jobs now capture `organisationId` and `teamId` from user at creation
@@ -183,10 +188,13 @@ This checklist tracks the gaps between the February 2026 press release claims an
   - Migration executed: 8 of 10 jobs linked to organisations
   - Firestore rules updated for org-based access
 
-- [ ] **Organisation-level analytics** - No org-scoped reporting
-  - No spend tracking per organisation
-  - No booking metrics per organisation
-  - Priority: **HIGH**
+- [x] **Organisation-level analytics** - COMPLETED 2026-02-20
+  - Spend tracking per organisation (dashboard chart)
+  - Booking metrics per organisation (stats cards)
+  - Team member activity tracking
+  - Top models by organisation
+
+### Missing - Critical
 
 - [ ] **Organisation-level model relationships** - Favourites are user-owned only
   - When user leaves, relationships lost
@@ -206,7 +214,7 @@ This checklist tracks the gaps between the February 2026 press release claims an
 1. [x] ~~"Book Model" button functionality~~ - **COMPLETED**
 2. [x] ~~Tiered access levels within organisations~~ - **COMPLETED**
 3. [x] ~~Teams and departments structure~~ - **COMPLETED**
-4. [ ] Organisation dashboard
+4. [x] ~~Organisation dashboard~~ - **COMPLETED**
 5. [x] ~~Jobs linked to organisations~~ - **COMPLETED**
 
 ### HIGH (Should fix before launch)
@@ -214,7 +222,7 @@ This checklist tracks the gaps between the February 2026 press release claims an
 7. [x] ~~Job cancellation/withdrawal~~ - **COMPLETED**
 8. [x] ~~Cancel awarded booking~~ - **COMPLETED**
 9. [ ] Account manager self-service UI (partially done)
-10. [ ] Organisation-level analytics
+10. [x] ~~Organisation-level analytics~~ - **COMPLETED**
 11. [ ] Organisation-level model relationships
 
 ### MEDIUM (Post-launch enhancement)

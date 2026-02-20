@@ -63,6 +63,7 @@ import Organisations from "layouts/admin/organisations";
 import OrganisationDetail from "layouts/admin/organisations/detail";
 
 // Organisation management layouts (for account managers)
+import OrganisationDashboard from "layouts/organisation/dashboard";
 import OrganisationTeams from "layouts/organisation/teams";
 import OrganisationTeamDetail from "layouts/organisation/teams/detail";
 import OrganisationMembers from "layouts/organisation/members";
@@ -297,6 +298,13 @@ const routes = [
     icon: <Icon fontSize="small">business</Icon>,
     roles: ["account manager", ...ADMIN_ROLES], // Account managers and admins
     collapse: [
+      {
+        name: "Dashboard",
+        key: "org-dashboard",
+        route: "/organisation/dashboard",
+        component: <OrganisationDashboard />,
+        icon: <Icon fontSize="small">dashboard</Icon>,
+      },
       {
         name: "Company Profile",
         key: "company-profile",
