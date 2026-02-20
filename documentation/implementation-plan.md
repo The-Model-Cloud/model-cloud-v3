@@ -211,7 +211,7 @@ getOrganisationSpendAnalytics(orgId, dateRange)
 
 ---
 
-### 1.4 Link Jobs to Organisations
+### 1.4 Link Jobs to Organisations ✅ COMPLETE
 
 **Problem:** Jobs only have `userId`, not `organisationId`. Organisations cannot track their bookings.
 
@@ -228,54 +228,48 @@ getOrganisationSpendAnalytics(orgId, dateRange)
 }
 ```
 
-**Files to Modify:**
+**Files Modified:**
 
 ```
 src/layouts/jobs/new-job/index.js
-└── Line ~158: Add organisationId and teamId to jobData
+└── Added organisationId and teamId to jobData (from user context)
 
 src/layouts/jobs/my-jobs/index.js
-└── Add organisation view mode
-└── Query jobs by organisationId for account managers
+└── Added organisation view mode
+└── Queries jobs by organisationId for organisation members
+└── Tracks organisation job count
 
-src/layouts/jobs/job-details/index.js
-└── Display organisation info if present
-
-src/utils/api.js
-└── Add getOrganisationJobs() function
+src/layouts/jobs/my-jobs/components/MyJobFilters/index.js
+└── Added "Organisation" filter option (conditionally shown)
+└── Updated job count badge for organisation jobs
 
 functions/index.js
-└── Add getOrganisationJobs() callable
-└── Modify job creation to capture org context
+└── Added migrateJobsToOrganisations() - admin callable migration function
+
+firestore.rules
+└── Added getUserOrganisationId() helper
+└── Added hasOrganisation() helper
+└── Added isInJobOrganisation() helper
+└── Updated jobs rules for org-based access
 ```
 
 **Migration Script:**
 ```javascript
-// One-time migration to backfill existing jobs
+// Run via admin: migrateJobsToOrganisations({ dryRun: true/false })
 // For each job:
 //   1. Get job.userId
 //   2. Get user document
 //   3. If user.organisationId exists, update job.organisationId
 ```
 
-**Firestore Rules Update:**
-```javascript
-// Allow org members to read org jobs
-match /jobs/{jobId} {
-  allow read: if isAuthenticated() && (
-    resource.data.userId == request.auth.uid ||
-    resource.data.organisationId == getUserOrganisationId() ||
-    isAdmin()
-  );
-}
-```
-
 **Acceptance Criteria:**
-- [ ] New jobs capture organisationId from creator
-- [ ] Existing jobs backfilled with organisationId
-- [ ] Organisation members can view all org jobs
-- [ ] My Jobs page has "Organisation Jobs" tab
-- [ ] Firestore rules enforce org-based access
+- [x] New jobs capture organisationId from creator
+- [x] Existing jobs backfilled with organisationId (migration script created)
+- [x] Organisation members can view all org jobs
+- [x] My Jobs page has "Organisation Jobs" tab
+- [x] Firestore rules enforce org-based access
+
+**Status: COMPLETE** (2026-02-20)
 
 ---
 

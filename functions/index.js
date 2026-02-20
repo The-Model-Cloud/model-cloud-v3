@@ -6091,6 +6091,137 @@ exports.getTransactionHistory = onCall(async (request) => {
 
 
 // ============================================================================
+// MIGRATION: BACKFILL JOBS WITH ORGANISATION IDS
+// ============================================================================
+
+/**
+ * One-time migration to backfill existing jobs with organisationId
+ * For each job:
+ *   1. Get job.userId
+ *   2. Get user document
+ *   3. If user.organisationId exists, update job.organisationId
+ *
+ * This function is admin-only and should be run once.
+ */
+exports.migrateJobsToOrganisations = onCall(
+  { timeoutSeconds: 540 },
+  async (request) => {
+    const { auth } = request;
+
+    if (!auth) {
+      throw new HttpsError("unauthenticated", "Authentication required");
+    }
+
+    // Check if user is admin
+    const callerRef = firestore.collection("users").doc(auth.uid);
+    const callerSnap = await callerRef.get();
+    if (!callerSnap.exists) {
+      throw new HttpsError("not-found", "User not found");
+    }
+
+    const callerData = callerSnap.data();
+    if (callerData.role !== "admin" && callerData.role !== "superAdmin") {
+      throw new HttpsError("permission-denied", "Admin access required");
+    }
+
+    const { dryRun = true } = request.data || {};
+
+    try {
+      console.log(`Starting job-organisation migration (dryRun: ${dryRun})`);
+
+      // Get all jobs
+      const jobsSnap = await firestore.collection("jobs").get();
+      const stats = {
+        totalJobs: jobsSnap.size,
+        alreadyHasOrg: 0,
+        userNotFound: 0,
+        userNoOrg: 0,
+        updated: 0,
+        errors: [],
+      };
+
+      const batch = firestore.batch();
+      let batchCount = 0;
+      const MAX_BATCH_SIZE = 500;
+
+      for (const jobDoc of jobsSnap.docs) {
+        const jobData = jobDoc.data();
+
+        // Skip if job already has organisationId
+        if (jobData.organisationId) {
+          stats.alreadyHasOrg++;
+          continue;
+        }
+
+        // Get the job creator's user document
+        const userId = jobData.userId;
+        if (!userId) {
+          stats.errors.push({ jobId: jobDoc.id, error: "No userId" });
+          continue;
+        }
+
+        const userRef = firestore.collection("users").doc(userId);
+        const userSnap = await userRef.get();
+
+        if (!userSnap.exists) {
+          stats.userNotFound++;
+          continue;
+        }
+
+        const userData = userSnap.data();
+
+        // Check if user belongs to an organisation
+        if (!userData.organisationId) {
+          stats.userNoOrg++;
+          continue;
+        }
+
+        // Update job with organisation info
+        if (!dryRun) {
+          batch.update(jobDoc.ref, {
+            organisationId: userData.organisationId,
+            teamId: userData.teamId || null,
+            migratedAt: new Date().toISOString(),
+          });
+
+          batchCount++;
+
+          // Commit batch if we reach the limit
+          if (batchCount >= MAX_BATCH_SIZE) {
+            await batch.commit();
+            console.log(`Committed batch of ${batchCount} updates`);
+            batchCount = 0;
+          }
+        }
+
+        stats.updated++;
+      }
+
+      // Commit remaining updates
+      if (!dryRun && batchCount > 0) {
+        await batch.commit();
+        console.log(`Committed final batch of ${batchCount} updates`);
+      }
+
+      console.log("Migration complete:", stats);
+
+      return {
+        success: true,
+        dryRun,
+        stats,
+        message: dryRun
+          ? `Dry run complete. Would update ${stats.updated} jobs.`
+          : `Migration complete. Updated ${stats.updated} jobs.`,
+      };
+    } catch (error) {
+      console.error("Migration error:", error);
+      throw new HttpsError("internal", error.message);
+    }
+  }
+);
+
+
+// ============================================================================
 // STRIPE WEBHOOKS
 // ============================================================================
 

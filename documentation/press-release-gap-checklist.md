@@ -3,7 +3,7 @@
 This checklist tracks the gaps between the February 2026 press release claims and the current platform implementation.
 
 **Last Updated:** 2026-02-20
-**Overall Completion:** ~70% (4 items completed today)
+**Overall Completion:** ~75% (5 items completed today)
 
 ---
 
@@ -173,10 +173,11 @@ This checklist tracks the gaps between the February 2026 press release claims an
   - Organisations cannot see their activity summary
   - Priority: **CRITICAL** (core MMS feature)
 
-- [ ] **Jobs linked to organisations** - Jobs only have `userId`, not `organisationId`
-  - Organisations cannot query "all our jobs"
-  - Cannot track bookings centrally
-  - Priority: **CRITICAL** (core MMS feature)
+- [x] **Jobs linked to organisations** - COMPLETED 2026-02-20
+  - Jobs now capture `organisationId` and `teamId` from user at creation
+  - My Jobs page has "Organisation" filter to view all org jobs
+  - Migration script available: `migrateJobsToOrganisations()`
+  - Firestore rules updated for org-based access
 
 - [ ] **Organisation-level analytics** - No org-scoped reporting
   - No spend tracking per organisation
@@ -202,7 +203,7 @@ This checklist tracks the gaps between the February 2026 press release claims an
 2. [ ] Tiered access levels within organisations
 3. [ ] Teams and departments structure
 4. [ ] Organisation dashboard
-5. [ ] Jobs linked to organisations
+5. [x] ~~Jobs linked to organisations~~ - **COMPLETED**
 
 ### HIGH (Should fix before launch)
 6. [ ] Direct messaging to models

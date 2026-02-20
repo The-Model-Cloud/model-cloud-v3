@@ -32,6 +32,21 @@ service cloud.firestore {
       return isAuthenticated() && getUserRole() == "model";
     }
 
+    // Helper: Get the requesting user's organisationId
+    function getUserOrganisationId() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data.organisationId;
+    }
+
+    // Helper: Check if user belongs to an organisation
+    function hasOrganisation() {
+      return isAuthenticated() && getUserOrganisationId() != null;
+    }
+
+    // Helper: Check if user is in the same organisation as the job
+    function isInJobOrganisation(jobData) {
+      return hasOrganisation() && jobData.organisationId == getUserOrganisationId();
+    }
+
     // Users collection
     match /users/{userId} {
       allow read: if isAuthenticated();
@@ -49,11 +64,31 @@ service cloud.firestore {
     }
 
     // Jobs collection
+    // Users can read jobs they own, applied to, are invited to, or belong to their organisation
     match /jobs/{jobId} {
-      allow read: if isAuthenticated();
+      allow read: if isAuthenticated() && (
+        // Job owner can read
+        resource.data.userId == request.auth.uid ||
+        // Organisation members can read organisation jobs
+        isInJobOrganisation(resource.data) ||
+        // Admins can read all
+        isAdmin() ||
+        // Public jobs (for browse page) - only open jobs
+        (resource.data.status == null || resource.data.status == "open")
+      );
       allow create: if isAuthenticated();
-      allow update: if isAuthenticated();
-      allow delete: if isAuthenticated();
+      allow update: if isAuthenticated() && (
+        // Job owner can update
+        resource.data.userId == request.auth.uid ||
+        // Admins can update any
+        isAdmin()
+      );
+      allow delete: if isAuthenticated() && (
+        // Job owner can delete
+        resource.data.userId == request.auth.uid ||
+        // Admins can delete any
+        isAdmin()
+      );
 
       // Job applications subcollection
       match /applications/{applicationId} {

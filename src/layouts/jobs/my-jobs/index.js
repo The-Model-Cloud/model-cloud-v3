@@ -22,7 +22,9 @@ import MyJobResults from "./components/MyJobResults";
 
 function MyJobs() {
   const [allJobs, setAllJobs] = useState([]);
+  const [organisationJobs, setOrganisationJobs] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [userOrganisationId, setUserOrganisationId] = useState(null);
   const [filters, setFilters] = useState({
     jobType: "all",
     jobStatus: "all",
@@ -49,6 +51,10 @@ function MyJobs() {
     const jobRefs = userData.jobs || [];
     const appliedJobs = userData.appliedJobs || [];
     const invitedJobs = userData.invitedJobs || [];
+
+    // Store organisation ID for filtering
+    const orgId = userData.organisationId || null;
+    setUserOrganisationId(orgId);
 
     // Combine created jobs, applied jobs, and invited jobs
     const allJobRefs = [...new Set([
@@ -118,6 +124,40 @@ function MyJobs() {
     });
 
     setAllJobs(jobs);
+
+    // Fetch organisation jobs if user belongs to an organisation
+    if (orgId) {
+      try {
+        const orgJobsQuery = query(
+          collection(db, "jobs"),
+          where("organisationId", "==", orgId)
+        );
+        const orgJobDocs = await getDocs(orgJobsQuery);
+        const orgJobs = [];
+
+        orgJobDocs.forEach((docSnap) => {
+          const data = docSnap.data();
+          // Check if this job is already in user's personal list
+          const isAlreadyInList = jobs.some(j => j.reference === data.reference);
+
+          orgJobs.push({
+            ...data,
+            applicationStatus: data.userId === user.uid ? "Owner" : "Org Job",
+            isOwner: data.userId === user.uid,
+            isOrgJob: true,
+            isAlreadyInList, // Flag to track if also in personal list
+          });
+        });
+
+        // Sort by creation date
+        orgJobs.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+        setOrganisationJobs(orgJobs);
+      } catch (err) {
+        console.error("Error fetching organisation jobs:", err);
+        setOrganisationJobs([]);
+      }
+    }
+
     setLoading(false);
   };
 
@@ -127,11 +167,15 @@ function MyJobs() {
 
   // Apply filters
   const filteredJobs = useMemo(() => {
-    return allJobs.filter(job => {
-      // Filter by job type (owned vs applied vs invited)
+    // Use organisation jobs when that filter is selected
+    const jobsToFilter = filters.jobType === "organisation" ? organisationJobs : allJobs;
+
+    return jobsToFilter.filter(job => {
+      // Filter by job type (owned vs applied vs invited vs organisation)
       if (filters.jobType === "owned" && !job.isOwner) return false;
       if (filters.jobType === "applied" && !job.isApplied) return false;
       if (filters.jobType === "invited" && !job.isInvited) return false;
+      // Organisation filter already handled by using organisationJobs array
 
       // Filter by job status
       if (filters.jobStatus !== "all") {
@@ -140,21 +184,22 @@ function MyJobs() {
       }
 
       // Filter by application status (only for applied jobs)
-      if (filters.applicationStatus !== "all" && !job.isOwner) {
+      if (filters.applicationStatus !== "all" && !job.isOwner && !job.isOrgJob) {
         const appStatus = (job.applicationStatus || "").toLowerCase();
         if (appStatus !== filters.applicationStatus) return false;
       }
 
       return true;
     });
-  }, [allJobs, filters]);
+  }, [allJobs, organisationJobs, filters]);
 
   // Calculate counts for filter badges
   const jobCounts = useMemo(() => ({
     owned: allJobs.filter(j => j.isOwner).length,
     applied: allJobs.filter(j => j.isApplied).length,
     invited: allJobs.filter(j => j.isInvited).length,
-  }), [allJobs]);
+    organisation: organisationJobs.length,
+  }), [allJobs, organisationJobs]);
 
   return (
     <DashboardLayout>
@@ -186,6 +231,7 @@ function MyJobs() {
           filters={filters}
           setFilters={setFilters}
           jobCounts={jobCounts}
+          hasOrganisation={!!userOrganisationId}
         />
 
         {/* Results */}

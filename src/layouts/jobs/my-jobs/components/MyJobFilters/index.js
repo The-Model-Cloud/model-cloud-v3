@@ -5,12 +5,14 @@ import Chip from "@mui/material/Chip";
 import MDBox from "components/MDBox";
 import MDTypography from "components/MDTypography";
 
-function MyJobFilters({ filters, setFilters, jobCounts }) {
+function MyJobFilters({ filters, setFilters, jobCounts, hasOrganisation }) {
   const jobTypeOptions = [
     { value: "all", label: "All Jobs", icon: "folder" },
     { value: "owned", label: "My Listings", icon: "business_center" },
     { value: "applied", label: "Applied To", icon: "send" },
     { value: "invited", label: "Invitations", icon: "mail", color: "secondary" },
+    // Only show organisation option if user belongs to one
+    ...(hasOrganisation ? [{ value: "organisation", label: "Organisation", icon: "corporate_fare", color: "info" }] : []),
   ];
 
   const jobStatusOptions = [
@@ -75,7 +77,10 @@ function MyJobFilters({ filters, setFilters, jobCounts }) {
                           fontWeight: 600,
                         }}
                       >
-                        {option.value === "owned" ? jobCounts.owned : option.value === "applied" ? jobCounts.applied : jobCounts.invited}
+                        {option.value === "owned" ? jobCounts.owned :
+                         option.value === "applied" ? jobCounts.applied :
+                         option.value === "invited" ? jobCounts.invited :
+                         option.value === "organisation" ? jobCounts.organisation : 0}
                       </MDBox>
                     )}
                   </MDBox>
@@ -129,8 +134,8 @@ function MyJobFilters({ filters, setFilters, jobCounts }) {
           </MDBox>
         </Grid>
 
-        {/* Application Status Filter - only show when viewing applied jobs */}
-        {filters.jobType !== "owned" && (
+        {/* Application Status Filter - only show when viewing applied jobs (not owned or organisation) */}
+        {filters.jobType !== "owned" && filters.jobType !== "organisation" && (
           <Grid item xs={12} md={4}>
             <MDTypography variant="caption" fontWeight="medium" color="text" mb={1} display="block">
               Application Status

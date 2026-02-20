@@ -189,6 +189,9 @@ function NewJob() {
         userId: user.uid,
         reference: jobRef,
         media: values.media || [],
+        // Organisation context - captured from user at creation time
+        organisationId: user.organisationId || null,
+        teamId: user.teamId || null,
       };
 
       console.log("📦 Job data to be saved:", jobData);
