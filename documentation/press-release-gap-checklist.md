@@ -3,7 +3,7 @@
 This checklist tracks the gaps between the February 2026 press release claims and the current platform implementation.
 
 **Last Updated:** 2026-02-20
-**Overall Completion:** ~90% (8 critical/high items completed)
+**Overall Completion:** ~92% (9 critical/high items completed)
 
 ---
 
@@ -194,6 +194,15 @@ This checklist tracks the gaps between the February 2026 press release claims an
   - Team member activity tracking
   - Top models by organisation
 
+- [x] **Platform Dashboard (Admin)** - COMPLETED 2026-02-20
+  - New dashboard at `/admin/dashboard` (under Tools menu)
+  - 8 platform-wide metric cards: Total Jobs, Completed, Platform Spend, Organisations, Users, Models, Clients, Active Jobs
+  - Platform revenue chart (6-month trend)
+  - User growth chart (models vs clients by month)
+  - Top organisations ranked by activity
+  - Recent jobs across all organisations
+  - Searchable, sortable organisations overview table
+
 ### Missing - Critical
 
 - [ ] **Organisation-level model relationships** - Favourites are user-owned only
@@ -223,14 +232,15 @@ This checklist tracks the gaps between the February 2026 press release claims an
 8. [x] ~~Cancel awarded booking~~ - **COMPLETED**
 9. [ ] Account manager self-service UI (partially done)
 10. [x] ~~Organisation-level analytics~~ - **COMPLETED**
-11. [ ] Organisation-level model relationships
+11. [x] ~~Platform Dashboard (Admin)~~ - **COMPLETED**
+12. [ ] Organisation-level model relationships
 
 ### MEDIUM (Post-launch enhancement)
-12. [ ] Bulk model invitations
-13. [ ] Apple Pay / Google Pay
-14. [ ] Model experience/history display
-15. [ ] Model rating system
-16. [ ] Custom permission sets
+13. [ ] Bulk model invitations
+14. [ ] Apple Pay / Google Pay
+15. [ ] Model experience/history display
+16. [ ] Model rating system
+17. [ ] Custom permission sets
 
 ---
 

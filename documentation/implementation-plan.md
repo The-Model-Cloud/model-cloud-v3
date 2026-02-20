@@ -198,6 +198,51 @@ src/layouts/organisation/dashboard/
 
 ---
 
+### 1.3.1 Platform Dashboard (Admin) ✅ COMPLETE
+
+**Problem:** Admins need a centralised view of all organisation activity across the platform.
+
+**Implementation:**
+
+**New Dashboard Components:**
+
+```
+src/layouts/admin/dashboard/
+├── index.js                                    # Main admin dashboard
+├── components/
+│   ├── AdminStats/index.js                    # 8 platform-wide metric cards
+│   ├── PlatformSpendChart/index.js            # Revenue chart (all orgs)
+│   ├── UserGrowth/index.js                    # Model/client signup trends
+│   ├── TopOrganisations/index.js              # Ranked org list
+│   ├── RecentJobs/index.js                    # Recent jobs (all orgs)
+│   └── OrganisationsOverview/index.js         # Sortable org table
+```
+
+**Routes Updated:**
+- Added `/admin/dashboard` route
+- Dashboard under Tools menu
+- Available to admin and super admin roles
+
+**Features:**
+- 8 key metric cards (jobs, spend, users, models, clients, organisations)
+- Platform revenue chart (6-month trend with monthly average)
+- User growth bar chart (models vs clients by month)
+- Top organisations ranked by activity
+- Recent jobs across all organisations
+- Searchable, sortable organisations table
+
+**Acceptance Criteria:**
+- [x] Admins see platform-wide dashboard
+- [x] Dashboard shows aggregated job statistics
+- [x] Dashboard shows total platform spend
+- [x] Dashboard shows user growth trends
+- [x] Dashboard shows organisation rankings
+- [x] Organisations table with search and sort
+
+**Status: COMPLETE** (2026-02-20)
+
+---
+
 ### 1.4 Link Jobs to Organisations ✅ COMPLETE
 
 **Problem:** Jobs only have `userId`, not `organisationId`. Organisations cannot track their bookings.
