@@ -7244,109 +7244,138 @@ exports.checkSubscriptionExpiry = onSchedule(
 // PUBLIC API - RANDOM MODEL IMAGES
 // ============================================================================
 
+// Maximum number of background-removed images to generate per month (Cloudinary free tier limit)
+const MAX_MONTHLY_BG_REMOVAL_IMAGES = 15;
+
+/**
+ * Helper function to transform a Cloudinary URL with background removal
+ */
+function transformImageUrl(originalUrl) {
+  if (!originalUrl.includes("cloudinary.com") || !originalUrl.includes("/upload/")) {
+    return originalUrl;
+  }
+
+  const uploadIndex = originalUrl.indexOf("/upload/");
+  const baseUrl = originalUrl.substring(0, uploadIndex + 8);
+  const afterUpload = originalUrl.substring(uploadIndex + 8);
+
+  let publicIdPart = afterUpload;
+
+  const versionMatch = afterUpload.match(/v\d+\//);
+  if (versionMatch) {
+    const versionIndex = afterUpload.indexOf(versionMatch[0]);
+    if (versionIndex > 0) {
+      publicIdPart = afterUpload.substring(versionIndex);
+    }
+  } else {
+    const folderMatch = afterUpload.match(/users\//);
+    if (folderMatch) {
+      const folderIndex = afterUpload.indexOf(folderMatch[0]);
+      if (folderIndex > 0) {
+        publicIdPart = afterUpload.substring(folderIndex);
+      }
+    }
+  }
+
+  // e_background_removal: AI-powered background removal
+  // c_fill,g_face: crop to fill with face focus
+  // w_1200,h_1600: portrait dimensions (3:4 aspect ratio)
+  // q_auto,f_auto: automatic quality and format
+  return `${baseUrl}e_background_removal/c_fill,g_face,w_1200,h_1600,q_auto,f_auto/${publicIdPart}`;
+}
+
 /**
  * Get random model profile images for public pages (sign-in, sign-up, etc.)
- * This is an unauthenticated endpoint for use on public-facing pages
- * @param {number} count - Number of random images to return (default: 1, max: 10)
- * @returns {Object} - Array of image URLs with face-focused transformations
+ * Uses a monthly cache to limit Cloudinary background removal API usage to 15 images/month
+ * @param {number} count - Number of random images to return (default: 5, max: 10)
+ * @returns {Object} - Array of cached image URLs with face-focused transformations
  */
 exports.getRandomModelImages = onRequest({
   cors: true,
   timeoutSeconds: 30,
 }, async (req, res) => {
   try {
-    const count = Math.min(Math.max(parseInt(req.query.count) || 1, 1), 10);
+    const count = Math.min(Math.max(parseInt(req.query.count) || 5, 1), 10);
 
-    // Get verified models with profile avatars
-    const modelsSnapshot = await db.collection("users")
-      .where("role", "==", "model")
-      .where("verified", "==", true)
-      .limit(100)
-      .get();
+    // Check for cached images in Firestore
+    const cacheRef = db.collection("settings").doc("signInImagesCache");
+    const cacheDoc = await cacheRef.get();
 
-    // Filter to only models with profile avatars
-    const modelsWithAvatars = [];
-    modelsSnapshot.forEach((doc) => {
-      const data = doc.data();
-      if (data.profileAvatar && data.profileAvatar.includes("cloudinary")) {
-        modelsWithAvatars.push({
-          url: data.profileAvatar,
-          name: `${data.firstName || ""} ${data.lastName || ""}`.trim(),
-        });
+    const now = new Date();
+    const currentMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+
+    let cachedImages = [];
+
+    if (cacheDoc.exists) {
+      const cacheData = cacheDoc.data();
+
+      // Check if cache is from current month and has images
+      if (cacheData.month === currentMonth && cacheData.images?.length > 0) {
+        cachedImages = cacheData.images;
+        console.log(`Using cached images from ${currentMonth} (${cachedImages.length} images)`);
       }
-    });
-
-    if (modelsWithAvatars.length === 0) {
-      return res.status(200).json({
-        success: true,
-        images: [],
-        message: "No model images available",
-      });
     }
 
-    // Shuffle and pick random images
-    const shuffled = modelsWithAvatars.sort(() => Math.random() - 0.5);
-    const selected = shuffled.slice(0, Math.min(count, shuffled.length));
+    // If no valid cache, generate new images for this month
+    if (cachedImages.length === 0) {
+      console.log(`Generating new cached images for ${currentMonth}`);
 
-    // Apply face-focused Cloudinary transformations to each URL
-    const cloudName = process.env.CLOUDINARY_CLOUD_NAME;
-    const transformedImages = selected.map((model) => {
-      // Parse the existing Cloudinary URL and add face-focused transformations
-      // Original: https://res.cloudinary.com/{cloud}/image/upload/{existing_transforms}/v{version}/{public_id}.{format}
-      // Target: https://res.cloudinary.com/{cloud}/image/upload/c_fill,g_face,w_1200,h_1600,q_auto,f_auto/{public_id}
+      // Get verified models with profile avatars
+      const modelsSnapshot = await db.collection("users")
+        .where("role", "==", "model")
+        .where("verified", "==", true)
+        .limit(100)
+        .get();
 
-      let transformedUrl = model.url;
-
-      // Check if it's a Cloudinary URL
-      if (model.url.includes("cloudinary.com") && model.url.includes("/upload/")) {
-        // Extract parts of the URL
-        const uploadIndex = model.url.indexOf("/upload/");
-        const baseUrl = model.url.substring(0, uploadIndex + 8); // includes "/upload/"
-        const afterUpload = model.url.substring(uploadIndex + 8);
-
-        // Find the public_id (remove any existing transformations)
-        // Transformations don't contain "v" followed by numbers at the start
-        let publicIdPart = afterUpload;
-
-        // If there are existing transformations, find where the public_id starts
-        // The public_id usually starts with "v" + version number or the folder path
-        const versionMatch = afterUpload.match(/v\d+\//);
-        if (versionMatch) {
-          const versionIndex = afterUpload.indexOf(versionMatch[0]);
-          if (versionIndex > 0) {
-            // There are transformations before the version
-            publicIdPart = afterUpload.substring(versionIndex);
-          }
-        } else {
-          // Look for folder paths like "users/models/..."
-          const folderMatch = afterUpload.match(/users\//);
-          if (folderMatch) {
-            const folderIndex = afterUpload.indexOf(folderMatch[0]);
-            if (folderIndex > 0) {
-              publicIdPart = afterUpload.substring(folderIndex);
-            }
-          }
+      const modelsWithAvatars = [];
+      modelsSnapshot.forEach((doc) => {
+        const data = doc.data();
+        if (data.profileAvatar && data.profileAvatar.includes("cloudinary")) {
+          modelsWithAvatars.push({
+            originalUrl: data.profileAvatar,
+            name: `${data.firstName || ""} ${data.lastName || ""}`.trim(),
+          });
         }
+      });
 
-        // Build new URL with face-focused transformations
-        // c_fill: crop to fill the dimensions
-        // g_face: gravity focused on detected face
-        // w_1200,h_1600: portrait dimensions (3:4 aspect ratio)
-        // q_auto: automatic quality optimization
-        // f_auto: automatic format (webp, avif, etc.)
-        transformedUrl = `${baseUrl}c_fill,g_face,w_1200,h_1600,q_auto,f_auto/${publicIdPart}`;
+      if (modelsWithAvatars.length === 0) {
+        return res.status(200).json({
+          success: true,
+          images: [],
+          message: "No model images available",
+        });
       }
 
-      return {
-        url: transformedUrl,
-        originalUrl: model.url,
-      };
-    });
+      // Shuffle and pick up to 15 images for the month
+      const shuffled = modelsWithAvatars.sort(() => Math.random() - 0.5);
+      const selected = shuffled.slice(0, Math.min(MAX_MONTHLY_BG_REMOVAL_IMAGES, shuffled.length));
+
+      // Transform URLs with background removal
+      cachedImages = selected.map((model) => ({
+        url: transformImageUrl(model.originalUrl),
+        originalUrl: model.originalUrl,
+      }));
+
+      // Save to cache
+      await cacheRef.set({
+        month: currentMonth,
+        images: cachedImages,
+        generatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        count: cachedImages.length,
+      });
+
+      console.log(`Cached ${cachedImages.length} images for ${currentMonth}`);
+    }
+
+    // Return random selection from cached images
+    const shuffledCache = [...cachedImages].sort(() => Math.random() - 0.5);
+    const selectedImages = shuffledCache.slice(0, Math.min(count, shuffledCache.length));
 
     return res.status(200).json({
       success: true,
-      images: transformedImages,
-      total: modelsWithAvatars.length,
+      images: selectedImages,
+      total: cachedImages.length,
+      cached: true,
     });
   } catch (error) {
     console.error("Error getting random model images:", error);
