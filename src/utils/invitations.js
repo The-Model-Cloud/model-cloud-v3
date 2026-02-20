@@ -205,6 +205,32 @@ export const hasBeenInvited = async (jobId, modelId) => {
 };
 
 /**
+ * Get invitation status for a model
+ * @param {string} jobId - The job ID
+ * @param {string} modelId - The model's UID
+ * @returns {Promise<{invited: boolean, status: string|null}>}
+ */
+export const getInvitationStatus = async (jobId, modelId) => {
+  try {
+    const invitationRef = doc(db, "jobs", jobId, "invitations", modelId);
+    const invitationSnap = await getDoc(invitationRef);
+
+    if (!invitationSnap.exists()) {
+      return { invited: false, status: null };
+    }
+
+    const data = invitationSnap.data();
+    return {
+      invited: true,
+      status: data.status || "pending", // pending, applied, declined
+    };
+  } catch (error) {
+    console.error("Error getting invitation status:", error);
+    return { invited: false, status: null };
+  }
+};
+
+/**
  * Get all invitations for a job
  * @param {string} jobId - The job ID
  * @returns {Promise<array>} - Array of invitation objects
@@ -289,5 +315,36 @@ export const markInvitationAsApplied = async (jobId, modelId) => {
     }
   } catch (error) {
     console.error("Error updating invitation status:", error);
+  }
+};
+
+/**
+ * Decline a job invitation
+ * @param {string} jobId - The job ID
+ * @param {string} modelId - The model's UID
+ * @param {string} reason - Optional reason for declining
+ * @returns {Promise<{success: boolean}>}
+ */
+export const declineJobInvitation = async (jobId, modelId, reason = "") => {
+  try {
+    const invitationRef = doc(db, "jobs", jobId, "invitations", modelId);
+    const invitationSnap = await getDoc(invitationRef);
+
+    if (!invitationSnap.exists()) {
+      throw new Error("Invitation not found");
+    }
+
+    // Update invitation status to declined
+    await setDoc(invitationRef, {
+      status: "declined",
+      declinedAt: serverTimestamp(),
+      declineReason: reason || null,
+    }, { merge: true });
+
+    console.log("✅ Invitation declined");
+    return { success: true };
+  } catch (error) {
+    console.error("Error declining invitation:", error);
+    throw error;
   }
 };

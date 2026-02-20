@@ -16,7 +16,7 @@ import { logModelApplied, logApplicationCancelled } from "utils/activityLog";
 import { sendApplicationEmail, sendModelApplicationConfirmation, createThread } from "utils/api";
 
 // Invitations
-import { markInvitationAsApplied, hasBeenInvited, sendInvitationAcceptedMessage } from "utils/invitations";
+import { markInvitationAsApplied, getInvitationStatus, sendInvitationAcceptedMessage, declineJobInvitation } from "utils/invitations";
 
 // Verification
 import { isUnverifiedModel } from "utils/verification";
@@ -51,6 +51,7 @@ import AwardJobModal from "./components/AwardJobModal";
 import JobPaymentSection from "./components/JobPaymentSection";
 import JobCompletionSection from "./components/JobCompletionSection";
 import JobActivityLog from "./components/JobActivityLog";
+import JobActionsSection from "./components/JobActionsSection";
 import LoadingOverlay from "components/LoadingOverlay";
 
 // Favourites utilities
@@ -90,6 +91,9 @@ function JobDetails() {
     const [selectedModelForAward, setSelectedModelForAward] = useState(null);
     const [isInvited, setIsInvited] = useState(false);
     const [invitationChecked, setInvitationChecked] = useState(false);
+    const [showDeclineModal, setShowDeclineModal] = useState(false);
+    const [isDeclining, setIsDeclining] = useState(false);
+    const [hasDeclined, setHasDeclined] = useState(false);
 
     // Check if current user is job owner
     const isJobOwner = model && job && job.userId === model.uid;
@@ -390,6 +394,31 @@ function JobDetails() {
         }
     };
 
+    // ✅ Handle declining a job invitation
+    const handleDeclineInvitation = async () => {
+        if (!model || !job) {
+            console.error("Missing model or job data");
+            return;
+        }
+
+        setIsDeclining(true);
+
+        try {
+            await declineJobInvitation(job.id, model.uid);
+
+            setIsInvited(false);
+            setHasDeclined(true);
+            setShowDeclineModal(false);
+            setSnackMessage("Invitation declined.");
+            setSnackOpen(true);
+        } catch (err) {
+            console.error("❌ Error declining invitation:", err);
+            setSnackMessage("Failed to decline invitation. Please try again.");
+            setSnackOpen(true);
+        } finally {
+            setIsDeclining(false);
+        }
+    };
 
     useEffect(() => {
         const fetchJob = async () => {
@@ -472,8 +501,9 @@ function JobDetails() {
             }
 
             try {
-                const invited = await hasBeenInvited(job.id, model.uid);
-                setIsInvited(invited);
+                const invitationResult = await getInvitationStatus(job.id, model.uid);
+                setIsInvited(invitationResult.invited && invitationResult.status !== "declined");
+                setHasDeclined(invitationResult.status === "declined");
             } catch (error) {
                 console.error("Error checking invitation status:", error);
             } finally {
@@ -511,7 +541,7 @@ function JobDetails() {
                                 {model && job.userId !== model.uid && (
                                     <MDBox mt={4} pt={3} sx={{ borderTop: "1px solid", borderColor: "grey.200" }}>
                                         {/* Show invitation banner if model was invited */}
-                                        {isInvited && !hasApplied && applicationStatus !== "cancelled" && (
+                                        {isInvited && !hasApplied && !hasDeclined && applicationStatus !== "cancelled" && (
                                             <Alert
                                                 severity="info"
                                                 icon={<Icon>mail</Icon>}
@@ -527,6 +557,19 @@ function JobDetails() {
                                             >
                                                 <MDTypography variant="body2">
                                                     You've been personally invited to apply for this job! The client thinks you'd be a great fit.
+                                                </MDTypography>
+                                            </Alert>
+                                        )}
+
+                                        {/* Show declined banner if invitation was declined */}
+                                        {hasDeclined && (
+                                            <Alert
+                                                severity="default"
+                                                icon={<Icon>block</Icon>}
+                                                sx={{ mb: 3, backgroundColor: "grey.100" }}
+                                            >
+                                                <MDTypography variant="body2" color="text">
+                                                    You declined the invitation for this job. You can still apply if you change your mind.
                                                 </MDTypography>
                                             </Alert>
                                         )}
@@ -597,7 +640,7 @@ function JobDetails() {
                                                             {isInvited ? "Accept Invitation & Apply" : "Apply Now"}
                                                         </MDButton>
                                                         {isInvited && (
-                                                            <MDBox mt={2}>
+                                                            <MDBox mt={2} display="flex" gap={2} flexWrap="wrap">
                                                                 <MDButton
                                                                     color="dark"
                                                                     variant="outlined"
@@ -606,6 +649,14 @@ function JobDetails() {
                                                                     startIcon={<Icon>message</Icon>}
                                                                 >
                                                                     {isCreatingThread ? "Opening..." : "Message Client First"}
+                                                                </MDButton>
+                                                                <MDButton
+                                                                    color="error"
+                                                                    variant="text"
+                                                                    onClick={() => setShowDeclineModal(true)}
+                                                                    startIcon={<Icon>close</Icon>}
+                                                                >
+                                                                    Decline Invitation
                                                                 </MDButton>
                                                             </MDBox>
                                                         )}
@@ -705,6 +756,14 @@ function JobDetails() {
 
                         {/* Matching Models Section - for job owner (only show if not awarded) */}
                         {!job.awardedTo && <MatchingModels job={job} />}
+
+                        {/* Job Actions Section - for job owner */}
+                        <JobActionsSection
+                            job={job}
+                            isOwner={isJobOwner}
+                            isAdmin={isAdmin}
+                            onActionComplete={refreshJob}
+                        />
 
                         {/* Activity Log - admin only */}
                         <JobActivityLog jobId={job.id} isAdmin={isAdmin} />
@@ -837,6 +896,48 @@ function JobDetails() {
                     onAwardSuccess={handleAwardSuccess}
                 />
             )}
+
+            {/* Decline Invitation Modal */}
+            <Modal
+                open={showDeclineModal}
+                onClose={() => setShowDeclineModal(false)}
+                closeAfterTransition
+                BackdropComponent={Backdrop}
+                BackdropProps={{ timeout: 500 }}
+            >
+                <Fade in={showDeclineModal}>
+                    <Box sx={modalStyle}>
+                        <MDTypography variant="h6" component="h2" gutterBottom color="error">
+                            Decline Invitation?
+                        </MDTypography>
+                        <MDTypography variant="body2" gutterBottom>
+                            Are you sure you want to decline this job invitation?
+                        </MDTypography>
+                        <MDTypography variant="body2" color="text" mt={2}>
+                            The client will not be notified, but you won't see this invitation again.
+                        </MDTypography>
+
+                        <MDBox mt={3} display="flex" justifyContent="flex-end" gap={1}>
+                            <MDButton
+                                variant="outlined"
+                                color="secondary"
+                                onClick={() => setShowDeclineModal(false)}
+                                disabled={isDeclining}
+                            >
+                                Cancel
+                            </MDButton>
+                            <MDButton
+                                variant="gradient"
+                                color="error"
+                                onClick={handleDeclineInvitation}
+                                disabled={isDeclining}
+                            >
+                                {isDeclining ? "Declining..." : "Decline Invitation"}
+                            </MDButton>
+                        </MDBox>
+                    </Box>
+                </Fade>
+            </Modal>
 
         </DashboardLayout>
 

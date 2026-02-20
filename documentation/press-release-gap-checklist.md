@@ -3,7 +3,7 @@
 This checklist tracks the gaps between the February 2026 press release claims and the current platform implementation.
 
 **Last Updated:** 2026-02-20
-**Overall Completion:** ~65% (1 critical item completed)
+**Overall Completion:** ~70% (4 items completed today)
 
 ---
 
@@ -68,19 +68,27 @@ This checklist tracks the gaps between the February 2026 press release claims an
 - [x] Track invitation status
 - [x] Application cancellation by model
 
-### Missing - Critical
-- [ ] **Job cancellation/withdrawal** - Client cannot close a job posting
-  - No way to stop receiving applications
-  - Priority: **HIGH**
+### Recently Implemented
+- [x] **Job cancellation/withdrawal** - COMPLETED 2026-02-20
+  - New component: `src/layouts/jobs/job-details/components/JobActionsSection/index.js`
+  - Client can close job to stop receiving applications
+  - Client can reopen closed jobs
+  - Closed jobs excluded from search results
 
-- [ ] **Cancel awarded booking** - Cannot un-award a job before payment
-  - No mechanism to reassign to different model
-  - Priority: **HIGH**
+- [x] **Cancel awarded booking** - COMPLETED 2026-02-20
+  - Part of JobActionsSection component
+  - Client can un-award job before payment
+  - Model receives notification of cancellation
+  - Job automatically reopens for new applications
+
+- [x] **Invitation rejection by models** - COMPLETED 2026-02-20
+  - Models can decline invitations they don't want
+  - Decline status tracked in database
+  - Models can still apply after declining if they change their mind
 
 ### Missing - Enhancement
 - [ ] Bulk model invitations
 - [ ] Modify agreed amount after award (before payment)
-- [ ] Invitation rejection by models
 - [ ] In-job shortlisting/comparison view
 
 ---
@@ -198,8 +206,8 @@ This checklist tracks the gaps between the February 2026 press release claims an
 
 ### HIGH (Should fix before launch)
 6. [ ] Direct messaging to models
-7. [ ] Job cancellation/withdrawal
-8. [ ] Cancel awarded booking
+7. [x] ~~Job cancellation/withdrawal~~ - **COMPLETED**
+8. [x] ~~Cancel awarded booking~~ - **COMPLETED**
 9. [ ] Account manager self-service UI
 10. [ ] Organisation-level analytics
 11. [ ] Organisation-level model relationships
