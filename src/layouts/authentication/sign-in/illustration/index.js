@@ -43,21 +43,31 @@ function Illustration() {
         if (data.success && data.images?.length > 0) {
           const imageUrls = data.images.map((img) => img.url);
 
-          // Preload all images before displaying
-          const preloadPromises = imageUrls.map(
-            (url) =>
-              new Promise((resolve) => {
-                const img = new Image();
-                img.onload = () => resolve(url);
-                img.onerror = () => resolve(null);
-                img.src = url;
-              })
-          );
+          // Preload images with timeout (background removal can take time)
+          const preloadWithTimeout = (url, timeout = 15000) =>
+            new Promise((resolve) => {
+              const img = new Image();
+              const timer = setTimeout(() => resolve(url), timeout); // Use URL even if slow
+              img.onload = () => {
+                clearTimeout(timer);
+                resolve(url);
+              };
+              img.onerror = () => {
+                clearTimeout(timer);
+                resolve(null);
+              };
+              img.src = url;
+            });
 
-          const loadedUrls = await Promise.all(preloadPromises);
+          const loadedUrls = await Promise.all(
+            imageUrls.map((url) => preloadWithTimeout(url))
+          );
           const validUrls = loadedUrls.filter((url) => url !== null);
 
-          if (validUrls.length > 0) {
+          if (validUrls.length > 1) {
+            setBgImages(validUrls);
+          } else if (validUrls.length === 1) {
+            // Single image - still use it but no slideshow
             setBgImages(validUrls);
           }
         }
