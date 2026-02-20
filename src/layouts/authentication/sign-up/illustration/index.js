@@ -50,7 +50,7 @@ function SignUpIllustration() {
     const [error, setError] = useState("");
     const [companyName, setCompanyName] = useState("");
 
-    // Fetch random model profile image for background
+    // Fetch and preload random model profile image for background
     useEffect(() => {
         const fetchRandomImage = async () => {
             try {
@@ -59,7 +59,11 @@ function SignUpIllustration() {
                 );
                 const data = await response.json();
                 if (data.success && data.images?.length > 0) {
-                    setBgImage(data.images[0].url);
+                    const imageUrl = data.images[0].url;
+                    // Preload the image before displaying
+                    const img = new Image();
+                    img.onload = () => setBgImage(imageUrl);
+                    img.src = imageUrl;
                 }
             } catch (err) {
                 console.log("Using fallback background image");
