@@ -37,7 +37,7 @@ import { doc, setDoc } from "firebase/firestore";
 function SignUpIllustration() {
 
     const [profileAvatar, setProfileAvatar] = useState("");
-    const [bgImage, setBgImage] = useState(fallbackImage);
+    const [bgImages, setBgImages] = useState([fallbackImage]);
 
     const navigate = useNavigate();
 
@@ -50,26 +50,40 @@ function SignUpIllustration() {
     const [error, setError] = useState("");
     const [companyName, setCompanyName] = useState("");
 
-    // Fetch and preload random model profile image for background
+    // Fetch and preload multiple random model profile images for background slideshow
     useEffect(() => {
-        const fetchRandomImage = async () => {
+        const fetchRandomImages = async () => {
             try {
                 const response = await fetch(
-                    `https://us-central1-${process.env.REACT_APP_FIREBASE_PROJECT_ID}.cloudfunctions.net/getRandomModelImages?count=1`
+                    `https://us-central1-${process.env.REACT_APP_FIREBASE_PROJECT_ID}.cloudfunctions.net/getRandomModelImages?count=5`
                 );
                 const data = await response.json();
                 if (data.success && data.images?.length > 0) {
-                    const imageUrl = data.images[0].url;
-                    // Preload the image before displaying
-                    const img = new Image();
-                    img.onload = () => setBgImage(imageUrl);
-                    img.src = imageUrl;
+                    const imageUrls = data.images.map((img) => img.url);
+
+                    // Preload all images before displaying
+                    const preloadPromises = imageUrls.map(
+                        (url) =>
+                            new Promise((resolve) => {
+                                const img = new Image();
+                                img.onload = () => resolve(url);
+                                img.onerror = () => resolve(null);
+                                img.src = url;
+                            })
+                    );
+
+                    const loadedUrls = await Promise.all(preloadPromises);
+                    const validUrls = loadedUrls.filter((url) => url !== null);
+
+                    if (validUrls.length > 0) {
+                        setBgImages(validUrls);
+                    }
                 }
             } catch (err) {
                 console.log("Using fallback background image");
             }
         };
-        fetchRandomImage();
+        fetchRandomImages();
     }, []);
 
     const handleAvatarUpload = async (e) => {
@@ -173,7 +187,7 @@ function SignUpIllustration() {
         <IllustrationLayout
             title="Join The Model Cloud today"
             description="Enter your email and password to register"
-            illustration={bgImage}
+            illustration={bgImages}
         >
             <MDBox component="form" role="form" onSubmit={handleSignUp}>
 
