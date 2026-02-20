@@ -61,6 +61,7 @@ import AllAdmins from "layouts/admin/users/admins";
 import AllAccountManagers from "layouts/admin/users/account-managers";
 import Organisations from "layouts/admin/organisations";
 import OrganisationDetail from "layouts/admin/organisations/detail";
+import AdminDashboard from "layouts/admin/dashboard";
 
 // Organisation management layouts (for account managers)
 import OrganisationDashboard from "layouts/organisation/dashboard";
@@ -535,6 +536,13 @@ const routes = [
     icon: <Icon fontSize="small">build</Icon>,
     roles: ADMIN_ROLES,
     collapse: [
+      {
+        name: "Platform Dashboard",
+        key: "platform-dashboard",
+        route: "/admin/dashboard",
+        component: <AdminDashboard />,
+        icon: <Icon fontSize="small">space_dashboard</Icon>,
+      },
       {
         name: "Model Data",
         key: "model-data",

@@ -1,5 +1,5 @@
 /**
- * TopModels - Shows the most frequently booked models by the organisation
+ * TopOrganisations - Shows the most active organisations
  */
 
 import PropTypes from "prop-types";
@@ -16,7 +16,7 @@ import MDBox from "components/MDBox";
 import MDTypography from "components/MDTypography";
 import MDButton from "components/MDButton";
 
-function TopModels({ models, loading }) {
+function TopOrganisations({ organisations, loading }) {
   const navigate = useNavigate();
 
   const formatCurrency = (amount) => {
@@ -28,22 +28,23 @@ function TopModels({ models, loading }) {
     }).format(amount);
   };
 
-  const getInitials = (firstName, lastName) => {
-    const first = firstName?.charAt(0)?.toUpperCase() || "";
-    const last = lastName?.charAt(0)?.toUpperCase() || "";
-    return first + last || "?";
+  const getInitials = (name) => {
+    if (!name) return "?";
+    const words = name.split(" ");
+    if (words.length === 1) return name.charAt(0).toUpperCase();
+    return (words[0].charAt(0) + words[1].charAt(0)).toUpperCase();
   };
 
   const getRankColor = (index) => {
     switch (index) {
       case 0:
-        return "warning"; // Gold
+        return "#FFD700"; // Gold
       case 1:
-        return "secondary"; // Silver
+        return "#C0C0C0"; // Silver
       case 2:
-        return "error"; // Bronze
+        return "#CD7F32"; // Bronze
       default:
-        return "default";
+        return "#7b809a";
     }
   };
 
@@ -56,7 +57,7 @@ function TopModels({ models, loading }) {
       case 2:
         return "military_tech";
       default:
-        return "star";
+        return "business";
     }
   };
 
@@ -64,14 +65,14 @@ function TopModels({ models, loading }) {
     return (
       <Card sx={{ height: "100%" }}>
         <MDBox p={3}>
-          <Skeleton width={150} height={28} />
+          <Skeleton width={180} height={28} />
           <MDBox mt={2}>
             {[1, 2, 3, 4, 5].map((i) => (
               <MDBox key={i} display="flex" alignItems="center" mb={2}>
                 <Skeleton variant="circular" width={48} height={48} />
                 <MDBox ml={2} flex={1}>
-                  <Skeleton width="60%" height={20} />
-                  <Skeleton width="40%" height={16} />
+                  <Skeleton width="70%" height={20} />
+                  <Skeleton width="50%" height={16} />
                 </MDBox>
               </MDBox>
             ))}
@@ -89,7 +90,7 @@ function TopModels({ models, loading }) {
             <MDBox
               width="3rem"
               height="3rem"
-              bgColor="primary"
+              bgColor="warning"
               variant="gradient"
               borderRadius="lg"
               display="flex"
@@ -98,51 +99,44 @@ function TopModels({ models, loading }) {
               color="white"
               mr={2}
             >
-              <Icon>star</Icon>
+              <Icon>corporate_fare</Icon>
             </MDBox>
             <MDTypography variant="h6" fontWeight="medium">
-              Top Models
+              Top Organisations
             </MDTypography>
           </MDBox>
           <MDButton
             variant="text"
-            color="primary"
+            color="warning"
             size="small"
-            onClick={() => navigate("/models/browse")}
+            onClick={() => navigate("/admin/organisations")}
           >
-            Browse
+            View All
           </MDButton>
         </MDBox>
 
-        {models.length === 0 ? (
+        {organisations.length === 0 ? (
           <MDBox textAlign="center" py={4}>
-            <Icon sx={{ fontSize: 48, color: "grey.400", mb: 1 }}>person_search</Icon>
+            <Icon sx={{ fontSize: 48, color: "grey.400", mb: 1 }}>business_center</Icon>
             <MDTypography variant="body2" color="text">
-              No models booked yet
-            </MDTypography>
-            <MDTypography variant="caption" color="text">
-              Your most booked models will appear here
+              No organisations yet
             </MDTypography>
           </MDBox>
         ) : (
           <MDBox>
-            {models.map((model, index) => (
-              <MDBox key={model.uid}>
+            {organisations.map((org, index) => (
+              <MDBox key={org.id}>
                 <MDBox
                   display="flex"
                   alignItems="center"
                   py={1.5}
                   sx={{
-                    cursor: model.publicSlug ? "pointer" : "default",
-                    "&:hover": model.publicSlug ? { bgcolor: "grey.50" } : {},
+                    cursor: "pointer",
+                    "&:hover": { bgcolor: "grey.50" },
                     borderRadius: 1,
                     px: 1,
                   }}
-                  onClick={() => {
-                    if (model.publicSlug) {
-                      navigate(`/profile/${model.publicSlug}`);
-                    }
-                  }}
+                  onClick={() => navigate(`/admin/organisations/${org.id}`)}
                 >
                   {/* Rank Badge */}
                   <MDBox
@@ -154,12 +148,7 @@ function TopModels({ models, loading }) {
                     mr={1}
                   >
                     {index < 3 ? (
-                      <Icon
-                        sx={{
-                          color: index === 0 ? "#FFD700" : index === 1 ? "#C0C0C0" : "#CD7F32",
-                          fontSize: 24,
-                        }}
-                      >
+                      <Icon sx={{ color: getRankColor(index), fontSize: 24 }}>
                         {getRankIcon(index)}
                       </Icon>
                     ) : (
@@ -171,45 +160,47 @@ function TopModels({ models, loading }) {
 
                   {/* Avatar */}
                   <Avatar
-                    src={model.profileImage}
                     sx={{
                       width: 48,
                       height: 48,
                       mr: 2,
-                      bgcolor: "primary.main",
+                      bgcolor: index === 0 ? "warning.main" : "info.main",
                       border: index === 0 ? "2px solid #FFD700" : "none",
                     }}
                   >
-                    {getInitials(model.firstName, model.lastName)}
+                    {getInitials(org.companyName)}
                   </Avatar>
 
                   {/* Name and Stats */}
                   <MDBox flex={1}>
                     <MDTypography variant="button" fontWeight="medium" display="block">
-                      {model.firstName} {model.lastName}
+                      {org.companyName}
                     </MDTypography>
-                    <MDBox display="flex" alignItems="center" gap={1}>
+                    <MDBox display="flex" alignItems="center" gap={1} flexWrap="wrap">
                       <Chip
                         icon={<Icon sx={{ fontSize: "14px !important" }}>work</Icon>}
-                        label={`${model.bookings} ${model.bookings === 1 ? "booking" : "bookings"}`}
+                        label={`${org.totalJobs || 0} jobs`}
                         size="small"
                         variant="outlined"
                         sx={{ height: 22, fontSize: "0.7rem" }}
                       />
-                      {model.totalSpend > 0 && (
+                      {org.totalSpend > 0 && (
                         <MDTypography variant="caption" color="success" fontWeight="medium">
-                          {formatCurrency(model.totalSpend)}
+                          {formatCurrency(org.totalSpend)}
+                        </MDTypography>
+                      )}
+                      {org.userCount > 0 && (
+                        <MDTypography variant="caption" color="text">
+                          {org.userCount} users
                         </MDTypography>
                       )}
                     </MDBox>
                   </MDBox>
 
                   {/* Arrow */}
-                  {model.publicSlug && (
-                    <Icon sx={{ color: "grey.400", fontSize: 20 }}>chevron_right</Icon>
-                  )}
+                  <Icon sx={{ color: "grey.400", fontSize: 20 }}>chevron_right</Icon>
                 </MDBox>
-                {index < models.length - 1 && <Divider sx={{ my: 0.5 }} />}
+                {index < organisations.length - 1 && <Divider sx={{ my: 0.5 }} />}
               </MDBox>
             ))}
           </MDBox>
@@ -219,23 +210,22 @@ function TopModels({ models, loading }) {
   );
 }
 
-TopModels.propTypes = {
-  models: PropTypes.arrayOf(
+TopOrganisations.propTypes = {
+  organisations: PropTypes.arrayOf(
     PropTypes.shape({
-      uid: PropTypes.string.isRequired,
-      firstName: PropTypes.string,
-      lastName: PropTypes.string,
-      profileImage: PropTypes.string,
-      publicSlug: PropTypes.string,
-      bookings: PropTypes.number.isRequired,
+      id: PropTypes.string.isRequired,
+      companyName: PropTypes.string,
+      totalJobs: PropTypes.number,
+      activeJobs: PropTypes.number,
       totalSpend: PropTypes.number,
+      userCount: PropTypes.number,
     })
   ).isRequired,
   loading: PropTypes.bool,
 };
 
-TopModels.defaultProps = {
+TopOrganisations.defaultProps = {
   loading: false,
 };
 
-export default TopModels;
+export default TopOrganisations;
