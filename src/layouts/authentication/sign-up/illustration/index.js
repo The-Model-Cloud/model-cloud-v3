@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useNavigate, Link } from "react-router-dom";
 
 import { collection, query, where, getDocs } from "firebase/firestore";
@@ -24,7 +24,9 @@ import IconButton from "@mui/material/IconButton";
 
 // Layout
 import IllustrationLayout from "layouts/authentication/components/IllustrationLayout";
-import bgImage from "assets/images/illustrations/signup-image-1.png";
+
+// Fallback image in case API fails
+import fallbackImage from "assets/images/illustrations/signup-image-1.png";
 
 // Firebase
 import { createUserWithEmailAndPassword, updateProfile, sendEmailVerification } from "firebase/auth";
@@ -35,6 +37,7 @@ import { doc, setDoc } from "firebase/firestore";
 function SignUpIllustration() {
 
     const [profileAvatar, setProfileAvatar] = useState("");
+    const [bgImage, setBgImage] = useState(fallbackImage);
 
     const navigate = useNavigate();
 
@@ -46,6 +49,24 @@ function SignUpIllustration() {
     const [agree, setAgree] = useState(false);
     const [error, setError] = useState("");
     const [companyName, setCompanyName] = useState("");
+
+    // Fetch random model profile image for background
+    useEffect(() => {
+        const fetchRandomImage = async () => {
+            try {
+                const response = await fetch(
+                    `https://us-central1-${process.env.REACT_APP_FIREBASE_PROJECT_ID}.cloudfunctions.net/getRandomModelImages?count=1`
+                );
+                const data = await response.json();
+                if (data.success && data.images?.length > 0) {
+                    setBgImage(data.images[0].url);
+                }
+            } catch (err) {
+                console.log("Using fallback background image");
+            }
+        };
+        fetchRandomImage();
+    }, []);
 
     const handleAvatarUpload = async (e) => {
         const file = e.target.files[0];
