@@ -19,6 +19,14 @@ import { logAdminAction, ADMIN_ACTIONS } from "utils/adminLogs";
 
 const CLOUDINARY_URL = `https://api.cloudinary.com/v1_1/${process.env.REACT_APP_CLOUDINARY_CLOUD_NAME}/upload`;
 
+// Transform Cloudinary URL to use face detection for thumbnails
+const getCloudinaryThumbnail = (url, width = 300, height = 250) => {
+  if (!url || !url.includes("res.cloudinary.com")) return url;
+  const parts = url.split("/upload/");
+  if (parts.length !== 2) return url;
+  return `${parts[0]}/upload/c_fill,g_face,w_${width},h_${height},q_auto,f_auto/${parts[1]}`;
+};
+
 // Map fieldName to folder subfolder name
 const getImageSubfolder = (field) => {
   const mapping = {
@@ -498,14 +506,14 @@ function ImageUploader({ fieldName, title, subtitle, maxFiles = 20 }) {
                     <MDBox position="relative">
                       <MDBox
                         component="img"
-                        src={img.url}
+                        src={getCloudinaryThumbnail(img.url, 300, 250)}
                         alt={`${title} ${index + 1}`}
                         width="100%"
                         height="250px"
                         borderRadius="lg"
                         boxShadow="md"
-                        sx={{ 
-                          cursor: "move", 
+                        sx={{
+                          cursor: "move",
                           objectFit: "cover",
                           transition: "transform 0.2s",
                           "&:hover": {

@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useMemo } from "react";
 import { collection, getDocs, getFirestore, doc, updateDoc, writeBatch } from "firebase/firestore";
 
 // MUI and MD components
@@ -35,6 +35,7 @@ import {
   ChangeEmailDialog,
   ChangeNameDialog,
   ChangeLocationDialog,
+  ChangeRoleDialog,
 } from "components/AdminUserDialogs";
 
 // API functions
@@ -119,12 +120,16 @@ function AllUsers() {
     setLocationFilter("all");
   }, []);
 
+  // Organisations data for role assignment
+  const [organisations, setOrganisations] = useState([]);
+
   // Dialog states
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [resetPasswordDialogOpen, setResetPasswordDialogOpen] = useState(false);
   const [changeEmailDialogOpen, setChangeEmailDialogOpen] = useState(false);
   const [changeNameDialogOpen, setChangeNameDialogOpen] = useState(false);
   const [changeLocationDialogOpen, setChangeLocationDialogOpen] = useState(false);
+  const [changeRoleDialogOpen, setChangeRoleDialogOpen] = useState(false);
 
   // Selected user for dialogs
   const [selectedUser, setSelectedUser] = useState(null);
@@ -138,6 +143,8 @@ function AllUsers() {
   const [changeNameError, setChangeNameError] = useState(null);
   const [changeLocationLoading, setChangeLocationLoading] = useState(false);
   const [changeLocationError, setChangeLocationError] = useState(null);
+  const [changeRoleLoading, setChangeRoleLoading] = useState(false);
+  const [changeRoleError, setChangeRoleError] = useState(null);
 
   // Success message
   const [successMessage, setSuccessMessage] = useState("");
@@ -146,17 +153,19 @@ function AllUsers() {
   const [selectedModels, setSelectedModels] = useState([]);
   const [verifying, setVerifying] = useState(false);
 
-  // Get models from filtered users (only models can be verified)
-  const allModels = filteredUsers.filter((u) => u.role === "model");
-  const unverifiedModels = allModels.filter((u) => u.verified !== true);
-  const verifiedModels = allModels.filter((u) => u.verified === true);
+  // Get models from filtered users (only models can be verified) - memoized to prevent infinite re-renders
+  const allModels = useMemo(() => filteredUsers.filter((u) => u.role === "model"), [filteredUsers]);
+  const unverifiedModels = useMemo(() => allModels.filter((u) => u.verified !== true), [allModels]);
+  const verifiedModels = useMemo(() => allModels.filter((u) => u.verified === true), [allModels]);
 
-  // Get selected models by verification status
-  const selectedUnverified = selectedModels.filter((uid) =>
-    unverifiedModels.some((m) => m.uid === uid)
+  // Get selected models by verification status - memoized
+  const selectedUnverified = useMemo(
+    () => selectedModels.filter((uid) => unverifiedModels.some((m) => m.uid === uid)),
+    [selectedModels, unverifiedModels]
   );
-  const selectedVerified = selectedModels.filter((uid) =>
-    verifiedModels.some((m) => m.uid === uid)
+  const selectedVerified = useMemo(
+    () => selectedModels.filter((uid) => verifiedModels.some((m) => m.uid === uid)),
+    [selectedModels, verifiedModels]
   );
 
   // Handle checkbox toggle
@@ -525,13 +534,88 @@ function AllUsers() {
     }
   }, [changeLocationLoading]);
 
-  // Fetch all users on mount
-  useEffect(() => {
-    const fetchUsers = async () => {
-      const db = getFirestore();
-      const snapshot = await getDocs(collection(db, "users"));
+  // Handle change role click
+  const handleChangeRoleClick = useCallback((user) => {
+    setSelectedUser(user);
+    setChangeRoleError(null);
+    setChangeRoleDialogOpen(true);
+  }, []);
 
-      const usersList = snapshot.docs.map((docSnap) => {
+  // Handle change role confirmation
+  const handleChangeRoleConfirm = useCallback(async (roleData) => {
+    if (!selectedUser) return;
+
+    setChangeRoleLoading(true);
+    setChangeRoleError(null);
+
+    try {
+      const db = getFirestore();
+      const updateData = {
+        role: roleData.platformRole,
+        organisationId: roleData.organisationId,
+        organisationRole: roleData.organisationRole,
+        updatedAt: new Date().toISOString(),
+      };
+
+      await updateDoc(doc(db, "users", selectedUser.uid), updateData);
+
+      // Log admin action
+      await logAdminAction({
+        adminUid: currentUser.uid,
+        adminEmail: currentUser.email,
+        adminName: `${currentUser.firstName || ""} ${currentUser.lastName || ""}`.trim(),
+        action: ADMIN_ACTIONS.UPDATE_USER_ROLE,
+        description: `Updated role/organisation for user: ${selectedUser.email}`,
+        details: {
+          userUid: selectedUser.uid,
+          userEmail: selectedUser.email,
+          oldRole: selectedUser.role,
+          newRole: roleData.platformRole,
+          oldOrganisationId: selectedUser.organisationId,
+          newOrganisationId: roleData.organisationId,
+          newOrganisationRole: roleData.organisationRole,
+        },
+      });
+
+      // Update local state
+      setRawUsers((prev) =>
+        prev.map((u) =>
+          u.uid === selectedUser.uid
+            ? {
+                ...u,
+                role: roleData.platformRole,
+                organisationId: roleData.organisationId || "",
+                organisationRole: roleData.organisationRole || "",
+              }
+            : u
+        )
+      );
+      setChangeRoleDialogOpen(false);
+      setSelectedUser(null);
+      setSuccessMessage("User role updated successfully");
+    } catch (err) {
+      setChangeRoleError(err.message || "Failed to update user role");
+    } finally {
+      setChangeRoleLoading(false);
+    }
+  }, [selectedUser, currentUser]);
+
+  const handleCloseChangeRoleDialog = useCallback(() => {
+    if (!changeRoleLoading) {
+      setChangeRoleDialogOpen(false);
+      setSelectedUser(null);
+      setChangeRoleError(null);
+    }
+  }, [changeRoleLoading]);
+
+  // Fetch all users and organisations on mount
+  useEffect(() => {
+    const fetchData = async () => {
+      const db = getFirestore();
+
+      // Fetch users
+      const usersSnapshot = await getDocs(collection(db, "users"));
+      const usersList = usersSnapshot.docs.map((docSnap) => {
         const data = docSnap.data();
         return {
           uid: docSnap.id,
@@ -549,13 +633,23 @@ function AllUsers() {
           profileAvatar: data.profileAvatar || "",
           createdAt: data.createdAt || null,
           verified: data.verified,
+          organisationId: data.organisationId || "",
+          organisationRole: data.organisationRole || "",
         };
       });
-
       setRawUsers(usersList);
+
+      // Fetch organisations
+      const orgsSnapshot = await getDocs(collection(db, "organisations"));
+      const orgsList = orgsSnapshot.docs.map((docSnap) => ({
+        id: docSnap.id,
+        companyName: docSnap.data().companyName || "Unknown",
+        userCount: docSnap.data().userCount || 0,
+      }));
+      setOrganisations(orgsList);
     };
 
-    fetchUsers();
+    fetchData();
   }, []);
 
   // Get unique locations for filter dropdown
@@ -766,6 +860,15 @@ function AllUsers() {
                         <Icon fontSize="small">location_on</Icon>
                       </IconButton>
                     </Tooltip>
+                    <Tooltip title="Change Role / Organisation">
+                      <IconButton
+                        size="small"
+                        onClick={() => handleChangeRoleClick(user)}
+                        sx={{ color: "#9c27b0" }}
+                      >
+                        <Icon fontSize="small">manage_accounts</Icon>
+                      </IconButton>
+                    </Tooltip>
                   </>
                 )}
                 {!isTargetSuperAdmin && !isCurrentUser && (
@@ -793,6 +896,7 @@ function AllUsers() {
     handleChangeEmailClick,
     handleChangeNameClick,
     handleChangeLocationClick,
+    handleChangeRoleClick,
     handleToggleVerification,
     currentUser,
     isSuperAdmin,
@@ -975,6 +1079,18 @@ function AllUsers() {
         user={selectedUser}
         loading={changeLocationLoading}
         error={changeLocationError}
+      />
+
+      {/* Change Role Dialog */}
+      <ChangeRoleDialog
+        open={changeRoleDialogOpen}
+        onClose={handleCloseChangeRoleDialog}
+        onConfirm={handleChangeRoleConfirm}
+        user={selectedUser}
+        organisations={organisations}
+        loading={changeRoleLoading}
+        error={changeRoleError}
+        isSuperAdmin={isSuperAdmin}
       />
 
       {/* Success Snackbar */}

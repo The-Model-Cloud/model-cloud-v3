@@ -62,6 +62,11 @@ import AllAccountManagers from "layouts/admin/users/account-managers";
 import Organisations from "layouts/admin/organisations";
 import OrganisationDetail from "layouts/admin/organisations/detail";
 
+// Organisation management layouts (for account managers)
+import OrganisationTeams from "layouts/organisation/teams";
+import OrganisationTeamDetail from "layouts/organisation/teams/detail";
+import OrganisationMembers from "layouts/organisation/members";
+
 // Favourites layouts
 import FavouritesOverview from "layouts/favourites/overview";
 import FavouriteListDetail from "layouts/favourites/list-detail";
@@ -283,14 +288,14 @@ const routes = [
   },
 
   // ============================================================
-  // ORGANISATION SECTION (For Account Managers)
+  // ORGANISATION SECTION (For Account Managers and Admins)
   // ============================================================
   {
     type: "collapse",
     name: "Organisation",
     key: "organisation",
     icon: <Icon fontSize="small">business</Icon>,
-    roles: ["account manager"], // Only account managers
+    roles: ["account manager", ...ADMIN_ROLES], // Account managers and admins
     collapse: [
       {
         name: "Company Profile",
@@ -300,11 +305,18 @@ const routes = [
         icon: <Icon fontSize="small">business_center</Icon>,
       },
       {
-        name: "Users",
-        key: "org-users",
-        route: "/organisation/users",
-        component: <DataTables />, // Placeholder - will need org users component
-        icon: <Icon fontSize="small">group</Icon>,
+        name: "Teams",
+        key: "org-teams",
+        route: "/organisation/teams",
+        component: <OrganisationTeams />,
+        icon: <Icon fontSize="small">groups</Icon>,
+      },
+      {
+        name: "Members",
+        key: "org-members",
+        route: "/organisation/members",
+        component: <OrganisationMembers />,
+        icon: <Icon fontSize="small">people</Icon>,
       },
     ],
   },
@@ -366,14 +378,14 @@ const routes = [
   },
 
   // ============================================================
-  // ORGANISATIONS SECTION (For Admins and Account Managers)
+  // ORGANISATIONS SECTION (For Admins only - account managers use the "Organisation" menu)
   // ============================================================
   {
     type: "collapse",
     name: "Organisations",
     key: "organisations",
     icon: <Icon fontSize="small">corporate_fare</Icon>,
-    roles: ["admin", "super admin", "account manager"],
+    roles: ADMIN_ROLES,
     noCollapse: true,
     route: "/admin/organisations",
     component: <Organisations />,
@@ -703,6 +715,15 @@ const routes = [
     route: "/admin/organisations/:orgId",
     component: <OrganisationDetail />,
     roles: [...ADMIN_ROLES, "account manager"],
+    invisible: true,
+  },
+  {
+    type: "collapse",
+    name: "Team Detail",
+    key: "team-detail",
+    route: "/organisation/teams/:teamId",
+    component: <OrganisationTeamDetail />,
+    roles: ["account manager", ...ADMIN_ROLES],
     invisible: true,
   },
   {

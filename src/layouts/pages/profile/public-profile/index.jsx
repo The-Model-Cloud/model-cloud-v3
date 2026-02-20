@@ -28,6 +28,14 @@ import BookModelModal from "components/BookModelModal";
 // API functions
 import { sendVerificationEmail, sendUnverificationEmail } from "utils/api";
 
+// Transform Cloudinary URL to use face detection for thumbnails
+const getCloudinaryThumbnail = (url, width = 400, height = 450) => {
+  if (!url || !url.includes("res.cloudinary.com")) return url;
+  const parts = url.split("/upload/");
+  if (parts.length !== 2) return url;
+  return `${parts[0]}/upload/c_fill,g_face,w_${width},h_${height},q_auto,f_auto/${parts[1]}`;
+};
+
 // Stat item component for clean display
 function StatItem({ label, value, unit }) {
   if (!value) return null;
@@ -584,7 +592,7 @@ function PublicProfile() {
                       >
                         <Box
                           component="img"
-                          src={url}
+                          src={getCloudinaryThumbnail(url, 600, parseInt(height))}
                           alt={`Portfolio ${index + 1}`}
                           sx={{
                             width: "100%",
@@ -657,7 +665,7 @@ function PublicProfile() {
                       >
                         <Box
                           component="img"
-                          src={url}
+                          src={getCloudinaryThumbnail(url, 400, 380)}
                           alt={`Digital ${index + 1}`}
                           sx={{
                             width: "100%",
@@ -725,7 +733,7 @@ function PublicProfile() {
                     >
                       <Box
                         component="img"
-                        src={url}
+                        src={getCloudinaryThumbnail(url, 500, 420)}
                         alt={`Portfolio ${index + 1}`}
                         sx={{
                           width: "100%",

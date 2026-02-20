@@ -3,7 +3,7 @@
 This checklist tracks the gaps between the February 2026 press release claims and the current platform implementation.
 
 **Last Updated:** 2026-02-20
-**Overall Completion:** ~75% (5 items completed today)
+**Overall Completion:** ~80% (6 items completed today)
 
 ---
 
@@ -134,20 +134,24 @@ This checklist tracks the gaps between the February 2026 press release claims an
 - [x] Admin can manage organisation users
 - [x] User verification system
 
+### Recently Implemented
+- [x] **Tiered access levels within organisations** - COMPLETED 2026-02-20
+  - Three organisation roles: owner, admin, member
+  - Each role has configurable permissions
+  - Permission checking functions in `src/utils/organisations.js`
+
+- [x] **Teams and departments** - COMPLETED 2026-02-20
+  - Teams subcollection: `organisations/{orgId}/teams/{teamId}`
+  - Team CRUD: create, list, view, update, delete
+  - Assign users to teams
+  - UI pages: `src/layouts/organisation/teams/` and `src/layouts/organisation/members/`
+  - Firestore rules for team-based access
+
 ### Missing - Critical
-- [ ] **Tiered access levels within organisations** - Press release claims this but doesn't exist
-  - No sub-roles or permission tiers
-  - All org users have identical permissions
-  - Priority: **CRITICAL** (press release accuracy)
-
-- [ ] **Teams and departments** - Press release claims this but doesn't exist
-  - Zero implementation of team structure
-  - No hierarchical access control
-  - Priority: **CRITICAL** (press release accuracy)
-
-- [ ] **Account manager self-service UI** - Route exists but UI is placeholder
-  - File: `src/routes.js:305-306` points to `<DataTables />` placeholder
-  - Account managers cannot manage their own organisation's users
+- [ ] **Account manager self-service UI** - Partially implemented
+  - Teams and Members UI created
+  - Missing: Organisation settings/profile page
+  - Missing: Member invitation flow
   - Priority: **HIGH**
 
 ### Missing - Enhancement
@@ -200,8 +204,8 @@ This checklist tracks the gaps between the February 2026 press release claims an
 
 ### CRITICAL (Must fix - press release accuracy at stake)
 1. [x] ~~"Book Model" button functionality~~ - **COMPLETED**
-2. [ ] Tiered access levels within organisations
-3. [ ] Teams and departments structure
+2. [x] ~~Tiered access levels within organisations~~ - **COMPLETED**
+3. [x] ~~Teams and departments structure~~ - **COMPLETED**
 4. [ ] Organisation dashboard
 5. [x] ~~Jobs linked to organisations~~ - **COMPLETED**
 
@@ -209,7 +213,7 @@ This checklist tracks the gaps between the February 2026 press release claims an
 6. [ ] Direct messaging to models
 7. [x] ~~Job cancellation/withdrawal~~ - **COMPLETED**
 8. [x] ~~Cancel awarded booking~~ - **COMPLETED**
-9. [ ] Account manager self-service UI
+9. [ ] Account manager self-service UI (partially done)
 10. [ ] Organisation-level analytics
 11. [ ] Organisation-level model relationships
 

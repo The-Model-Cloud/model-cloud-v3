@@ -213,35 +213,83 @@ service cloud.firestore {
     // ORGANISATIONS - Company/Organisation records
     // ============================================================================
 
+    // Helper: Check if user belongs to a specific organisation
+    function isInOrganisation(orgId) {
+      let userData = get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+      return isAuthenticated() && userData.organisationId == orgId;
+    }
+
+    // Helper: Get user's organisation role
+    function getUserOrganisationRole() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data.organisationRole;
+    }
+
+    // Helper: Check if user is organisation owner or admin
+    function isOrgAdminOrOwner(orgId) {
+      let userData = get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+      return isAuthenticated() &&
+        userData.organisationId == orgId &&
+        (userData.organisationRole == "owner" || userData.organisationRole == "admin");
+    }
+
+    // Helper: Check if user is an account manager for the organisation
+    function isOrgAccountManager(orgId) {
+      let userData = get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+      return isAuthenticated() &&
+        userData.organisationId == orgId &&
+        userData.role == "account manager";
+    }
+
     match /organisations/{orgId} {
-      // Admins and account managers can read organisations
+      // Admins can read all orgs, org members can read their own org
       allow read: if isAuthenticated() &&
-        (isAdmin() || getUserRole() == "account manager");
+        (isAdmin() || isInOrganisation(orgId));
 
       // Only admins can create organisations
       allow create: if isAdmin();
 
-      // Only admins can update organisations
-      allow update: if isAdmin();
+      // Admins or org account managers can update their organisation
+      allow update: if isAdmin() || isOrgAccountManager(orgId);
 
       // Only super admins can delete organisations
       allow delete: if isSuperAdmin();
+
+      // Teams subcollection
+      match /teams/{teamId} {
+        // Organisation members can read teams, admins can read all
+        allow read: if isInOrganisation(orgId) || isAdmin();
+
+        // Org admins/owners or account managers can create teams
+        allow create: if isOrgAdminOrOwner(orgId) || isOrgAccountManager(orgId) || isAdmin();
+
+        // Org admins/owners or account managers can update teams
+        allow update: if isOrgAdminOrOwner(orgId) || isOrgAccountManager(orgId) || isAdmin();
+
+        // Org admins/owners or account managers can delete teams
+        allow delete: if isOrgAdminOrOwner(orgId) || isOrgAccountManager(orgId) || isAdmin();
+      }
     }
 
     // ============================================================================
     // CMS - Public Website Content Management
     // ============================================================================
 
-    // CMS Pages - Public read for published pages, super admin write
+    // CMS Pages - Public read for published pages, admin write
     match /cmsPages/{pageId} {
-      allow read: if resource.data.published == true || isSuperAdmin();
-      allow create, update, delete: if isSuperAdmin();
+      allow read: if resource.data.published == true || isAdmin();
+      allow create, update, delete: if isAdmin();
     }
 
-    // Pricing Tiers - Public read for published tiers, super admin write
+    // Pricing Tiers - Public read for published tiers, admin write
     match /pricingTiers/{tierId} {
-      allow read: if resource.data.published == true || isSuperAdmin();
-      allow create, update, delete: if isSuperAdmin();
+      allow read: if resource.data.published == true || isAdmin();
+      allow create, update, delete: if isAdmin();
+    }
+
+    // Site Content - Public read, admin write
+    match /siteContent/{contentId} {
+      allow read: if true;
+      allow create, update, delete: if isAdmin();
     }
 
     // Contact Form Submissions - Anyone can create, only admins can read/manage

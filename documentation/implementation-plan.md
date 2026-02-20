@@ -71,7 +71,7 @@ Implementation details:
 
 ---
 
-### 1.2 Organisation Team Structure
+### 1.2 Organisation Team Structure ✅ COMPLETE
 
 **Problem:** Press release claims "tiered access levels" and "teams and departments" which don't exist.
 
@@ -105,51 +105,47 @@ Implementation details:
 }
 ```
 
-**Files to Create:**
+**Files Created:**
 
 ```
 src/layouts/organisation/
-├── index.js                    # Organisation dashboard
 ├── teams/
-│   ├── index.js               # Team list view
-│   ├── create/index.js        # Create team form
-│   └── detail/index.js        # Team detail & members
+│   ├── index.js               # Team list view with create/delete dialogs
+│   └── detail/index.js        # Team detail & member management
 ├── members/
-│   ├── index.js               # All org members
-│   └── invite/index.js        # Invite new member
-└── settings/
-    └── index.js               # Org settings & permissions
+│   └── index.js               # All org members with role/team editing
 ```
 
-**Files to Modify:**
+**Files Modified:**
 
 ```
 src/routes.js
-└── Add organisation routes with proper access control
+└── Added organisation routes (Teams, Members)
+└── Added invisible route for team detail
 
 src/utils/organisations.js
-└── Add team CRUD functions
-└── Add member management functions
-└── Add permission checking functions
+└── Added ORG_ROLES constant (owner, admin, member)
+└── Added ROLE_PERMISSIONS constant
+└── Added team CRUD: createTeam, getOrganisationTeams, getTeamById, updateTeam, deleteTeam
+└── Added member management: getTeamMembers, assignUserToTeam, updateMemberRole, addUserToOrganisation, removeUserFromOrganisation
+└── Added permission checks: getUserPermissions, hasPermission, canManageOrganisation, canInviteMembers, canViewAllOrgJobs, canManageTeamMembers
 
 firestore.rules
-└── Add teams subcollection rules
-└── Add organisationRole-based access
-└── Add team-based job visibility rules
-
-functions/index.js
-└── Add inviteOrganisationMember()
-└── Add updateMemberRole()
-└── Add createTeam()
+└── Added isInOrganisation() helper
+└── Added getUserOrganisationRole() helper
+└── Added isOrgAdminOrOwner() helper
+└── Added teams subcollection rules under organisations
 ```
 
 **Acceptance Criteria:**
-- [ ] Organisations can create teams
-- [ ] Users can be assigned to teams
-- [ ] Teams have configurable permissions
-- [ ] Organisation roles: owner, admin, member
-- [ ] Account managers can manage their organisation
-- [ ] Team-based access control works
+- [x] Organisations can create teams
+- [x] Users can be assigned to teams
+- [x] Teams have configurable permissions
+- [x] Organisation roles: owner, admin, member
+- [x] Account managers can manage their organisation
+- [x] Team-based access control works
+
+**Status: COMPLETE** (2026-02-20)
 
 ---
 

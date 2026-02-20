@@ -2939,6 +2939,213 @@ exports.deleteOrphanedAuthAccounts = onCall(async (request) => {
 
 
 // ============================================================================
+// ORGANISATION MEMBER MANAGEMENT
+// ============================================================================
+
+/**
+ * Create a new organisation member (Account Manager / Org Admin / Owner only)
+ * Creates a new user account with platform role "client" and assigns to organisation
+ * @param {Object} data - Member data
+ * @param {string} data.email - Email address (required)
+ * @param {string} data.password - Password (required)
+ * @param {string} data.firstName - First name (required)
+ * @param {string} data.lastName - Last name (required)
+ * @param {string} data.organisationRole - Role in organisation: "admin" or "member" (required)
+ * @param {string} data.teamId - Optional team ID to assign to
+ * @returns {Object} - Created user data
+ */
+exports.createOrganisationMember = onCall({
+  cors: true,
+  invoker: "public"  // Allow unauthenticated requests at Cloud Run level (function validates auth internally)
+}, async (request) => {
+  // 1. Verify authentication
+  if (!request.auth) {
+    throw new HttpsError("unauthenticated", "User must be logged in");
+  }
+
+  const callerUid = request.auth.uid;
+  const { email, password, firstName, lastName, organisationRole, teamId } = request.data;
+
+  // 2. Validate required fields
+  if (!email || !password || !firstName || !lastName || !organisationRole) {
+    throw new HttpsError("invalid-argument", "Missing required fields: email, password, firstName, lastName, organisationRole");
+  }
+
+  // 3. Validate organisation role (only admin or member allowed, not owner)
+  if (!["admin", "member"].includes(organisationRole)) {
+    throw new HttpsError("invalid-argument", "organisationRole must be 'admin' or 'member'");
+  }
+
+  // 4. Validate password strength
+  if (password.length < 6) {
+    throw new HttpsError("invalid-argument", "Password must be at least 6 characters");
+  }
+
+  // 5. Get caller's data and verify permissions
+  const callerDoc = await db.collection("users").doc(callerUid).get();
+  if (!callerDoc.exists) {
+    throw new HttpsError("permission-denied", "Caller user not found");
+  }
+
+  const callerData = callerDoc.data();
+  const callerOrgId = callerData.organisationId;
+  const callerOrgRole = callerData.organisationRole;
+  const callerPlatformRole = callerData.role;
+
+  // 6. Verify caller can add members
+  // Must be: account manager of org, OR org admin/owner, OR platform admin
+  const isPlatformAdmin = callerPlatformRole === "admin" || callerPlatformRole === "super admin";
+  const isOrgOwnerOrAdmin = callerOrgRole === "owner" || callerOrgRole === "admin";
+  const isAccountManager = callerPlatformRole === "account manager";
+
+  if (!isPlatformAdmin && !isOrgOwnerOrAdmin && !isAccountManager) {
+    throw new HttpsError("permission-denied", "You do not have permission to add organisation members");
+  }
+
+  // 7. Verify caller has an organisation (unless platform admin)
+  if (!isPlatformAdmin && !callerOrgId) {
+    throw new HttpsError("failed-precondition", "You are not associated with an organisation");
+  }
+
+  const orgId = callerOrgId;
+
+  console.log(`User ${callerData.email} creating organisation member: ${email} in org ${orgId}`);
+
+  try {
+    // 8. Check if email already exists in Auth
+    try {
+      await admin.auth().getUserByEmail(email);
+      throw new HttpsError("already-exists", "A user with this email address already exists");
+    } catch (authError) {
+      if (authError.code !== "auth/user-not-found") {
+        // If error is not "user not found", re-throw
+        if (authError instanceof HttpsError) throw authError;
+        throw new HttpsError("internal", `Error checking email: ${authError.message}`);
+      }
+      // User not found - good, we can create them
+    }
+
+    // 9. Generate unique publicSlug
+    const baseSlug = `${firstName.trim().toLowerCase()}.${lastName.trim().charAt(0).toLowerCase()}`;
+    let slug = baseSlug;
+    let slugCount = 1;
+
+    while (true) {
+      const slugQuery = await db.collection("users").where("publicSlug", "==", slug).get();
+      if (slugQuery.empty) break;
+      slug = `${baseSlug}${slugCount}`;
+      slugCount++;
+    }
+
+    // 10. Create user in Firebase Auth
+    const newUser = await admin.auth().createUser({
+      email,
+      password,
+      displayName: `${firstName} ${lastName}`.trim(),
+    });
+
+    const uid = newUser.uid;
+
+    // 11. Create user document in Firestore
+    const userData = {
+      uid,
+      email,
+      firstName: firstName.trim(),
+      lastName: lastName.trim(),
+      publicSlug: slug,
+      role: "client", // Platform role is always client for org members
+      organisationId: orgId,
+      organisationRole,
+      teamId: teamId || null,
+      status: "active",
+      createdAt: new Date().toISOString(),
+      createdBy: callerUid,
+    };
+
+    await db.collection("users").doc(uid).set(userData);
+
+    // 12. Increment organisation user count
+    const orgRef = db.collection("organisations").doc(orgId);
+    const orgDoc = await orgRef.get();
+    if (orgDoc.exists) {
+      const currentCount = orgDoc.data().userCount || 0;
+      await orgRef.update({
+        userCount: currentCount + 1,
+        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      });
+    }
+
+    // 13. Log admin action
+    try {
+      await db.collection("adminLogs").add({
+        adminUid: callerUid,
+        adminEmail: callerData.email,
+        adminName: `${callerData.firstName || ""} ${callerData.lastName || ""}`.trim(),
+        action: "CREATE_ORG_MEMBER",
+        description: `Created organisation member: ${email}`,
+        details: {
+          newUserUid: uid,
+          newUserEmail: email,
+          organisationId: orgId,
+          organisationRole,
+          teamId: teamId || null,
+        },
+        createdAt: admin.firestore.FieldValue.serverTimestamp(),
+        timestamp: new Date().toISOString(),
+      });
+    } catch (logError) {
+      console.error("Failed to log admin action:", logError);
+    }
+
+    // 14. Send welcome email
+    try {
+      if (process.env.SENDGRID_API_KEY) {
+        await sgMail.send({
+          to: email,
+          from: {
+            email: process.env.SENDGRID_FROM_EMAIL || "noreply@themodelcloud.com",
+            name: process.env.SENDGRID_FROM_NAME || "The Model Cloud",
+          },
+          subject: "Welcome to The Model Cloud",
+          html: `
+            <h2>Welcome to The Model Cloud!</h2>
+            <p>Hi ${firstName},</p>
+            <p>You have been added to an organisation on The Model Cloud.</p>
+            <p>Your login details are:</p>
+            <ul>
+              <li><strong>Email:</strong> ${email}</li>
+              <li><strong>Password:</strong> ${password}</li>
+            </ul>
+            <p>Please log in at <a href="${process.env.APP_URL || 'https://app.themodelcloud.com'}">${process.env.APP_URL || 'https://app.themodelcloud.com'}</a> and change your password.</p>
+            <p>Best regards,<br>The Model Cloud Team</p>
+          `,
+        });
+      }
+    } catch (emailError) {
+      console.warn("Failed to send welcome email:", emailError);
+      // Don't fail the operation if email fails
+    }
+
+    console.log(`Organisation member created: ${email} (${uid}) in org ${orgId}`);
+
+    return {
+      success: true,
+      uid,
+      email,
+      firstName,
+      lastName,
+      organisationRole,
+    };
+
+  } catch (error) {
+    console.error(`Error creating organisation member ${email}:`, error);
+    if (error instanceof HttpsError) throw error;
+    throw new HttpsError("internal", `Failed to create member: ${error.message}`);
+  }
+});
+
+
+// ============================================================================
 // CLOUDINARY CLEANUP FUNCTIONS
 // ============================================================================
 
