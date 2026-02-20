@@ -30,12 +30,15 @@ import AppBar from "@mui/material/AppBar";
 import Toolbar from "@mui/material/Toolbar";
 import IconButton from "@mui/material/IconButton";
 import Menu from "@mui/material/Menu";
+import MenuItem from "@mui/material/MenuItem";
+import Divider from "@mui/material/Divider";
 import Icon from "@mui/material/Icon";
 
 // Material Dashboard 3 PRO React components
 import MDBox from "components/MDBox";
 import MDInput from "components/MDInput";
 import MDBadge from "components/MDBadge";
+import MDTypography from "components/MDTypography";
 
 // Material Dashboard 3 PRO React examples
 import Breadcrumbs from "examples/Breadcrumbs";
@@ -62,10 +65,59 @@ import {
 // Notifications context
 import { useNotifications } from "context/NotificationsContext";
 
+// Helper to get icon for notification type
+const getNotificationIcon = (type) => {
+  switch (type) {
+    case "job_invitation":
+      return "mail";
+    case "job_application":
+      return "person_add";
+    case "invitation_accepted":
+      return "how_to_reg";
+    case "job_application_confirmation":
+      return "check_circle";
+    case "job_application_cancelled":
+      return "cancel";
+    case "job_awarded":
+      return "emoji_events";
+    case "payment":
+    case "payment_authorised":
+      return "lock";
+    case "job_marked_complete":
+      return "assignment_turned_in";
+    case "funds_released":
+    case "funds_auto_released":
+      return "paid";
+    case "payment_failed":
+      return "error";
+    case "subscription_expired":
+      return "warning";
+    default:
+      return "notifications";
+  }
+};
+
+// Helper to format notification time
+const formatNotificationTime = (timestamp) => {
+  if (!timestamp) return "";
+  const date = timestamp.toDate ? timestamp.toDate() : new Date(timestamp);
+  const now = new Date();
+  const diffMs = now - date;
+  const diffMins = Math.floor(diffMs / 60000);
+  const diffHours = Math.floor(diffMs / 3600000);
+  const diffDays = Math.floor(diffMs / 86400000);
+
+  if (diffMins < 1) return "Just now";
+  if (diffMins < 60) return `${diffMins}m ago`;
+  if (diffHours < 24) return `${diffHours}h ago`;
+  if (diffDays < 7) return `${diffDays}d ago`;
+  return date.toLocaleDateString();
+};
+
 function DashboardNavbar({ absolute, light, isMini }) {
   const [navbarType, setNavbarType] = useState();
   const [controller, dispatch] = useMaterialUIController();
-  const { unreadCount: notificationCount } = useNotifications();
+  const { unreadCount: notificationCount, notifications, markAsRead, markAllAsRead } = useNotifications();
   const navigate = useNavigate();
   const {
     miniSidenav,
@@ -122,6 +174,19 @@ function DashboardNavbar({ absolute, light, isMini }) {
     }
   };
 
+  // Handle notification click
+  const handleNotificationClick = (notification) => {
+    // Mark as read
+    if (!notification.read) {
+      markAsRead(notification.id);
+    }
+    handleCloseMenu();
+    // Navigate to the link if provided
+    if (notification.data?.link) {
+      navigate(notification.data.link);
+    }
+  };
+
   // Render the notifications menu
   const renderMenu = () => (
     <Menu
@@ -129,21 +194,146 @@ function DashboardNavbar({ absolute, light, isMini }) {
       anchorReference={null}
       anchorOrigin={{
         vertical: "bottom",
-        horizontal: "left",
+        horizontal: "right",
+      }}
+      transformOrigin={{
+        vertical: "top",
+        horizontal: "right",
       }}
       open={Boolean(openMenu)}
       onClose={handleCloseMenu}
       sx={{ mt: 2 }}
+      PaperProps={{
+        sx: {
+          maxHeight: 400,
+          width: 360,
+          overflow: "auto",
+        },
+      }}
     >
-      <NotificationItem icon={<Icon>email</Icon>} title="Check new messages" />
-      <NotificationItem
-        icon={<Icon>podcasts</Icon>}
-        title="Manage Podcast sessions"
-      />
-      <NotificationItem
-        icon={<Icon>shopping_cart</Icon>}
-        title="Payment successfully completed"
-      />
+      {/* Header */}
+      <MDBox px={2} py={1.5} display="flex" justifyContent="space-between" alignItems="center">
+        <MDTypography variant="h6" fontWeight="medium">
+          Notifications
+        </MDTypography>
+        {notificationCount > 0 && (
+          <MDTypography
+            variant="caption"
+            color="info"
+            sx={{ cursor: "pointer", "&:hover": { textDecoration: "underline" } }}
+            onClick={() => {
+              markAllAsRead();
+            }}
+          >
+            Mark all as read
+          </MDTypography>
+        )}
+      </MDBox>
+      <Divider sx={{ m: 0 }} />
+
+      {/* Notifications list */}
+      {notifications.length === 0 ? (
+        <MDBox px={2} py={3} textAlign="center">
+          <Icon sx={{ fontSize: 40, color: "grey.400", mb: 1 }}>notifications_none</Icon>
+          <MDTypography variant="body2" color="text">
+            No notifications yet
+          </MDTypography>
+        </MDBox>
+      ) : (
+        notifications.slice(0, 10).map((notification) => (
+          <MenuItem
+            key={notification.id}
+            onClick={() => handleNotificationClick(notification)}
+            sx={{
+              py: 1.5,
+              px: 2,
+              backgroundColor: notification.read ? "transparent" : "action.hover",
+              "&:hover": {
+                backgroundColor: "action.selected",
+              },
+            }}
+          >
+            <MDBox display="flex" alignItems="flex-start" width="100%">
+              <MDBox
+                display="flex"
+                alignItems="center"
+                justifyContent="center"
+                width={40}
+                height={40}
+                borderRadius="lg"
+                sx={{
+                  backgroundColor: notification.read ? "grey.200" : "info.main",
+                  color: notification.read ? "grey.600" : "white",
+                  mr: 1.5,
+                  flexShrink: 0,
+                }}
+              >
+                <Icon fontSize="small">{getNotificationIcon(notification.type)}</Icon>
+              </MDBox>
+              <MDBox flex={1} minWidth={0}>
+                <MDTypography
+                  variant="button"
+                  fontWeight={notification.read ? "regular" : "medium"}
+                  sx={{
+                    display: "block",
+                    whiteSpace: "nowrap",
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                  }}
+                >
+                  {notification.title}
+                </MDTypography>
+                <MDTypography
+                  variant="caption"
+                  color="text"
+                  sx={{
+                    display: "-webkit-box",
+                    WebkitLineClamp: 2,
+                    WebkitBoxOrient: "vertical",
+                    overflow: "hidden",
+                    lineHeight: 1.4,
+                  }}
+                >
+                  {notification.message}
+                </MDTypography>
+                <MDTypography variant="caption" color="secondary" sx={{ mt: 0.5, display: "block" }}>
+                  {formatNotificationTime(notification.createdAt)}
+                </MDTypography>
+              </MDBox>
+              {!notification.read && (
+                <MDBox
+                  width={8}
+                  height={8}
+                  borderRadius="50%"
+                  bgcolor="info.main"
+                  ml={1}
+                  flexShrink={0}
+                />
+              )}
+            </MDBox>
+          </MenuItem>
+        ))
+      )}
+
+      {/* View all link */}
+      {notifications.length > 0 && (
+        <>
+          <Divider sx={{ m: 0 }} />
+          <MDBox
+            py={1.5}
+            textAlign="center"
+            sx={{ cursor: "pointer", "&:hover": { backgroundColor: "action.hover" } }}
+            onClick={() => {
+              handleCloseMenu();
+              navigate("/notifications");
+            }}
+          >
+            <MDTypography variant="button" color="info">
+              View all notifications
+            </MDTypography>
+          </MDBox>
+        </>
+      )}
     </Menu>
   );
 

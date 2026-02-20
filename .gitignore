@@ -39,3 +39,4 @@ nul
 serviceAccountKey.json
 .htpasswd
 .claude/settings.local.json
+firebase-debug.log

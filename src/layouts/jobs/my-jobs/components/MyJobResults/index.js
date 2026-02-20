@@ -37,7 +37,8 @@ function MyJobResults({ jobs, loading }) {
 
   // Count by type
   const ownedCount = jobs.filter(job => job.isOwner).length;
-  const appliedCount = jobs.filter(job => !job.isOwner).length;
+  const appliedCount = jobs.filter(job => job.isApplied).length;
+  const invitedCount = jobs.filter(job => job.isInvited).length;
 
   const handlePageChange = (_, value) => {
     setPage(value);
@@ -125,6 +126,19 @@ function MyJobResults({ jobs, loading }) {
                 {appliedCount} Applied
               </MDTypography>
             </MDBox>
+            {invitedCount > 0 && (
+              <MDBox display="flex" alignItems="center" gap={0.5}>
+                <MDBox
+                  width={10}
+                  height={10}
+                  borderRadius="50%"
+                  sx={{ background: "linear-gradient(135deg, #667eea 0%, #764ba2 100%)" }}
+                />
+                <MDTypography variant="caption" color="text">
+                  {invitedCount} {invitedCount === 1 ? "Invitation" : "Invitations"}
+                </MDTypography>
+              </MDBox>
+            )}
           </MDBox>
         </MDBox>
 

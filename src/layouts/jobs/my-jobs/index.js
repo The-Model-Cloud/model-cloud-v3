@@ -48,9 +48,14 @@ function MyJobs() {
     const userData = userSnap.data();
     const jobRefs = userData.jobs || [];
     const appliedJobs = userData.appliedJobs || [];
+    const invitedJobs = userData.invitedJobs || [];
 
-    // Combine both created jobs and applied jobs
-    const allJobRefs = [...new Set([...jobRefs, ...appliedJobs.map(j => j.jobReference)])];
+    // Combine created jobs, applied jobs, and invited jobs
+    const allJobRefs = [...new Set([
+      ...jobRefs,
+      ...appliedJobs.map(j => j.jobReference),
+      ...invitedJobs.map(j => j.jobReference)
+    ])];
 
     if (allJobRefs.length === 0) {
       setAllJobs([]);
@@ -73,17 +78,34 @@ function MyJobs() {
       jobDocs.forEach((docSnap) => {
         const data = docSnap.data();
 
-        // Check if this is a created job or applied job
+        // Check if this is a created job, applied job, or invited job
         const isCreated = jobRefs.includes(data.reference);
         const appliedJob = appliedJobs.find(aj => aj.jobReference === data.reference);
         const isApplied = !!appliedJob;
+        const invitedJob = invitedJobs.find(ij => ij.jobReference === data.reference);
+        const isInvited = !!invitedJob && !isApplied; // Only show as invited if not already applied
+
+        // Determine application status
+        let applicationStatus;
+        if (isCreated) {
+          applicationStatus = "Owner";
+        } else if (isApplied) {
+          applicationStatus = appliedJob.status || "pending";
+        } else if (isInvited) {
+          applicationStatus = "Invited";
+        } else {
+          applicationStatus = "-";
+        }
 
         jobs.push({
           ...data, // Include all job data for the cards
-          applicationStatus: isApplied ? (appliedJob.status || "pending") : (isCreated ? "Owner" : "-"),
+          applicationStatus,
           appliedAt: appliedJob?.appliedAt,
+          invitedAt: invitedJob?.invitedAt,
+          invitedByName: invitedJob?.invitedByName,
           isOwner: isCreated,
           isApplied: isApplied,
+          isInvited: isInvited,
         });
       });
     }
@@ -106,9 +128,10 @@ function MyJobs() {
   // Apply filters
   const filteredJobs = useMemo(() => {
     return allJobs.filter(job => {
-      // Filter by job type (owned vs applied)
+      // Filter by job type (owned vs applied vs invited)
       if (filters.jobType === "owned" && !job.isOwner) return false;
-      if (filters.jobType === "applied" && job.isOwner) return false;
+      if (filters.jobType === "applied" && !job.isApplied) return false;
+      if (filters.jobType === "invited" && !job.isInvited) return false;
 
       // Filter by job status
       if (filters.jobStatus !== "all") {
@@ -129,7 +152,8 @@ function MyJobs() {
   // Calculate counts for filter badges
   const jobCounts = useMemo(() => ({
     owned: allJobs.filter(j => j.isOwner).length,
-    applied: allJobs.filter(j => !j.isOwner).length,
+    applied: allJobs.filter(j => j.isApplied).length,
+    invited: allJobs.filter(j => j.isInvited).length,
   }), [allJobs]);
 
   return (

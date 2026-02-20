@@ -21,7 +21,12 @@
       "Bash(chmod +x \"d:\\\\Development\\\\model-cloud-v4\\\\.git\\\\hooks\\\\pre-commit\")",
       "Bash(Remove-Item -Recurse -Force \"d:\\\\Development\\\\model-cloud-v4\\\\src\\\\layouts\\\\payments\")",
       "Bash(powershell.exe -Command \"Remove-Item -Recurse -Force ''d:\\\\Development\\\\model-cloud-v4\\\\src\\\\layouts\\\\payments''\")",
-      "Bash(powershell.exe -Command \"Remove-Item -Recurse -Force ''d:\\\\Development\\\\model-cloud-v4\\\\src\\\\layouts\\\\invoices''\")"
+      "Bash(powershell.exe -Command \"Remove-Item -Recurse -Force ''d:\\\\Development\\\\model-cloud-v4\\\\src\\\\layouts\\\\invoices''\")",
+      "Bash(powershell -File - <<'EOF'\nAdd-Type -AssemblyName System.IO.Compression.FileSystem\n$zip = [System.IO.Compression.ZipFile]::OpenRead\\(\"The_Model_Cloud_Press_Release.docx\"\\)\n$entry = $zip.Entries | Where-Object { $_.FullName -eq \"word/document.xml\" }\n$stream = $entry.Open\\(\\)\n$reader = New-Object System.IO.StreamReader\\($stream\\)\n$content = $reader.ReadToEnd\\(\\)\n$reader.Close\\(\\)\n$stream.Close\\(\\)\n$zip.Dispose\\(\\)\n[xml]$xml = $content\n$xml.GetElementsByTagName\\(\"w:t\"\\) | ForEach-Object { $_.InnerText }\nEOF)",
+      "Bash(copy \"The_Model_Cloud_Press_Release.docx\" \"temp_press_release.zip\")",
+      "Bash(find:*)",
+      "Bash(npm run deploy:*)",
+      "Bash(npm uninstall:*)"
     ]
   }
 }

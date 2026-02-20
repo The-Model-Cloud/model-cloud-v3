@@ -133,6 +133,9 @@ function JobSearchFilters({ setFilters, setResults, setLoading }) {
         const appliedJobs = model?.appliedJobs || [];
         const appliedJobRefs = appliedJobs.map(aj => aj.jobReference);
 
+        // Filter jobs first, then check invitations for qualifying jobs
+        const qualifyingJobs = [];
+
         snapshot.forEach((docSnap) => {
             const job = docSnap.data();
 
@@ -181,16 +184,32 @@ function JobSearchFilters({ setFilters, setResults, setLoading }) {
                 const isMatch = doesModelMatchJob(model, job);
 
                 if (!matchOnly || (matchOnly && isMatch)) {
-                    // Determine application status for the model
-                    const hasApplied = appliedJobRefs.includes(job.reference);
-                    jobs.push({
-                        ...job,
-                        applicationStatus: hasApplied ? "Applied" : "Not Applied",
-                        isMatch: isMatch,
-                    });
+                    qualifyingJobs.push({ docSnap, job, isMatch });
                 }
             }
         });
+
+        // Check invitation status for all qualifying jobs in parallel
+        const invitationChecks = await Promise.all(
+            qualifyingJobs.map(async ({ docSnap, job, isMatch }) => {
+                // Check if this model has been invited to this job
+                const invitationRef = doc(db, "jobs", docSnap.id, "invitations", user.uid);
+                const invitationSnap = await getDoc(invitationRef);
+                const isInvited = invitationSnap.exists();
+
+                // Determine application status for the model
+                const hasApplied = appliedJobRefs.includes(job.reference);
+
+                return {
+                    ...job,
+                    applicationStatus: hasApplied ? "Applied" : "Not Applied",
+                    isMatch: isMatch,
+                    isInvited: isInvited,
+                };
+            })
+        );
+
+        jobs.push(...invitationChecks);
 
         // Sort jobs: matches first, then by creation date
         jobs.sort((a, b) => {

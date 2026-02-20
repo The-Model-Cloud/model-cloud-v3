@@ -7,13 +7,16 @@ import { auth, db } from "config/firebase";
 import { doesModelMatchJob } from "utils/matching";
 
 // Notifications
-import { createJobApplicationNotification, createJobApplicationConfirmationNotification, createJobApplicationCancellationNotification } from "utils/notifications";
+import { createJobApplicationNotification, createJobApplicationConfirmationNotification, createJobApplicationCancellationNotification, createInvitationAcceptedNotification } from "utils/notifications";
+
+// Activity Logging
+import { logModelApplied, logApplicationCancelled } from "utils/activityLog";
 
 // API utilities
 import { sendApplicationEmail, sendModelApplicationConfirmation, createThread } from "utils/api";
 
 // Invitations
-import { markInvitationAsApplied } from "utils/invitations";
+import { markInvitationAsApplied, hasBeenInvited, sendInvitationAcceptedMessage } from "utils/invitations";
 
 // Verification
 import { isUnverifiedModel } from "utils/verification";
@@ -25,6 +28,8 @@ import Box from "@mui/material/Box";
 import Fade from "@mui/material/Fade";
 import Backdrop from "@mui/material/Backdrop";
 import Icon from "@mui/material/Icon";
+import Chip from "@mui/material/Chip";
+import Alert from "@mui/material/Alert";
 
 
 import MDBox from "components/MDBox";
@@ -45,6 +50,8 @@ import ShortlistForJobModal from "components/Favourites/ShortlistForJobModal";
 import AwardJobModal from "./components/AwardJobModal";
 import JobPaymentSection from "./components/JobPaymentSection";
 import JobCompletionSection from "./components/JobCompletionSection";
+import JobActivityLog from "./components/JobActivityLog";
+import LoadingOverlay from "components/LoadingOverlay";
 
 // Favourites utilities
 import { getListsForJob } from "utils/favourites";
@@ -81,11 +88,15 @@ function JobDetails() {
     const [linkedShortlist, setLinkedShortlist] = useState(null);
     const [awardModalOpen, setAwardModalOpen] = useState(false);
     const [selectedModelForAward, setSelectedModelForAward] = useState(null);
+    const [isInvited, setIsInvited] = useState(false);
+    const [invitationChecked, setInvitationChecked] = useState(false);
 
     // Check if current user is job owner
     const isJobOwner = model && job && job.userId === model.uid;
     // Check if current user is the awarded model
     const isAwardedModel = model && job?.awardedTo?.modelId === model.uid;
+    // Check if current user is admin
+    const isAdmin = model && ["admin", "super admin"].includes(model.role);
 
     // Function to refresh job data
     const refreshJob = async () => {
@@ -201,38 +212,56 @@ function JobDetails() {
             await markInvitationAsApplied(job.id, model.uid)
                 .catch(err => console.warn("⚠️ Invitation status update skipped:", err.message));
 
-            // ✅ Step 5: Get client details and send notifications/emails (non-critical)
+            // ✅ Step 5: Log activity for admins
+            console.log("Step 5: Logging activity...");
+            await logModelApplied(job, model, isInvited)
+                .catch(err => console.warn("⚠️ Activity logging failed:", err.message));
+
+            // ✅ Step 6: Get client details and send notifications/emails (non-critical)
             try {
-                console.log("Step 5: Fetching client details...");
+                console.log("Step 6: Fetching client details...");
                 const clientSnap = await getDoc(doc(db, "users", job.userId));
                 if (clientSnap.exists()) {
                     const client = clientSnap.data();
 
-                    // ✅ Step 6: Create notification for client
-                    console.log("Step 6: Creating notification for client...");
-                    await createJobApplicationNotification(job.userId, model, job)
-                        .catch(err => console.warn("⚠️ Notification creation failed:", err.message));
+                    // ✅ Step 7: Create notification for client (different message if invitation was accepted)
+                    console.log("Step 7: Creating notification for client...");
+                    if (isInvited) {
+                        await createInvitationAcceptedNotification(job.userId, model, job)
+                            .catch(err => console.warn("⚠️ Invitation accepted notification failed:", err.message));
+                    } else {
+                        await createJobApplicationNotification(job.userId, model, job)
+                            .catch(err => console.warn("⚠️ Notification creation failed:", err.message));
+                    }
 
-                    // ✅ Step 7: Send email to client
-                    console.log("Step 7: Sending email to client...");
+                    // ✅ Step 8: Send email to client
+                    console.log("Step 8: Sending email to client...");
                     await sendApplicationEmail(
                         client.email,
                         `${model.firstName} ${model.lastName || ""}`,
                         job.title,
                         job.reference
                     );
+
+                    // ✅ Step 8b: Send message to client (if accepting invitation)
+                    if (isInvited) {
+                        console.log("Step 8b: Sending acceptance message to client...");
+                        client.uid = job.userId; // Add uid to client object
+                        await sendInvitationAcceptedMessage(model, client, job)
+                            .catch(err => console.warn("⚠️ Acceptance message to client failed:", err.message));
+                    }
                 }
             } catch (clientError) {
                 console.warn("⚠️ Client notification/email failed (non-critical):", clientError.message);
             }
 
-            // ✅ Step 8: Create confirmation notification for model
-            console.log("Step 8: Creating confirmation notification for model...");
+            // ✅ Step 9: Create confirmation notification for model
+            console.log("Step 9: Creating confirmation notification for model...");
             await createJobApplicationConfirmationNotification(model.uid, job)
                 .catch(err => console.warn("⚠️ Model notification creation failed:", err.message));
 
-            // ✅ Step 9: Send confirmation email to model
-            console.log("Step 9: Sending confirmation email to model...");
+            // ✅ Step 10: Send confirmation email to model
+            console.log("Step 10: Sending confirmation email to model...");
             await sendModelApplicationConfirmation(
                 model.email,
                 `${model.firstName} ${model.lastName || ""}`,
@@ -303,9 +332,14 @@ function JobDetails() {
 
             console.log("✅ Core cancellation process completed!");
 
-            // Step 4: Notify client (non-critical)
+            // Step 4: Log activity for admins
+            console.log("Step 4: Logging activity...");
+            await logApplicationCancelled(job, model)
+                .catch(err => console.warn("⚠️ Activity logging failed:", err.message));
+
+            // Step 5: Notify client (non-critical)
             try {
-                console.log("Step 4: Notifying client...");
+                console.log("Step 5: Notifying client...");
                 await createJobApplicationCancellationNotification(job.userId, model, job)
                     .catch(err => console.warn("⚠️ Client notification failed:", err.message));
             } catch (clientError) {
@@ -429,9 +463,35 @@ function JobDetails() {
         fetchShortlist();
     }, [job, model]);
 
+    // Check if current model has been invited to this job
+    useEffect(() => {
+        const checkInvitation = async () => {
+            if (!job || !model || job.userId === model.uid) {
+                setInvitationChecked(true);
+                return;
+            }
+
+            try {
+                const invited = await hasBeenInvited(job.id, model.uid);
+                setIsInvited(invited);
+            } catch (error) {
+                console.error("Error checking invitation status:", error);
+            } finally {
+                setInvitationChecked(true);
+            }
+        };
+
+        checkInvitation();
+    }, [job, model]);
+
     return (
         <DashboardLayout>
             <DashboardNavbar />
+            <LoadingOverlay
+                open={isApplying}
+                message={isInvited ? "Accepting invitation and applying..." : "Submitting your application..."}
+                fullScreen
+            />
             <MDBox py={3}>
                 {job && (
                     <>
@@ -450,6 +510,27 @@ function JobDetails() {
                                 {/* Application status and buttons */}
                                 {model && job.userId !== model.uid && (
                                     <MDBox mt={4} pt={3} sx={{ borderTop: "1px solid", borderColor: "grey.200" }}>
+                                        {/* Show invitation banner if model was invited */}
+                                        {isInvited && !hasApplied && applicationStatus !== "cancelled" && (
+                                            <Alert
+                                                severity="info"
+                                                icon={<Icon>mail</Icon>}
+                                                sx={{ mb: 3 }}
+                                                action={
+                                                    <Chip
+                                                        label="Invited"
+                                                        color="info"
+                                                        size="small"
+                                                        sx={{ fontWeight: "bold" }}
+                                                    />
+                                                }
+                                            >
+                                                <MDTypography variant="body2">
+                                                    You've been personally invited to apply for this job! The client thinks you'd be a great fit.
+                                                </MDTypography>
+                                            </Alert>
+                                        )}
+
                                         {isUnverifiedModel(model) ? (
                                             <MDBox display="flex" alignItems="center" gap={1} p={2} borderRadius="lg" sx={{ backgroundColor: "warning.lighter" }}>
                                                 <Icon sx={{ color: "warning.main" }}>gpp_maybe</Icon>
@@ -504,15 +585,31 @@ function JobDetails() {
                                                         </MDButton>
                                                     </MDBox>
                                                 ) : (
-                                                    <MDButton
-                                                        color="info"
-                                                        variant="gradient"
-                                                        onClick={() => setShowApplyModal(true)}
-                                                        size="large"
-                                                        sx={{ px: 4, py: 1.5 }}
-                                                    >
-                                                        Apply Now
-                                                    </MDButton>
+                                                    <MDBox>
+                                                        <MDButton
+                                                            color="info"
+                                                            variant="gradient"
+                                                            onClick={() => setShowApplyModal(true)}
+                                                            size="large"
+                                                            sx={{ px: 4, py: 1.5 }}
+                                                            startIcon={isInvited ? <Icon>check</Icon> : null}
+                                                        >
+                                                            {isInvited ? "Accept Invitation & Apply" : "Apply Now"}
+                                                        </MDButton>
+                                                        {isInvited && (
+                                                            <MDBox mt={2}>
+                                                                <MDButton
+                                                                    color="dark"
+                                                                    variant="outlined"
+                                                                    onClick={handleMessageClient}
+                                                                    disabled={isCreatingThread}
+                                                                    startIcon={<Icon>message</Icon>}
+                                                                >
+                                                                    {isCreatingThread ? "Opening..." : "Message Client First"}
+                                                                </MDButton>
+                                                            </MDBox>
+                                                        )}
+                                                    </MDBox>
                                                 )}
                                             </>
                                         ) : (
@@ -608,6 +705,9 @@ function JobDetails() {
 
                         {/* Matching Models Section - for job owner (only show if not awarded) */}
                         {!job.awardedTo && <MatchingModels job={job} />}
+
+                        {/* Activity Log - admin only */}
+                        <JobActivityLog jobId={job.id} isAdmin={isAdmin} />
 
                         <Snackbar
                             open={snackOpen}

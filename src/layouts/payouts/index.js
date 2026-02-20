@@ -140,6 +140,7 @@ function Payouts() {
             <BalanceCard
               available={balance.available}
               pending={balance.pending}
+              stripeBalance={stripeStatus?.balance}
               currency={balance.currency}
               loading={loading}
               formatCurrency={formatCurrency}
@@ -157,6 +158,7 @@ function Payouts() {
             ) : (
               <WithdrawalForm
                 availableBalance={balance.available}
+                stripeBalance={stripeStatus?.balance}
                 currency={balance.currency}
                 withdrawalFeePercent={withdrawalFeePercent}
                 formatCurrency={formatCurrency}

@@ -24,7 +24,7 @@ const getCurrencySymbol = (currency) => {
   }
 };
 
-function JobCard({ job, isMatch }) {
+function JobCard({ job, isMatch, isInvited }) {
   const currencySymbol = getCurrencySymbol(job.currency);
 
   // Get first image from media array or use placeholder
@@ -103,35 +103,66 @@ function JobCard({ job, isMatch }) {
             borderRadius: "inherit",
           }}
         />
-        {/* Match Badge Overlay */}
-        <Tooltip title={isMatch ? "You match this job's requirements" : "You don't match all requirements"}>
-          <MDBox
-            position="absolute"
-            top={12}
-            right={12}
-            display="flex"
-            alignItems="center"
-            gap={0.5}
-            px={1.5}
-            py={0.5}
-            borderRadius="lg"
-            sx={{
-              background: isMatch
-                ? "linear-gradient(135deg, #11998e 0%, #38ef7d 100%)"
-                : "linear-gradient(135deg, #eb3349 0%, #f45c43 100%)",
-              boxShadow: isMatch
-                ? "0 4px 12px rgba(56, 239, 125, 0.4)"
-                : "0 4px 12px rgba(235, 51, 73, 0.4)",
-            }}
-          >
-            <Icon sx={{ color: "white", fontSize: "0.9rem" }}>
-              {isMatch ? "check_circle" : "cancel"}
-            </Icon>
-            <MDTypography variant="caption" color="white" fontWeight="bold" sx={{ fontSize: "0.65rem" }}>
-              {isMatch ? "MATCH" : "NO MATCH"}
-            </MDTypography>
-          </MDBox>
-        </Tooltip>
+        {/* Badges Container */}
+        <MDBox
+          position="absolute"
+          top={12}
+          right={12}
+          display="flex"
+          flexDirection="column"
+          alignItems="flex-end"
+          gap={0.75}
+        >
+          {/* Invited Badge */}
+          {isInvited && (
+            <Tooltip title="You've been invited to apply for this job!">
+              <MDBox
+                display="flex"
+                alignItems="center"
+                gap={0.5}
+                px={1.5}
+                py={0.5}
+                borderRadius="lg"
+                sx={{
+                  background: "linear-gradient(135deg, #667eea 0%, #764ba2 100%)",
+                  boxShadow: "0 4px 12px rgba(102, 126, 234, 0.4)",
+                }}
+              >
+                <Icon sx={{ color: "white", fontSize: "0.9rem" }}>mail</Icon>
+                <MDTypography variant="caption" color="white" fontWeight="bold" sx={{ fontSize: "0.65rem" }}>
+                  INVITED
+                </MDTypography>
+              </MDBox>
+            </Tooltip>
+          )}
+
+          {/* Match Badge */}
+          <Tooltip title={isMatch ? "You match this job's requirements" : "You don't match all requirements"}>
+            <MDBox
+              display="flex"
+              alignItems="center"
+              gap={0.5}
+              px={1.5}
+              py={0.5}
+              borderRadius="lg"
+              sx={{
+                background: isMatch
+                  ? "linear-gradient(135deg, #11998e 0%, #38ef7d 100%)"
+                  : "linear-gradient(135deg, #eb3349 0%, #f45c43 100%)",
+                boxShadow: isMatch
+                  ? "0 4px 12px rgba(56, 239, 125, 0.4)"
+                  : "0 4px 12px rgba(235, 51, 73, 0.4)",
+              }}
+            >
+              <Icon sx={{ color: "white", fontSize: "0.9rem" }}>
+                {isMatch ? "check_circle" : "cancel"}
+              </Icon>
+              <MDTypography variant="caption" color="white" fontWeight="bold" sx={{ fontSize: "0.65rem" }}>
+                {isMatch ? "MATCH" : "NO MATCH"}
+              </MDTypography>
+            </MDBox>
+          </Tooltip>
+        </MDBox>
       </MDBox>
 
       {/* Card Content */}

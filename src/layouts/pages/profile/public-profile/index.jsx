@@ -23,6 +23,7 @@ import { useFavourites } from "context/FavouritesContext";
 import { useAuth } from "context/AuthContext";
 import { useMaterialUIController } from "context";
 import AddToListModal from "components/Favourites/AddToListModal";
+import BookModelModal from "components/BookModelModal";
 
 // API functions
 import { sendVerificationEmail, sendUnverificationEmail } from "utils/api";
@@ -65,6 +66,7 @@ function PublicProfile() {
   const [profile, setProfile] = useState(null);
   const [profileUid, setProfileUid] = useState(null);
   const [addToListModalOpen, setAddToListModalOpen] = useState(false);
+  const [bookModelModalOpen, setBookModelModalOpen] = useState(false);
   const [lightboxOpen, setLightboxOpen] = useState(false);
   const [lightboxIndex, setLightboxIndex] = useState(0);
   const [loaded, setLoaded] = useState(false);
@@ -87,6 +89,9 @@ function PublicProfile() {
   // Check if current user can favourite (is a client or above)
   const canFavourite = user && ["client", "account manager", "admin", "super admin"].includes(user.role);
   const isFavourited = profileUid && canFavourite ? isModelFavourited(profileUid) : false;
+
+  // Check if current user can book models (clients, account managers, admins - not models)
+  const canBookModels = user && ["client", "account manager", "admin", "super admin"].includes(user.role);
 
   // Check if current user can toggle visibility (admin, super admin, or profile owner)
   const isAdmin = user && ["admin", "super admin"].includes(user.role);
@@ -133,6 +138,12 @@ function PublicProfile() {
 
   const handleAddToList = () => {
     setAddToListModalOpen(true);
+  };
+
+  const handleBookModel = () => {
+    if (canBookModels) {
+      setBookModelModalOpen(true);
+    }
   };
 
   // Combine all images for the lightbox carousel
@@ -361,20 +372,23 @@ function PublicProfile() {
                 <MDBox>
                   {user && user.uid === profileUid ? null : user ? (
                     <>
-                      <MDButton
-                        variant="contained"
-                        color="dark"
-                        size="large"
-                        fullWidth
-                        sx={{
-                          py: 1.5,
-                          letterSpacing: "2px",
-                          fontWeight: 500,
-                          mb: 2,
-                        }}
-                      >
-                        Book Model
-                      </MDButton>
+                      {canBookModels && (
+                        <MDButton
+                          variant="contained"
+                          color="dark"
+                          size="large"
+                          fullWidth
+                          onClick={handleBookModel}
+                          sx={{
+                            py: 1.5,
+                            letterSpacing: "2px",
+                            fontWeight: 500,
+                            mb: 2,
+                          }}
+                        >
+                          Book Model
+                        </MDButton>
+                      )}
                       {canFavourite && user.uid !== profileUid && (
                         <MDBox display="flex" gap={1}>
                           <MDButton
@@ -768,6 +782,16 @@ function PublicProfile() {
           open={addToListModalOpen}
           onClose={() => setAddToListModalOpen(false)}
           model={profile}
+        />
+      )}
+
+      {/* Book Model Modal */}
+      {canBookModels && profile && (
+        <BookModelModal
+          open={bookModelModalOpen}
+          onClose={() => setBookModelModalOpen(false)}
+          model={profile}
+          currentUser={user}
         />
       )}
     </MDBox>

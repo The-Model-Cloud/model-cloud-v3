@@ -23,6 +23,7 @@ import { requestWithdrawal } from "utils/api";
 
 function WithdrawalForm({
   availableBalance,
+  stripeBalance,
   currency,
   withdrawalFeePercent,
   formatCurrency,
@@ -32,7 +33,10 @@ function WithdrawalForm({
   const [amount, setAmount] = useState("");
   const [processing, setProcessing] = useState(false);
 
-  const availableInUnits = availableBalance / 100;
+  // Use Stripe available balance if available, otherwise fall back to Firestore balance
+  const actualAvailable = stripeBalance?.available ?? availableBalance;
+  const pendingInStripe = stripeBalance?.pending || 0;
+  const availableInUnits = actualAvailable / 100;
   const amountNum = parseFloat(amount) || 0;
   const feeAmount = amountNum * (withdrawalFeePercent / 100);
   const netAmount = amountNum - feeAmount;
@@ -88,7 +92,25 @@ function WithdrawalForm({
           </MDTypography>
         </MDBox>
 
-        {availableBalance <= 0 ? (
+        {/* Warning if funds are pending in Stripe */}
+        {pendingInStripe > 0 && (
+          <MDBox
+            p={2}
+            borderRadius="lg"
+            bgColor="info"
+            bgGradient
+            mb={2}
+          >
+            <MDTypography variant="body2" color="white" fontWeight="medium">
+              {formatCurrency(pendingInStripe, currency)} arriving soon
+            </MDTypography>
+            <MDTypography variant="caption" color="white">
+              These funds will be available for withdrawal in 1-2 business days
+            </MDTypography>
+          </MDBox>
+        )}
+
+        {actualAvailable <= 0 ? (
           <MDBox
             p={2}
             borderRadius="lg"
@@ -99,7 +121,9 @@ function WithdrawalForm({
               No funds available for withdrawal.
             </MDTypography>
             <MDTypography variant="caption" color="text">
-              Complete jobs to earn money.
+              {pendingInStripe > 0
+                ? "Your funds are still being processed - check back in 1-2 business days."
+                : "Complete jobs to earn money."}
             </MDTypography>
           </MDBox>
         ) : (
@@ -214,12 +238,18 @@ function WithdrawalForm({
 
 WithdrawalForm.defaultProps = {
   availableBalance: 0,
+  stripeBalance: null,
   currency: "GBP",
   withdrawalFeePercent: 1.5,
 };
 
 WithdrawalForm.propTypes = {
   availableBalance: PropTypes.number,
+  stripeBalance: PropTypes.shape({
+    available: PropTypes.number,
+    pending: PropTypes.number,
+    currency: PropTypes.string,
+  }),
   currency: PropTypes.string,
   withdrawalFeePercent: PropTypes.number,
   formatCurrency: PropTypes.func.isRequired,

@@ -1,20 +1,24 @@
-import { Link } from "react-router-dom";
-import { useState, useMemo } from "react";
+import { Link, useSearchParams } from "react-router-dom";
+import { useState, useMemo, useEffect } from "react";
 import { db } from "config/firebase";
-import { collection, addDoc, updateDoc, doc, arrayUnion } from "firebase/firestore";
+import { collection, addDoc, updateDoc, doc, arrayUnion, getDoc } from "firebase/firestore";
 import { useAuth } from "context/AuthContext";
 import { Formik, Form } from "formik";
 import * as Yup from "yup";
+import { sendJobInvitation } from "utils/invitations";
 
 import Grid from "@mui/material/Grid";
 import Stepper from "@mui/material/Stepper";
 import Step from "@mui/material/Step";
 import StepLabel from "@mui/material/StepLabel";
 import Card from "@mui/material/Card";
+import Alert from "@mui/material/Alert";
+import Avatar from "@mui/material/Avatar";
 
 import MDBox from "components/MDBox";
 import MDButton from "components/MDButton";
 import MDTypography from "components/MDTypography";
+import LoadingOverlay from "components/LoadingOverlay";
 
 import DashboardLayout from "examples/LayoutContainers/DashboardLayout";
 import DashboardNavbar from "examples/Navbars/DashboardNavbar";
@@ -40,7 +44,7 @@ const generateJobReference = () => {
   return `TMC-${formattedDate}-${hours}${minutes}${random}`;
 };
 
-function getStepContent(stepIndex, formikProps, jobRef, user) {
+function getStepContent(stepIndex, formikProps, jobRef, user, modelToInvite, invitationSent) {
   switch (stepIndex) {
     case 0:
       return <JobInfo formik={formikProps} />;
@@ -51,15 +55,25 @@ function getStepContent(stepIndex, formikProps, jobRef, user) {
     case 3:
       return <Payment formik={formikProps} />;
     case 4:
+      const modelName = modelToInvite
+        ? `${modelToInvite.firstName || ""} ${modelToInvite.lastName || ""}`.trim()
+        : null;
       return (
         <MDBox textAlign="center" mt={4}>
           <MDTypography variant="h4" color="success" gutterBottom>
-            ✅ Job successfully created!
+            Job successfully created!
           </MDTypography>
           <MDTypography variant="h6">
             Your job reference is: <strong>{jobRef}</strong>
           </MDTypography>
-          <MDBox mt={2}>
+          {modelToInvite && invitationSent && (
+            <MDBox mt={2}>
+              <MDTypography variant="body1" color="success">
+                {modelName} has been invited to apply for this job.
+              </MDTypography>
+            </MDBox>
+          )}
+          <MDBox mt={3}>
             <MDButton
               variant="gradient"
               color="dark"
@@ -78,8 +92,32 @@ function getStepContent(stepIndex, formikProps, jobRef, user) {
 
 function NewJob() {
   const { user } = useAuth();
+  const [searchParams] = useSearchParams();
   const [activeStep, setActiveStep] = useState(0);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [modelToInvite, setModelToInvite] = useState(null);
+  const [invitationSent, setInvitationSent] = useState(false);
+
+  // Check for model to invite from query params
+  const inviteModelId = searchParams.get("inviteModel");
+
+  // Fetch model data if inviteModel param is present
+  useEffect(() => {
+    const fetchModelToInvite = async () => {
+      if (inviteModelId) {
+        try {
+          const modelRef = doc(db, "users", inviteModelId);
+          const modelSnap = await getDoc(modelRef);
+          if (modelSnap.exists()) {
+            setModelToInvite({ uid: modelSnap.id, ...modelSnap.data() });
+          }
+        } catch (err) {
+          console.error("Error fetching model to invite:", err);
+        }
+      }
+    };
+    fetchModelToInvite();
+  }, [inviteModelId]);
 
   // Generate job reference once when component mounts (used for media folder path)
   const jobRef = useMemo(() => generateJobReference(), []);
@@ -164,6 +202,20 @@ function NewJob() {
       });
       console.log("🧾 Added job ref to user doc");
 
+      // Send invitation if we have a model to invite
+      if (modelToInvite) {
+        try {
+          console.log("📨 Sending invitation to model:", modelToInvite.firstName);
+          const jobWithId = { ...jobData, id: docRef.id };
+          await sendJobInvitation(jobWithId, modelToInvite, user);
+          setInvitationSent(true);
+          console.log("✅ Invitation sent successfully");
+        } catch (inviteErr) {
+          console.error("⚠️ Failed to send invitation:", inviteErr);
+          // Don't fail the whole flow if invitation fails
+        }
+      }
+
       setIsSubmitting(false);
       actions.setSubmitting(false);
       setActiveStep((prevStep) => prevStep + 1);
@@ -180,6 +232,11 @@ function NewJob() {
   return (
     <DashboardLayout>
       <DashboardNavbar />
+      <LoadingOverlay
+        open={isSubmitting}
+        message={modelToInvite ? "Creating job and sending invitation..." : "Creating your job..."}
+        fullScreen
+      />
       <MDBox mt={5} mb={9}>
         <Grid container justifyContent="center">
           <Grid item xs={12} lg={8}>
@@ -199,6 +256,28 @@ function NewJob() {
                     </MDTypography>
                   </MDBox>
 
+                  {/* Show banner when inviting a specific model */}
+                  {modelToInvite && (
+                    <Alert
+                      severity="info"
+                      sx={{ mb: 3 }}
+                      icon={
+                        <Avatar
+                          src={modelToInvite.profileAvatar}
+                          alt={modelToInvite.firstName}
+                          sx={{ width: 32, height: 32 }}
+                        />
+                      }
+                    >
+                      <MDTypography variant="body2">
+                        <strong>
+                          {modelToInvite.firstName} {modelToInvite.lastName}
+                        </strong>{" "}
+                        will be invited to apply for this job once created.
+                      </MDTypography>
+                    </Alert>
+                  )}
+
                   <Card>
                     <MDBox mt={2} mb={3} mx={2}>
                       <Stepper activeStep={activeStep} alternativeLabel>
@@ -211,7 +290,7 @@ function NewJob() {
                     </MDBox>
 
                     <MDBox p={2}>
-                      {getStepContent(activeStep, formikProps, jobRef, user)}
+                      {getStepContent(activeStep, formikProps, jobRef, user, modelToInvite, invitationSent)}
                     </MDBox>
 
                     {!isConfirmationStep && (
@@ -232,7 +311,16 @@ function NewJob() {
                           <MDButton
                             variant="gradient"
                             color="info"
-                            onClick={formikProps.handleSubmit}
+                            onClick={() => {
+                              formikProps.validateForm().then((errors) => {
+                                if (Object.keys(errors).length === 0) {
+                                  formikProps.handleSubmit();
+                                } else {
+                                  console.warn("Validation errors:", errors);
+                                  alert("Please fix the following fields: " + Object.keys(errors).join(", "));
+                                }
+                              });
+                            }}
                             disabled={formikProps.isSubmitting || isSubmitting}
                           >
                             Submit

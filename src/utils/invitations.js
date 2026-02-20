@@ -1,7 +1,8 @@
-import { doc, setDoc, getDoc, collection, getDocs, addDoc, serverTimestamp } from "firebase/firestore";
+import { doc, setDoc, getDoc, collection, getDocs, addDoc, serverTimestamp, arrayUnion } from "firebase/firestore";
 import { db } from "config/firebase";
 import { createNotification } from "./notifications";
 import { callCloudFunction, createThread } from "./api";
+import { logModelInvited } from "./activityLog";
 
 /**
  * Send a job invitation to a model
@@ -32,6 +33,27 @@ export const sendJobInvitation = async (job, model, client) => {
 
     console.log("✅ Invitation record created");
 
+    // Step 1b: Add invitation reference to model's user document for easy lookup
+    // This is wrapped in try-catch as security rules may prevent cross-user writes
+    try {
+      const modelRef = doc(db, "users", model.uid);
+      await setDoc(modelRef, {
+        invitedJobs: arrayUnion({
+          jobId: job.id,
+          jobReference: job.reference,
+          jobTitle: job.title,
+          invitedBy: client.uid,
+          invitedByName: client.companyName || `${client.firstName} ${client.lastName || ""}`.trim(),
+          invitedAt: new Date().toISOString(),
+          status: "pending",
+        }),
+      }, { merge: true });
+      console.log("✅ Invitation added to model's user document");
+    } catch (userDocError) {
+      console.warn("⚠️ Could not add invitation to model's user document (security rules may prevent this):", userDocError.message);
+      // Continue - the invitation record in the job subcollection is the source of truth
+    }
+
     // Step 2: Create notification for the model
     await createJobInvitationNotification(model.uid, client, job)
       .catch((err) => console.warn("⚠️ Notification creation failed:", err.message));
@@ -49,6 +71,10 @@ export const sendJobInvitation = async (job, model, client) => {
       job.title,
       job.reference
     ).catch((err) => console.warn("⚠️ Invitation email failed:", err.message));
+
+    // Step 5: Log activity for admins
+    await logModelInvited(job, model, client)
+      .catch((err) => console.warn("⚠️ Activity logging failed:", err.message));
 
     console.log("✅ Job invitation sent successfully");
 
@@ -85,7 +111,7 @@ export const sendInvitationMessage = async (model, client, job) => {
       senderId: client.uid,
       senderName: clientName,
       senderAvatar: client.profileAvatar || "",
-      body: `Hi ${model.firstName || "there"}! I'd like to invite you to apply for my job "${job.title}". I think you'd be a great fit!\n\nView the job and apply here: /jobs/${job.reference}`,
+      body: `Hi ${model.firstName || "there"}! I'd like to invite you to apply for my job "${job.title}". I think you'd be a great fit!\n\n[View the job and apply here](/jobs/${job.reference})`,
       createdAt: serverTimestamp(),
       system: false,
     });
@@ -194,6 +220,52 @@ export const getJobInvitations = async (jobId) => {
   } catch (error) {
     console.error("Error fetching job invitations:", error);
     return [];
+  }
+};
+
+/**
+ * Send a message to the client when a model accepts an invitation
+ * @param {object} model - The model who accepted
+ * @param {object} client - The client who sent the invitation
+ * @param {object} job - The job details
+ * @returns {Promise<void>}
+ */
+export const sendInvitationAcceptedMessage = async (model, client, job) => {
+  try {
+    console.log("💬 Sending invitation accepted message to client...");
+
+    // Create or get existing thread for this job
+    const threadResult = await createThread(client.uid, "job", job.id);
+
+    if (!threadResult.threadId) {
+      throw new Error("Failed to create message thread");
+    }
+
+    const modelName = `${model.firstName} ${model.lastName || ""}`.trim();
+
+    // Add the acceptance message to the thread
+    const messagesRef = collection(db, "threads", threadResult.threadId, "messages");
+    await addDoc(messagesRef, {
+      senderId: model.uid,
+      senderName: modelName,
+      senderAvatar: model.profileAvatar || "",
+      body: `Hi! Thank you for inviting me to apply for "${job.title}". I've accepted your invitation and submitted my application. I'd love to discuss this opportunity further!\n\n[View my application](/jobs/${job.reference})`,
+      createdAt: serverTimestamp(),
+      system: false,
+    });
+
+    // Update the thread's lastMessageAt and increment unread count for client
+    const threadRef = doc(db, "threads", threadResult.threadId);
+    await setDoc(threadRef, {
+      lastMessageAt: serverTimestamp(),
+      lastMessage: `I've accepted your invitation and submitted my application...`,
+      [`unread.${client.uid}`]: 1,
+    }, { merge: true });
+
+    console.log("✅ Invitation accepted message sent to client");
+  } catch (error) {
+    console.error("Error sending invitation accepted message:", error);
+    throw error;
   }
 };
 

@@ -10,6 +10,7 @@ function MyJobFilters({ filters, setFilters, jobCounts }) {
     { value: "all", label: "All Jobs", icon: "folder" },
     { value: "owned", label: "My Listings", icon: "business_center" },
     { value: "applied", label: "Applied To", icon: "send" },
+    { value: "invited", label: "Invitations", icon: "mail", color: "secondary" },
   ];
 
   const jobStatusOptions = [
@@ -74,7 +75,7 @@ function MyJobFilters({ filters, setFilters, jobCounts }) {
                           fontWeight: 600,
                         }}
                       >
-                        {option.value === "owned" ? jobCounts.owned : jobCounts.applied}
+                        {option.value === "owned" ? jobCounts.owned : option.value === "applied" ? jobCounts.applied : jobCounts.invited}
                       </MDBox>
                     )}
                   </MDBox>

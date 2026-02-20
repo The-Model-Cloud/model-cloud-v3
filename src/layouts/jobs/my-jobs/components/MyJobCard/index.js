@@ -32,6 +32,8 @@ const getApplicationStatusConfig = (status) => {
       return { color: "error", icon: "cancel", label: "Rejected" };
     case "owner":
       return { color: "info", icon: "business_center", label: "Your Job" };
+    case "invited":
+      return { color: "secondary", icon: "mail", label: "Invited" };
     default:
       return { color: "secondary", icon: "help", label: status || "Unknown" };
   }
@@ -100,7 +102,13 @@ function MyJobCard({ job }) {
         right={12}
         zIndex={2}
       >
-        <Tooltip title={job.isOwner ? "You created this job" : `Application status: ${applicationConfig.label}`}>
+        <Tooltip title={
+          job.isOwner
+            ? "You created this job"
+            : job.isInvited
+              ? `You've been invited to apply${job.invitedByName ? ` by ${job.invitedByName}` : ""}`
+              : `Application status: ${applicationConfig.label}`
+        }>
           <MDBox
             display="flex"
             alignItems="center"
@@ -115,7 +123,9 @@ function MyJobCard({ job }) {
                   ? "linear-gradient(135deg, #f093fb 0%, #f5576c 100%)"
                   : applicationConfig.color === "error"
                     ? "linear-gradient(135deg, #eb3349 0%, #f45c43 100%)"
-                    : "linear-gradient(135deg, #667eea 0%, #764ba2 100%)",
+                    : applicationConfig.color === "secondary"
+                      ? "linear-gradient(135deg, #667eea 0%, #764ba2 100%)"
+                      : "linear-gradient(135deg, #667eea 0%, #764ba2 100%)",
               boxShadow: "0 4px 12px rgba(0,0,0,0.2)",
             }}
           >
@@ -266,6 +276,13 @@ function MyJobCard({ job }) {
               <MDButton variant="gradient" color="info" size="small">
                 <Icon sx={{ mr: 0.5 }}>edit</Icon>
                 Edit
+              </MDButton>
+            </Link>
+          ) : job.isInvited ? (
+            <Link to={`/jobs/${job.reference}`}>
+              <MDButton variant="gradient" color="secondary" size="small">
+                <Icon sx={{ mr: 0.5 }}>mail</Icon>
+                View & Apply
               </MDButton>
             </Link>
           ) : (

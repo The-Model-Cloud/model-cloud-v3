@@ -96,3 +96,27 @@ export const createJobApplicationCancellationNotification = async (clientId, mod
 
   return createNotification(clientId, "job_application_cancelled", title, message, data);
 };
+
+/**
+ * Create a notification when an invited model accepts the invitation and applies
+ * @param {string} clientId - The client's user ID
+ * @param {object} model - The model who accepted
+ * @param {object} job - The job details
+ * @returns {Promise<string>} - The notification document ID
+ */
+export const createInvitationAcceptedNotification = async (clientId, model, job) => {
+  const modelName = `${model.firstName} ${model.lastName || ""}`.trim();
+  const title = "Invitation Accepted!";
+  const message = `${modelName} has accepted your invitation and applied for "${job.title}"`;
+
+  const data = {
+    jobId: job.id,
+    jobReference: job.reference,
+    jobTitle: job.title,
+    modelId: model.uid,
+    modelName,
+    link: `/jobs/${job.reference}`,
+  };
+
+  return createNotification(clientId, "invitation_accepted", title, message, data);
+};

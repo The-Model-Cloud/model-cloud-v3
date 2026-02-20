@@ -33,9 +33,10 @@ function JobSearchResults({ results, loading }) {
   const startIndex = (page - 1) * perPage;
   const paginatedResults = filteredResults.slice(startIndex, startIndex + perPage);
 
-  // Count matches
+  // Count matches and invitations
   const matchCount = results.filter(job => job.isMatch).length;
   const noMatchCount = results.filter(job => !job.isMatch).length;
+  const invitedCount = results.filter(job => job.isInvited).length;
 
   const handlePageChange = (_, value) => {
     setPage(value);
@@ -123,6 +124,19 @@ function JobSearchResults({ results, loading }) {
                 {noMatchCount} No Match
               </MDTypography>
             </MDBox>
+            {invitedCount > 0 && (
+              <MDBox display="flex" alignItems="center" gap={0.5}>
+                <MDBox
+                  width={10}
+                  height={10}
+                  borderRadius="50%"
+                  sx={{ background: "linear-gradient(135deg, #667eea 0%, #764ba2 100%)" }}
+                />
+                <MDTypography variant="caption" color="text">
+                  {invitedCount} {invitedCount === 1 ? "Invitation" : "Invitations"}
+                </MDTypography>
+              </MDBox>
+            )}
           </MDBox>
         </MDBox>
 
@@ -164,7 +178,7 @@ function JobSearchResults({ results, loading }) {
       <Grid container spacing={6}>
         {paginatedResults.map((job, index) => (
           <Grid item xs={12} md={6} xl={3} key={job.reference || index}>
-            <JobCard job={job} isMatch={job.isMatch} />
+            <JobCard job={job} isMatch={job.isMatch} isInvited={job.isInvited} />
           </Grid>
         ))}
       </Grid>
