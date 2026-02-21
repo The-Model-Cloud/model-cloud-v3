@@ -54,6 +54,9 @@ const modalStyle = {
   p: 4,
 };
 
+// Protected organisations that should never be deleted
+const PROTECTED_COMPANIES = ["The Model Cloud", "Storm Web Design Ltd"];
+
 function CircularProgressWithLabel({ value, current, total }) {
   return (
     <Box position="relative" display="inline-flex" flexDirection="column" alignItems="center">
@@ -86,6 +89,7 @@ export default function DeleteAllClients() {
   const navigate = useNavigate();
 
   const [clients, setClients] = useState([]);
+  const [protectedClients, setProtectedClients] = useState([]);
   const [loadingClients, setLoadingClients] = useState(true);
   const [confirmModalOpen, setConfirmModalOpen] = useState(false);
   const [deleting, setDeleting] = useState(false);
@@ -114,11 +118,21 @@ export default function DeleteAllClients() {
       try {
         const q = query(collection(db, "users"), where("role", "==", "client"));
         const snapshot = await getDocs(q);
-        const clientsList = snapshot.docs.map((docSnap) => ({
+        const allClients = snapshot.docs.map((docSnap) => ({
           uid: docSnap.id,
           ...docSnap.data(),
         }));
-        setClients(clientsList);
+
+        // Separate protected clients from deletable clients
+        const deletableClients = allClients.filter(
+          (client) => !PROTECTED_COMPANIES.includes(client.companyName)
+        );
+        const protectedList = allClients.filter((client) =>
+          PROTECTED_COMPANIES.includes(client.companyName)
+        );
+
+        setClients(deletableClients);
+        setProtectedClients(protectedList);
       } catch (error) {
         console.error("Error fetching clients:", error);
       } finally {
@@ -284,12 +298,32 @@ export default function DeleteAllClients() {
 
                 <MDBox display="flex" gap={2} alignItems="center" mb={3}>
                   <Chip
-                    label={`${clients.length} clients found`}
+                    label={`${clients.length} clients to delete`}
                     color="error"
                     variant="outlined"
                     icon={<Icon>business</Icon>}
                   />
+                  {protectedClients.length > 0 && (
+                    <Chip
+                      label={`${protectedClients.length} protected (will not be deleted)`}
+                      color="success"
+                      variant="outlined"
+                      icon={<Icon>shield</Icon>}
+                    />
+                  )}
                 </MDBox>
+
+                {protectedClients.length > 0 && (
+                  <Alert severity="info" sx={{ mb: 3 }}>
+                    <strong>Protected Organisations:</strong> The following organisations and their
+                    users will NOT be deleted:
+                    <ul style={{ marginTop: 8, marginBottom: 0 }}>
+                      {PROTECTED_COMPANIES.map((company) => (
+                        <li key={company}>{company}</li>
+                      ))}
+                    </ul>
+                  </Alert>
+                )}
 
                 {!deleting && !completed && (
                   <MDButton

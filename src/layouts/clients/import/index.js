@@ -37,6 +37,8 @@ const EXAMPLE_CSV_DATA = [
     county: "Greater London",
     country: "United Kingdom",
     postcode: "W1D 1BS",
+    instagram: "@fashionhousestudios",
+    companyDescription: "Award-winning fashion photography studio specialising in editorial and commercial campaigns for luxury brands.",
   },
   {
     firstName: "James",
@@ -52,6 +54,8 @@ const EXAMPLE_CSV_DATA = [
     county: "Greater Manchester",
     country: "United Kingdom",
     postcode: "M1 1AA",
+    instagram: "@creativemediauk",
+    companyDescription: "Full-service creative agency delivering innovative marketing campaigns and brand experiences.",
   },
   {
     firstName: "Emma",
@@ -67,6 +71,8 @@ const EXAMPLE_CSV_DATA = [
     county: "West Midlands",
     country: "United Kingdom",
     postcode: "B1 1AA",
+    instagram: "@brownproductions",
+    companyDescription: "Video production company creating compelling content for TV, film, and digital platforms.",
   },
   {
     firstName: "Michael",
@@ -82,6 +88,8 @@ const EXAMPLE_CSV_DATA = [
     county: "West Yorkshire",
     country: "United Kingdom",
     postcode: "LS1 2AB",
+    instagram: "",
+    companyDescription: "Professional event management for corporate functions, product launches, and fashion shows.",
   },
   {
     firstName: "Lisa",
@@ -97,6 +105,8 @@ const EXAMPLE_CSV_DATA = [
     county: "Bristol",
     country: "United Kingdom",
     postcode: "BS1 5TJ",
+    instagram: "@lisataylorcreative",
+    companyDescription: "",
   },
 ];
 
@@ -179,6 +189,8 @@ export default function ImportClients() {
               county,
               country,
               postcode,
+              instagram,
+              companyDescription,
             } = row;
 
             // Default to United Kingdom if no country specified
@@ -198,6 +210,8 @@ export default function ImportClients() {
               county: county?.trim() ?? "",
               country: countryValue,
               postcode: postcode?.trim() ?? "",
+              instagram: instagram?.trim() ?? "",
+              companyDescription: companyDescription?.trim() ?? "",
             };
           });
 
@@ -311,8 +325,16 @@ export default function ImportClients() {
                 <MDTypography variant="h6" gutterBottom>
                   Contact Columns
                 </MDTypography>
-                <MDBox component="ul" sx={{ pl: 2 }}>
+                <MDBox component="ul" sx={{ pl: 2, mb: 2 }}>
                   <li><MDTypography variant="caption">phone</MDTypography></li>
+                </MDBox>
+
+                <MDTypography variant="h6" gutterBottom>
+                  Company Profile Columns
+                </MDTypography>
+                <MDBox component="ul" sx={{ pl: 2 }}>
+                  <li><MDTypography variant="caption"><strong>instagram</strong> - Company Instagram handle</MDTypography></li>
+                  <li><MDTypography variant="caption"><strong>companyDescription</strong> - About the company</MDTypography></li>
                 </MDBox>
 
                 <Divider sx={{ my: 2 }} />

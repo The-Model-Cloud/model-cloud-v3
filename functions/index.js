@@ -7428,48 +7428,101 @@ exports.importClients = onCall({ timeoutSeconds: 540 }, async (request) => {
   // Track organisations created during this import
   let organisationsCreated = 0;
 
-  // Helper function to get or create organisation
-  const getOrCreateOrganisation = async (companyName, companyNumber, vatNumber, registeredAddress) => {
-    if (!companyName || companyName.trim() === "") {
-      return null;
+  // ============================================================
+  // PHASE 1: Pre-process all unique organisations SEQUENTIALLY
+  // This prevents race conditions when multiple users have same company
+  // ============================================================
+  const organisationMap = new Map(); // companyName -> { id, name }
+
+  // Collect unique company data (use first occurrence's details)
+  const uniqueCompanies = new Map();
+  for (const client of clients) {
+    const companyName = client.companyName?.trim();
+    if (companyName && !uniqueCompanies.has(companyName)) {
+      uniqueCompanies.set(companyName, {
+        companyName,
+        companyNumber: client.companyNumber?.trim() || "",
+        vatNumber: client.vatNumber?.trim() || "",
+        instagram: client.instagram?.trim() || "",
+        companyDescription: client.companyDescription?.trim() || "",
+        address: [
+          client.address1,
+          client.address2,
+          client.city,
+          client.county,
+          client.postcode,
+          client.country,
+        ].filter(Boolean).map(p => p.trim()).filter(p => p).join(", "),
+      });
     }
+  }
 
-    const normalisedName = companyName.trim();
+  console.log(`Found ${uniqueCompanies.size} unique companies to process`);
 
-    // Check if organisation already exists
-    const existingOrgQuery = await db.collection("organisations")
-      .where("companyName", "==", normalisedName)
-      .limit(1)
-      .get();
+  // Process organisations SEQUENTIALLY to avoid race conditions
+  for (const [companyName, companyData] of uniqueCompanies) {
+    try {
+      // Check if organisation already exists in database
+      const existingOrgQuery = await db.collection("organisations")
+        .where("companyName", "==", companyName)
+        .limit(1)
+        .get();
 
-    if (!existingOrgQuery.empty) {
-      const existingOrg = existingOrgQuery.docs[0];
-      console.log(`Found existing organisation: ${normalisedName} (${existingOrg.id})`);
-      return { id: existingOrg.id, name: normalisedName, created: false };
+      if (!existingOrgQuery.empty) {
+        const existingOrg = existingOrgQuery.docs[0];
+        console.log(`Found existing organisation: ${companyName} (${existingOrg.id})`);
+
+        // Update existing org with instagram/description if provided and not already set
+        const existingData = existingOrg.data();
+        const updates = {};
+        if (companyData.instagram && !existingData.instagram) {
+          updates.instagram = companyData.instagram;
+        }
+        if (companyData.companyDescription && !existingData.companyDescription) {
+          updates.companyDescription = companyData.companyDescription;
+        }
+        if (Object.keys(updates).length > 0) {
+          await existingOrg.ref.update(updates);
+          console.log(`Updated organisation ${companyName} with new profile data`);
+        }
+
+        organisationMap.set(companyName, { id: existingOrg.id, name: companyName });
+      } else {
+        // Create new organisation with free tier
+        const newOrgRef = db.collection("organisations").doc();
+        const newOrgData = {
+          companyName,
+          companyNumber: companyData.companyNumber,
+          vatNumber: companyData.vatNumber,
+          registeredAddress: companyData.address,
+          instagram: companyData.instagram,
+          companyDescription: companyData.companyDescription,
+          tier: "free",
+          licenceLimit: 1,
+          status: "active",
+          expiryDate: null,
+          userCount: 0,
+          createdAt: admin.firestore.FieldValue.serverTimestamp(),
+          createdBy: callerUid,
+        };
+
+        await newOrgRef.set(newOrgData);
+        organisationsCreated++;
+        console.log(`Created new organisation: ${companyName} (${newOrgRef.id}) on Free tier`);
+
+        organisationMap.set(companyName, { id: newOrgRef.id, name: companyName });
+      }
+    } catch (orgError) {
+      console.error(`Error processing organisation ${companyName}:`, orgError);
+      // Continue - users will be created without org link
     }
+  }
 
-    // Create new organisation with free tier
-    const newOrgRef = db.collection("organisations").doc();
-    const newOrgData = {
-      companyName: normalisedName,
-      companyNumber: companyNumber || "",
-      vatNumber: vatNumber || "",
-      registeredAddress: registeredAddress || "",
-      tier: "free",
-      licenceLimit: 1,
-      status: "active",
-      expiryDate: null,
-      userCount: 0,
-      createdAt: admin.firestore.FieldValue.serverTimestamp(),
-      createdBy: callerUid,
-    };
+  console.log(`Organisations processed: ${organisationMap.size} ready, ${organisationsCreated} newly created`);
 
-    await newOrgRef.set(newOrgData);
-    organisationsCreated++;
-    console.log(`Created new organisation: ${normalisedName} (${newOrgRef.id}) on Free tier`);
-
-    return { id: newOrgRef.id, name: normalisedName, created: true };
-  };
+  // ============================================================
+  // PHASE 2: Process users (can be parallel now, orgs already exist)
+  // ============================================================
 
   // Helper function to process a single client
   const processClient = async (client) => {
@@ -7486,40 +7539,17 @@ exports.importClients = onCall({ timeoutSeconds: 540 }, async (request) => {
     const lastInitial = lastName.charAt(0).toLowerCase();
     const publicSlug = `${firstNameLower}.${lastInitial}`;
 
-    // Build address string
-    const addressParts = [
-      client.address1,
-      client.address2,
-      client.city,
-      client.county,
-      client.postcode,
-      client.country,
-    ].filter(Boolean).map(p => p.trim()).filter(p => p);
-    const fullAddress = addressParts.join(", ");
-
-    // Get or create organisation if company name provided
-    let organisationInfo = null;
-    if (client.companyName && client.companyName.trim()) {
-      try {
-        organisationInfo = await getOrCreateOrganisation(
-          client.companyName,
-          client.companyNumber,
-          client.vatNumber,
-          fullAddress
-        );
-      } catch (orgError) {
-        console.error(`Error creating organisation for ${email}:`, orgError);
-        // Continue without organisation
-      }
-    }
+    // Look up organisation from pre-processed map
+    const companyName = client.companyName?.trim();
+    const organisationInfo = companyName ? organisationMap.get(companyName) : null;
 
     const clientData = {
       firstName,
       lastName,
       email,
       phone: client.phone || "",
-      companyName: client.companyName?.trim() || "",
-      company: client.companyName?.trim() || "", // For backwards compatibility
+      companyName: companyName || "",
+      company: companyName || "", // For backwards compatibility
       address1: client.address1?.trim() || "",
       address2: client.address2?.trim() || "",
       city: client.city?.trim() || "",
@@ -7680,4 +7710,164 @@ exports.importClients = onCall({ timeoutSeconds: 540 }, async (request) => {
   }
 
   return { success: true, results, summary };
+});
+
+/**
+ * deleteOrganisation - Delete an organisation and all its related users
+ *
+ * Super admin only. Cascades delete to:
+ * - All users in Firebase Auth
+ * - All user documents in Firestore
+ * - The organisation document
+ *
+ * @param {string} organisationId - The ID of the organisation to delete
+ * @returns {object} - Success status and summary of deleted items
+ */
+exports.deleteOrganisation = functions.https.onCall(async (data, context) => {
+  // 1. Verify caller is authenticated
+  if (!context.auth) {
+    throw new functions.https.HttpsError("unauthenticated", "User must be authenticated");
+  }
+
+  const callerUid = context.auth.uid;
+  const { organisationId } = data;
+
+  if (!organisationId) {
+    throw new functions.https.HttpsError("invalid-argument", "organisationId is required");
+  }
+
+  // 2. Verify caller is super admin
+  const callerDoc = await db.collection("users").doc(callerUid).get();
+  if (!callerDoc.exists) {
+    throw new functions.https.HttpsError("permission-denied", "Caller user not found");
+  }
+
+  const callerData = callerDoc.data();
+  if (callerData.role !== "super admin") {
+    throw new functions.https.HttpsError("permission-denied", "Only super admin can delete organisations");
+  }
+
+  console.log(`deleteOrganisation called by ${callerData.email} for org ${organisationId}`);
+
+  // 3. Get the organisation document
+  const orgDoc = await db.collection("organisations").doc(organisationId).get();
+  if (!orgDoc.exists) {
+    throw new functions.https.HttpsError("not-found", "Organisation not found");
+  }
+
+  const orgData = orgDoc.data();
+  const orgName = orgData.companyName || "Unknown Organisation";
+
+  // 4. Find all users belonging to this organisation
+  const usersSnapshot = await db.collection("users")
+    .where("organisationId", "==", organisationId)
+    .get();
+
+  const userDeletions = [];
+  const deletedUsers = [];
+
+  for (const userDoc of usersSnapshot.docs) {
+    const userData = userDoc.data();
+    const uid = userDoc.id;
+
+    userDeletions.push(
+      (async () => {
+        try {
+          // Delete from Firebase Auth
+          try {
+            await admin.auth().deleteUser(uid);
+            console.log(`Deleted Auth user: ${userData.email}`);
+          } catch (authError) {
+            if (authError.code !== "auth/user-not-found") {
+              console.error(`Failed to delete Auth user ${uid}:`, authError);
+            }
+            // Continue even if Auth user doesn't exist
+          }
+
+          // Delete from Firestore
+          await db.collection("users").doc(uid).delete();
+          console.log(`Deleted Firestore user: ${userData.email}`);
+
+          deletedUsers.push({
+            uid,
+            email: userData.email,
+            name: `${userData.firstName || ""} ${userData.lastName || ""}`.trim(),
+          });
+
+          return { success: true, email: userData.email };
+        } catch (err) {
+          console.error(`Error deleting user ${userData.email}:`, err);
+          return { success: false, email: userData.email, error: err.message };
+        }
+      })()
+    );
+  }
+
+  // Wait for all user deletions
+  const userResults = await Promise.all(userDeletions);
+
+  // 5. Delete any teams subcollection
+  try {
+    const teamsSnapshot = await db.collection("organisations").doc(organisationId)
+      .collection("teams").get();
+
+    for (const teamDoc of teamsSnapshot.docs) {
+      await teamDoc.ref.delete();
+    }
+    console.log(`Deleted ${teamsSnapshot.size} teams from organisation`);
+  } catch (teamsError) {
+    console.error("Error deleting teams:", teamsError);
+  }
+
+  // 6. Delete any favourite lists belonging to this organisation
+  try {
+    const favouritesSnapshot = await db.collection("favouriteLists")
+      .where("organisationId", "==", organisationId)
+      .get();
+
+    for (const favDoc of favouritesSnapshot.docs) {
+      await favDoc.ref.delete();
+    }
+    console.log(`Deleted ${favouritesSnapshot.size} favourite lists from organisation`);
+  } catch (favsError) {
+    console.error("Error deleting favourite lists:", favsError);
+  }
+
+  // 7. Delete the organisation document
+  await db.collection("organisations").doc(organisationId).delete();
+  console.log(`Deleted organisation: ${orgName}`);
+
+  // 8. Summary
+  const summary = {
+    organisationId,
+    organisationName: orgName,
+    usersDeleted: deletedUsers.length,
+    usersFailed: userResults.filter(r => !r.success).length,
+  };
+
+  // 9. Log admin action
+  try {
+    await db.collection("adminLogs").add({
+      adminUid: callerUid,
+      adminEmail: callerData.email,
+      adminName: `${callerData.firstName || ""} ${callerData.lastName || ""}`.trim(),
+      action: "DELETE_ORGANISATION",
+      description: `Deleted organisation "${orgName}" and ${deletedUsers.length} users`,
+      details: {
+        summary,
+        deletedUsers,
+      },
+      createdAt: admin.firestore.FieldValue.serverTimestamp(),
+      timestamp: new Date().toISOString(),
+    });
+    console.log(`Admin action logged: DELETE_ORGANISATION by ${callerData.email}`);
+  } catch (logError) {
+    console.error("Failed to log admin action:", logError);
+  }
+
+  return {
+    success: true,
+    message: `Organisation "${orgName}" deleted successfully`,
+    summary,
+  };
 });

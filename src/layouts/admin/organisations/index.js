@@ -10,6 +10,9 @@ import {
   isOrganisationExpired,
 } from "utils/organisations";
 
+// Firebase
+import { getFunctions, httpsCallable } from "firebase/functions";
+
 // MUI components
 import Card from "@mui/material/Card";
 import Icon from "@mui/material/Icon";
@@ -54,6 +57,12 @@ function Organisations() {
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [creating, setCreating] = useState(false);
   const [createError, setCreateError] = useState("");
+
+  // Delete dialog state
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState("");
+  const [orgToDelete, setOrgToDelete] = useState(null);
   const [newOrg, setNewOrg] = useState({
     companyName: "",
     companyNumber: "",
@@ -68,12 +77,52 @@ function Organisations() {
   // Determine user role
   const userRole = currentUser?.role?.toLowerCase();
   const isAdmin = userRole === "admin" || userRole === "super admin";
+  const isSuperAdmin = userRole === "super admin";
   const isAccountManager = userRole === "account manager";
 
   // Handle clicking on company name to view details
   const handleViewOrganisation = useCallback((org) => {
     navigate(`/admin/organisations/${org.id}`);
   }, [navigate]);
+
+  // Handle delete organisation
+  const handleDeleteClick = (org) => {
+    setOrgToDelete(org);
+    setDeleteError("");
+    setDeleteDialogOpen(true);
+  };
+
+  const handleDeleteOrganisation = async () => {
+    if (!orgToDelete) return;
+
+    setDeleting(true);
+    setDeleteError("");
+
+    try {
+      const functions = getFunctions();
+      const deleteOrganisation = httpsCallable(functions, "deleteOrganisation");
+
+      const result = await deleteOrganisation({ organisationId: orgToDelete.id });
+
+      // Remove from local state
+      setOrganisations((prev) => prev.filter((org) => org.id !== orgToDelete.id));
+
+      // Close dialog
+      setDeleteDialogOpen(false);
+      setOrgToDelete(null);
+
+      // Show success message
+      alert(
+        `Organisation "${result.data.summary.organisationName}" deleted successfully.\n\n` +
+        `Users deleted: ${result.data.summary.usersDeleted}`
+      );
+    } catch (error) {
+      console.error("Error deleting organisation:", error);
+      setDeleteError(error.message || "Failed to delete organisation");
+    } finally {
+      setDeleting(false);
+    }
+  };
 
   // Fetch pricing tiers on mount
   useEffect(() => {
@@ -321,7 +370,7 @@ function Organisations() {
         {
           Header: "Actions",
           accessor: "actions",
-          width: "8%",
+          width: "10%",
           Cell: ({ row }) => {
             const org = row.original;
             return (
@@ -335,6 +384,17 @@ function Organisations() {
                     <Icon fontSize="small">visibility</Icon>
                   </IconButton>
                 </Tooltip>
+                {isSuperAdmin && (
+                  <Tooltip title="Delete Organisation">
+                    <IconButton
+                      size="small"
+                      onClick={() => handleDeleteClick(org)}
+                      sx={{ color: "#d32f2f" }}
+                    >
+                      <Icon fontSize="small">delete</Icon>
+                    </IconButton>
+                  </Tooltip>
+                )}
               </MDBox>
             );
           },
@@ -342,7 +402,7 @@ function Organisations() {
       ],
       rows: organisations,
     });
-  }, [organisations, handleViewOrganisation, pricingTiers]);
+  }, [organisations, handleViewOrganisation, pricingTiers, isSuperAdmin]);
 
   return (
     <DashboardLayout>
@@ -511,6 +571,65 @@ function Organisations() {
             startIcon={creating ? <CircularProgress size={16} color="inherit" /> : <Icon>add</Icon>}
           >
             {creating ? "Creating..." : "Create Organisation"}
+          </MDButton>
+        </DialogActions>
+      </Dialog>
+
+      {/* Delete Organisation Confirmation Dialog */}
+      <Dialog
+        open={deleteDialogOpen}
+        onClose={() => !deleting && setDeleteDialogOpen(false)}
+        maxWidth="sm"
+        fullWidth
+      >
+        <DialogTitle>
+          <MDBox display="flex" alignItems="center" gap={1}>
+            <Icon color="error">warning</Icon>
+            <MDTypography variant="h5" color="error">Delete Organisation</MDTypography>
+          </MDBox>
+        </DialogTitle>
+        <DialogContent>
+          {deleteError && (
+            <Alert severity="error" sx={{ mb: 2 }}>
+              {deleteError}
+            </Alert>
+          )}
+          <MDTypography variant="body1" mb={2}>
+            Are you sure you want to delete the organisation{" "}
+            <strong>&quot;{orgToDelete?.companyName}&quot;</strong>?
+          </MDTypography>
+          <Alert severity="warning" sx={{ mb: 2 }}>
+            <MDTypography variant="body2">
+              This action will permanently delete:
+            </MDTypography>
+            <MDBox component="ul" sx={{ pl: 2, mt: 1, mb: 0 }}>
+              <li><MDTypography variant="body2">The organisation record</MDTypography></li>
+              <li><MDTypography variant="body2">{orgToDelete?.userCount || 0} user account(s) (including Firebase Auth)</MDTypography></li>
+              <li><MDTypography variant="body2">All teams within the organisation</MDTypography></li>
+              <li><MDTypography variant="body2">All organisation favourite lists</MDTypography></li>
+            </MDBox>
+          </Alert>
+          <MDTypography variant="body2" color="error" fontWeight="medium">
+            This action cannot be undone.
+          </MDTypography>
+        </DialogContent>
+        <DialogActions sx={{ p: 2, pt: 0 }}>
+          <MDButton
+            variant="outlined"
+            color="secondary"
+            onClick={() => setDeleteDialogOpen(false)}
+            disabled={deleting}
+          >
+            Cancel
+          </MDButton>
+          <MDButton
+            variant="gradient"
+            color="error"
+            onClick={handleDeleteOrganisation}
+            disabled={deleting}
+            startIcon={deleting ? <CircularProgress size={16} color="inherit" /> : <Icon>delete</Icon>}
+          >
+            {deleting ? "Deleting..." : "Delete Organisation"}
           </MDButton>
         </DialogActions>
       </Dialog>

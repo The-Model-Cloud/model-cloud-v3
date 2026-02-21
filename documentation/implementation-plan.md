@@ -811,6 +811,7 @@ src/layouts/clients/import/index.js
 - Organisation: companyName, companyNumber, vatNumber
 - Address: address1, address2, city, county, country, postcode
 - Contact: phone
+- Company Profile: instagram, companyDescription
 
 **Acceptance Criteria:**
 - [x] CSV upload with validation
@@ -832,12 +833,11 @@ src/layouts/clients/import/index.js
 **Current Tier System:**
 ```javascript
 // Organisation tiers (from pricingTiers collection):
-- free: Basic access, 1 licence (default for imports)
-- demo: Trial account, 3 licences, has expiry date
-- starter: £49.99/mo, 5 licences
-- professional: £99.99/mo, 15 licences
-- enterprise: Custom, 50 licences
-- agency: £149.99/mo, 100 licences
+- free: 7 Day FREE Trial, 1 licence (default for imports)
+- demo: Demo, 1 licence, has expiry date
+- starter: Starter, £49.99/mo, 1 licence
+- professional: Professional, £99.99/mo, 3 licences
+- agency: Agency, £149.99/mo, 6 licences
 - custom: Flexible configuration
 ```
 
