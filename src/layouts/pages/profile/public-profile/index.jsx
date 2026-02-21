@@ -177,8 +177,8 @@ function PublicProfile() {
 
   const closeLightbox = () => setLightboxOpen(false);
 
-  // Get the hero image (profile avatar is the main image)
-  const heroImage = profile?.profileAvatar;
+  // Get the hero image (profile avatar is the main image) with face-focused cropping
+  const heroImage = getCloudinaryThumbnail(profile?.profileAvatar, 1200, 1200);
 
   if (!profile) {
     return (
@@ -288,8 +288,8 @@ function PublicProfile() {
                   sx={{
                     width: "100%",
                     height: "100%",
-                    objectFit: "cover",
-                    objectPosition: "top center",
+                    objectFit: "contain",
+                    objectPosition: "center",
                   }}
                 />
               </MDBox>
