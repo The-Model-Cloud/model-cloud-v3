@@ -49,6 +49,7 @@ import DeleteAllModels from "layouts/admin/delete-data/DeleteAllModels";
 import DeleteAllClients from "layouts/admin/delete-data/DeleteAllClients";
 import DeleteAllOrganisations from "layouts/admin/delete-data/DeleteAllOrganisations";
 import DeleteAllJobs from "layouts/admin/delete-data/DeleteAllJobs";
+import MergeOrganisations from "layouts/admin/delete-data/MergeOrganisations";
 import DeleteOrphanedAuthAccounts from "layouts/admin/delete-data/DeleteOrphanedAuthAccounts";
 import CleanupCloudinary from "layouts/admin/delete-data/CleanupCloudinary";
 import OptimizeImages from "layouts/admin/optimize-images";
@@ -614,6 +615,14 @@ const routes = [
         component: <DeleteAllOrganisations />,
         roles: ["super admin"],
         icon: <Icon fontSize="small">domain_disabled</Icon>,
+      },
+      {
+        name: "Merge Organisations",
+        key: "merge-organisations",
+        route: "/admin/merge/organisations",
+        component: <MergeOrganisations />,
+        roles: ["super admin"],
+        icon: <Icon fontSize="small">merge</Icon>,
       },
       {
         name: "Delete Authentication Accounts",
