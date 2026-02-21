@@ -17,6 +17,9 @@ import Dialog from "@mui/material/Dialog";
 import DialogTitle from "@mui/material/DialogTitle";
 import DialogContent from "@mui/material/DialogContent";
 import DialogActions from "@mui/material/DialogActions";
+import Tabs from "@mui/material/Tabs";
+import Tab from "@mui/material/Tab";
+import Badge from "@mui/material/Badge";
 
 // Material Dashboard components
 import MDBox from "components/MDBox";
@@ -42,10 +45,15 @@ function FavouritesOverview() {
   const {
     favouriteModelIds,
     favouriteLists,
+    organisationLists,
+    teamLists,
     loading: contextLoading,
     toggleQuickFavourite,
     deleteFavouriteList,
     isModelFavourited,
+    canCreateOrgList,
+    canCreateTeamList,
+    LIST_OWNER_TYPES,
   } = useFavourites();
 
   // State
@@ -58,6 +66,30 @@ function FavouritesOverview() {
   const [listToDelete, setListToDelete] = useState(null);
   const [shareModalOpen, setShareModalOpen] = useState(false);
   const [listToShare, setListToShare] = useState(null);
+  const [activeTab, setActiveTab] = useState(0);
+  const [createListOwnerType, setCreateListOwnerType] = useState(null);
+
+  // Determine which tabs to show
+  const showOrgTab = canCreateOrgList || organisationLists.length > 0;
+  const showTeamTab = canCreateTeamList || teamLists.length > 0;
+
+  // Get current list based on active tab
+  const getCurrentLists = () => {
+    if (activeTab === 0) return favouriteLists;
+    if (activeTab === 1 && showOrgTab) return organisationLists;
+    if (activeTab === 2 && showTeamTab) return teamLists;
+    if (activeTab === 1 && !showOrgTab && showTeamTab) return teamLists;
+    return favouriteLists;
+  };
+
+  const currentLists = getCurrentLists();
+
+  // Get tab labels with counts
+  const getTabLabel = (label, count) => (
+    <Badge badgeContent={count} color="primary" max={99}>
+      {label}
+    </Badge>
+  );
 
   // Fetch quick favourite models data
   useEffect(() => {
@@ -131,7 +163,24 @@ function FavouritesOverview() {
 
   const handleCreateSuccess = (listId) => {
     setCreateModalOpen(false);
+    setCreateListOwnerType(null);
     navigate(`/favourites/${listId}`);
+  };
+
+  const handleCreateList = () => {
+    // Set default owner type based on active tab
+    let defaultOwnerType = LIST_OWNER_TYPES.USER;
+    if (activeTab === 1 && showOrgTab) {
+      defaultOwnerType = LIST_OWNER_TYPES.ORGANISATION;
+    } else if ((activeTab === 2 && showTeamTab) || (activeTab === 1 && !showOrgTab && showTeamTab)) {
+      defaultOwnerType = LIST_OWNER_TYPES.TEAM;
+    }
+    setCreateListOwnerType(defaultOwnerType);
+    setCreateModalOpen(true);
+  };
+
+  const handleTabChange = (event, newValue) => {
+    setActiveTab(newValue);
   };
 
   const isLoading = contextLoading || loadingModels;
@@ -207,7 +256,7 @@ function FavouritesOverview() {
           </MDBox>
         </Card>
 
-        {/* My Lists Section */}
+        {/* Lists Section with Tabs */}
         <Card>
           <MDBox p={3}>
             <MDBox
@@ -218,10 +267,10 @@ function FavouritesOverview() {
             >
               <MDBox>
                 <MDTypography variant="h5" fontWeight="medium">
-                  My Lists
+                  Favourite Lists
                 </MDTypography>
                 <MDTypography variant="button" color="text">
-                  {favouriteLists.length} lists
+                  Organize your favourite models into lists
                 </MDTypography>
               </MDBox>
 
@@ -229,34 +278,69 @@ function FavouritesOverview() {
                 variant="gradient"
                 color="info"
                 startIcon={<Icon>add</Icon>}
-                onClick={() => setCreateModalOpen(true)}
+                onClick={handleCreateList}
               >
                 New List
               </MDButton>
             </MDBox>
 
+            {/* Tabs */}
+            <MDBox sx={{ borderBottom: 1, borderColor: "divider", mb: 2 }}>
+              <Tabs
+                value={activeTab}
+                onChange={handleTabChange}
+                aria-label="favourite lists tabs"
+              >
+                <Tab
+                  label={getTabLabel("My Lists", favouriteLists.length)}
+                  icon={<Icon>person</Icon>}
+                  iconPosition="start"
+                />
+                {showOrgTab && (
+                  <Tab
+                    label={getTabLabel("Organisation", organisationLists.length)}
+                    icon={<Icon>business</Icon>}
+                    iconPosition="start"
+                  />
+                )}
+                {showTeamTab && (
+                  <Tab
+                    label={getTabLabel("Team", teamLists.length)}
+                    icon={<Icon>groups</Icon>}
+                    iconPosition="start"
+                  />
+                )}
+              </Tabs>
+            </MDBox>
+
+            {/* Tab Content */}
             {contextLoading ? (
               <MDBox display="flex" justifyContent="center" py={4}>
                 <CircularProgress />
               </MDBox>
-            ) : favouriteLists.length === 0 ? (
+            ) : currentLists.length === 0 ? (
               <MDBox textAlign="center" py={4}>
                 <Icon sx={{ fontSize: 48, color: "grey.400" }}>folder_open</Icon>
                 <MDTypography variant="h6" color="text" mt={2}>
                   No lists yet
                 </MDTypography>
                 <MDTypography variant="body2" color="text">
-                  Create lists to organize your favourite models
+                  {activeTab === 0
+                    ? "Create personal lists to organize your favourite models"
+                    : activeTab === 1 && showOrgTab
+                    ? "No organisation lists have been created yet"
+                    : "No team lists have been created yet"}
                 </MDTypography>
               </MDBox>
             ) : (
               <Grid container spacing={2}>
-                {favouriteLists.map((list) => (
+                {currentLists.map((list) => (
                   <Grid item xs={12} sm={6} md={4} lg={3} key={list.id}>
                     <ListCard
                       list={list}
                       onShare={handleShareList}
                       onDelete={handleDeleteList}
+                      showOwnerBadge={activeTab !== 0}
                     />
                   </Grid>
                 ))}
@@ -270,8 +354,12 @@ function FavouritesOverview() {
       {/* Create List Modal */}
       <CreateListModal
         open={createModalOpen}
-        onClose={() => setCreateModalOpen(false)}
+        onClose={() => {
+          setCreateModalOpen(false);
+          setCreateListOwnerType(null);
+        }}
         onCreated={handleCreateSuccess}
+        defaultOwnerType={createListOwnerType}
       />
 
       {/* Add to List Modal */}

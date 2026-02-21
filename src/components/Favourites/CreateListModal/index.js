@@ -26,17 +26,19 @@ import MDTypography from "components/MDTypography";
 import { useFavourites } from "context/FavouritesContext";
 import { useAuth } from "context/AuthContext";
 
-function CreateListModal({ open, onClose, onCreated, linkedJob }) {
+function CreateListModal({ open, onClose, onCreated, linkedJob, defaultOwnerType }) {
   const { user } = useAuth();
-  const { createFavouriteList } = useFavourites();
+  const { createFavouriteList, canCreateOrgList, canCreateTeamList, LIST_OWNER_TYPES } = useFavourites();
 
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [visibility, setVisibility] = useState("private");
+  const [ownerType, setOwnerType] = useState(defaultOwnerType || LIST_OWNER_TYPES.USER);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
   const isSuperAdmin = user?.role === "super admin";
+  const showOwnerTypeSelector = canCreateOrgList || canCreateTeamList;
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -56,12 +58,18 @@ function CreateListModal({ open, onClose, onCreated, linkedJob }) {
         visibility,
         linkedJobId: linkedJob?.id || null,
         linkedJobTitle: linkedJob?.title || null,
+        ownerType,
+        organisationId: ownerType !== LIST_OWNER_TYPES.USER ? user?.organisationId : null,
+        organisationName: ownerType !== LIST_OWNER_TYPES.USER ? user?.companyName : null,
+        teamId: ownerType === LIST_OWNER_TYPES.TEAM ? user?.teamId : null,
+        teamName: ownerType === LIST_OWNER_TYPES.TEAM ? user?.teamName : null,
       });
 
       // Reset form
       setTitle("");
       setDescription("");
       setVisibility("private");
+      setOwnerType(defaultOwnerType || LIST_OWNER_TYPES.USER);
 
       // Notify parent
       if (onCreated) {
@@ -82,6 +90,7 @@ function CreateListModal({ open, onClose, onCreated, linkedJob }) {
       setTitle("");
       setDescription("");
       setVisibility("private");
+      setOwnerType(defaultOwnerType || LIST_OWNER_TYPES.USER);
       setError("");
       onClose();
     }
@@ -131,6 +140,31 @@ function CreateListModal({ open, onClose, onCreated, linkedJob }) {
               rows={2}
             />
 
+            {showOwnerTypeSelector && (
+              <FormControl fullWidth>
+                <InputLabel>List Owner</InputLabel>
+                <Select
+                  value={ownerType}
+                  label="List Owner"
+                  onChange={(e) => setOwnerType(e.target.value)}
+                >
+                  <MenuItem value={LIST_OWNER_TYPES.USER}>
+                    Personal - Only visible to you
+                  </MenuItem>
+                  {canCreateOrgList && (
+                    <MenuItem value={LIST_OWNER_TYPES.ORGANISATION}>
+                      Organisation - Shared with all organisation members
+                    </MenuItem>
+                  )}
+                  {canCreateTeamList && (
+                    <MenuItem value={LIST_OWNER_TYPES.TEAM}>
+                      Team - Shared with your team members
+                    </MenuItem>
+                  )}
+                </Select>
+              </FormControl>
+            )}
+
             <FormControl fullWidth>
               <InputLabel>Visibility</InputLabel>
               <Select
@@ -139,7 +173,7 @@ function CreateListModal({ open, onClose, onCreated, linkedJob }) {
                 onChange={(e) => setVisibility(e.target.value)}
               >
                 <MenuItem value="private">
-                  Private - Only you can see this list
+                  Private - Only visible to list owner{ownerType !== LIST_OWNER_TYPES.USER ? "s" : ""}
                 </MenuItem>
                 <MenuItem value="authenticated">
                   Shared - Anyone with the link (must be logged in)
@@ -190,6 +224,7 @@ function CreateListModal({ open, onClose, onCreated, linkedJob }) {
 CreateListModal.defaultProps = {
   onCreated: null,
   linkedJob: null,
+  defaultOwnerType: null,
 };
 
 CreateListModal.propTypes = {
@@ -200,6 +235,7 @@ CreateListModal.propTypes = {
     id: PropTypes.string,
     title: PropTypes.string,
   }),
+  defaultOwnerType: PropTypes.oneOf(["user", "organisation", "team"]),
 };
 
 export default CreateListModal;

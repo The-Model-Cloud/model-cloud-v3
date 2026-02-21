@@ -2,8 +2,8 @@
 
 This checklist tracks the gaps between the February 2026 press release claims and the current platform implementation.
 
-**Last Updated:** 2026-02-20
-**Overall Completion:** ~92% (9 critical/high items completed)
+**Last Updated:** 2026-02-21
+**Overall Completion:** ~97% (11 critical/high items completed)
 
 ---
 
@@ -44,9 +44,21 @@ This checklist tracks the gaps between the February 2026 press release claims an
 ### Missing - Enhancement
 - [ ] Display years of experience
 - [ ] Display previous work history
-- [ ] Model rating/testimonial system
 - [ ] Portfolio sample count display
 - [ ] Model availability calendar
+
+### Planned - Rating System
+- [ ] **Model & Client Rating System** - Planned for Phase 2.1
+  - After job completion, both parties can rate each other
+  - 1-5 star ratings with category breakdown
+  - Categories for models: Professionalism, Punctuality, Communication, Appearance, Skill
+  - Categories for clients: Professionalism, Communication, Brief Clarity, Payment Promptness
+  - Optional public comments
+  - Average ratings displayed on profiles
+  - Email notifications for rating requests
+  - 7-day reminder, 30-day expiry
+  - Admin can flag inappropriate ratings
+  - See `documentation/implementation-plan.md` section 2.1 for full spec
 
 ---
 
@@ -147,6 +159,16 @@ This checklist tracks the gaps between the February 2026 press release claims an
   - UI pages: `src/layouts/organisation/teams/` and `src/layouts/organisation/members/`
   - Firestore rules for team-based access
 
+- [x] **Organisation Management (Admin)** - COMPLETED 2026-02-21
+  - Admins can create/edit organisations with full settings
+  - Pricing tiers from Firestore `pricingTiers` collection
+  - Tier system: Demo, Starter, Professional, Enterprise, Agency, Custom
+  - Configurable licence limits (seats) per organisation
+  - Expiry dates for demo/trial accounts
+  - Status management (Active/Suspended)
+  - Company Name in edit-profile links to organisations collection
+  - Organisations menu moved under Tools
+
 ### Missing - Critical
 - [ ] **Account manager self-service UI** - Partially implemented
   - Teams and Members UI created
@@ -203,17 +225,33 @@ This checklist tracks the gaps between the February 2026 press release claims an
   - Recent jobs across all organisations
   - Searchable, sortable organisations overview table
 
-### Missing - Critical
-
-- [ ] **Organisation-level model relationships** - Favourites are user-owned only
-  - When user leaves, relationships lost
-  - No institutional knowledge retention
-  - Priority: **HIGH**
+### Recently Implemented
+- [x] **Organisation-level model relationships (Favourites)** - COMPLETED 2026-02-21
+  - Favourite lists can now be owned by user, organisation, or team
+  - Organisation lists visible to all org members
+  - Team lists visible to team members
+  - Lists persist when individual users leave (institutional knowledge retained)
+  - Clear ownership badges in UI (tabs for My Lists / Organisation / Team)
+  - Updated files:
+    - `src/utils/favourites.js` - LIST_OWNER_TYPES constant
+    - `src/context/FavouritesContext.js` - Org/team list listeners
+    - `src/layouts/favourites/overview/index.js` - Tabbed UI
+    - `src/components/Favourites/ListCard/index.js` - Ownership badges
+    - `src/components/Favourites/CreateListModal/index.js` - Owner type selector
+    - `firestore.rules` - Org/team list access rules
 
 ### Missing - Enhancement
 - [ ] Organisation branding/customisation
 - [ ] Organisation-wide notification settings
 - [ ] Export organisation data/reports
+
+### Planned - Trust & Quality
+- [ ] **Rating System** - Comprehensive spec in `implementation-plan.md` section 2.1
+  - Post-job rating requests for both model and client
+  - Star ratings with category breakdowns
+  - Public comments and private admin notes
+  - Average ratings on profiles with review count
+  - Builds trust and accountability on platform
 
 ---
 
@@ -225,22 +263,23 @@ This checklist tracks the gaps between the February 2026 press release claims an
 3. [x] ~~Teams and departments structure~~ - **COMPLETED**
 4. [x] ~~Organisation dashboard~~ - **COMPLETED**
 5. [x] ~~Jobs linked to organisations~~ - **COMPLETED**
+6. [x] ~~Organisation Management (Admin)~~ - **COMPLETED** (tiers, licences, expiry)
 
 ### HIGH (Should fix before launch)
-6. [ ] Direct messaging to models
-7. [x] ~~Job cancellation/withdrawal~~ - **COMPLETED**
-8. [x] ~~Cancel awarded booking~~ - **COMPLETED**
-9. [ ] Account manager self-service UI (partially done)
-10. [x] ~~Organisation-level analytics~~ - **COMPLETED**
-11. [x] ~~Platform Dashboard (Admin)~~ - **COMPLETED**
-12. [ ] Organisation-level model relationships
+7. [ ] Direct messaging to models
+8. [x] ~~Job cancellation/withdrawal~~ - **COMPLETED**
+9. [x] ~~Cancel awarded booking~~ - **COMPLETED**
+10. [ ] Account manager self-service UI (partially done)
+11. [x] ~~Organisation-level analytics~~ - **COMPLETED**
+12. [x] ~~Platform Dashboard (Admin)~~ - **COMPLETED**
+13. [x] ~~Organisation-level model relationships~~ - **COMPLETED**
 
 ### MEDIUM (Post-launch enhancement)
-13. [ ] Bulk model invitations
-14. [ ] Apple Pay / Google Pay
-15. [ ] Model experience/history display
-16. [ ] Model rating system
-17. [ ] Custom permission sets
+14. [ ] Model & Client Rating System (spec complete - see 2.1)
+15. [ ] Bulk model invitations
+16. [ ] Apple Pay / Google Pay
+17. [ ] Model experience/history display
+18. [ ] Custom permission sets
 
 ---
 

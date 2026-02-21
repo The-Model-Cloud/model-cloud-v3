@@ -22,6 +22,16 @@ import { db } from "config/firebase";
 import { v4 as uuidv4 } from "uuid";
 
 // ============================================================================
+// OWNER TYPE CONSTANTS
+// ============================================================================
+
+export const LIST_OWNER_TYPES = {
+  USER: "user",
+  ORGANISATION: "organisation",
+  TEAM: "team",
+};
+
+// ============================================================================
 // FAVOURITE LISTS - CRUD Operations
 // ============================================================================
 
@@ -34,6 +44,11 @@ import { v4 as uuidv4 } from "uuid";
  * @param {string} params.visibility - "private" | "authenticated" | "public"
  * @param {string|null} params.linkedJobId - Optional linked job ID
  * @param {string|null} params.linkedJobTitle - Optional linked job title
+ * @param {string} params.ownerType - "user" | "organisation" | "team" (default: "user")
+ * @param {string|null} params.organisationId - Organisation ID (if org/team owned)
+ * @param {string|null} params.organisationName - Organisation name (for display)
+ * @param {string|null} params.teamId - Team ID (if team owned)
+ * @param {string|null} params.teamName - Team name (for display)
  * @returns {Promise<string>} - The created list ID
  */
 export const createFavouriteList = async ({
@@ -43,6 +58,11 @@ export const createFavouriteList = async ({
   visibility = "private",
   linkedJobId = null,
   linkedJobTitle = null,
+  ownerType = LIST_OWNER_TYPES.USER,
+  organisationId = null,
+  organisationName = null,
+  teamId = null,
+  teamName = null,
 }) => {
   const shareToken = uuidv4();
 
@@ -52,6 +72,13 @@ export const createFavouriteList = async ({
     ownerId: owner.uid,
     ownerName: owner.name,
     ownerRole: owner.role,
+    // New ownership fields
+    ownerType,
+    organisationId,
+    organisationName,
+    teamId,
+    teamName,
+    // Model data
     models: [],
     modelIds: [],
     modelCount: 0,
@@ -102,7 +129,7 @@ export const getFavouriteListByShareToken = async (shareToken) => {
 };
 
 /**
- * Get all favourite lists for a user
+ * Get all favourite lists for a user (user-owned only)
  * @param {string} userId - User ID
  * @returns {Promise<array>} - Array of lists
  */
@@ -110,6 +137,7 @@ export const getUserFavouriteLists = async (userId) => {
   const q = query(
     collection(db, "favouriteLists"),
     where("ownerId", "==", userId),
+    where("ownerType", "in", ["user", null]), // Include legacy lists without ownerType
     orderBy("createdAt", "desc")
   );
 
@@ -118,6 +146,88 @@ export const getUserFavouriteLists = async (userId) => {
     id: doc.id,
     ...doc.data(),
   }));
+};
+
+/**
+ * Get all favourite lists for an organisation
+ * @param {string} organisationId - Organisation ID
+ * @returns {Promise<array>} - Array of lists
+ */
+export const getOrganisationFavouriteLists = async (organisationId) => {
+  const q = query(
+    collection(db, "favouriteLists"),
+    where("organisationId", "==", organisationId),
+    where("ownerType", "==", LIST_OWNER_TYPES.ORGANISATION),
+    orderBy("createdAt", "desc")
+  );
+
+  const snapshot = await getDocs(q);
+  return snapshot.docs.map((doc) => ({
+    id: doc.id,
+    ...doc.data(),
+  }));
+};
+
+/**
+ * Get all favourite lists for a team
+ * @param {string} teamId - Team ID
+ * @returns {Promise<array>} - Array of lists
+ */
+export const getTeamFavouriteLists = async (teamId) => {
+  const q = query(
+    collection(db, "favouriteLists"),
+    where("teamId", "==", teamId),
+    where("ownerType", "==", LIST_OWNER_TYPES.TEAM),
+    orderBy("createdAt", "desc")
+  );
+
+  const snapshot = await getDocs(q);
+  return snapshot.docs.map((doc) => ({
+    id: doc.id,
+    ...doc.data(),
+  }));
+};
+
+/**
+ * Get all favourite lists accessible to a user (personal + org + team)
+ * @param {string} userId - User ID
+ * @param {string|null} organisationId - User's organisation ID
+ * @param {string|null} teamId - User's team ID
+ * @returns {Promise<{personal: array, organisation: array, team: array}>}
+ */
+export const getAllAccessibleFavouriteLists = async (userId, organisationId = null, teamId = null) => {
+  const results = {
+    personal: [],
+    organisation: [],
+    team: [],
+  };
+
+  // Get personal lists
+  try {
+    results.personal = await getUserFavouriteLists(userId);
+  } catch (error) {
+    console.error("Error fetching personal lists:", error);
+  }
+
+  // Get organisation lists if user belongs to an org
+  if (organisationId) {
+    try {
+      results.organisation = await getOrganisationFavouriteLists(organisationId);
+    } catch (error) {
+      console.error("Error fetching organisation lists:", error);
+    }
+  }
+
+  // Get team lists if user belongs to a team
+  if (teamId) {
+    try {
+      results.team = await getTeamFavouriteLists(teamId);
+    } catch (error) {
+      console.error("Error fetching team lists:", error);
+    }
+  }
+
+  return results;
 };
 
 /**
@@ -218,7 +328,7 @@ export const removeModelFromList = async (listId, modelUid) => {
 };
 
 /**
- * Get all lists that contain a specific model
+ * Get all lists that contain a specific model (personal lists only)
  * @param {string} modelUid - Model's user ID
  * @param {string} userId - Current user ID (owner of lists)
  * @returns {Promise<array>} - Array of list IDs
@@ -232,6 +342,89 @@ export const getListsContainingModel = async (modelUid, userId) => {
 
   const snapshot = await getDocs(q);
   return snapshot.docs.map((doc) => doc.id);
+};
+
+/**
+ * Get all accessible lists that contain a specific model
+ * @param {string} modelUid - Model's user ID
+ * @param {string} userId - Current user ID
+ * @param {string|null} organisationId - User's organisation ID
+ * @param {string|null} teamId - User's team ID
+ * @returns {Promise<array>} - Array of list objects with id and ownerType
+ */
+export const getAllListsContainingModel = async (modelUid, userId, organisationId = null, teamId = null) => {
+  const results = [];
+
+  // Personal lists
+  const personalQ = query(
+    collection(db, "favouriteLists"),
+    where("ownerId", "==", userId),
+    where("modelIds", "array-contains", modelUid)
+  );
+  const personalSnap = await getDocs(personalQ);
+  personalSnap.docs.forEach((doc) => {
+    results.push({ id: doc.id, ownerType: doc.data().ownerType || "user", ...doc.data() });
+  });
+
+  // Organisation lists
+  if (organisationId) {
+    const orgQ = query(
+      collection(db, "favouriteLists"),
+      where("organisationId", "==", organisationId),
+      where("ownerType", "==", LIST_OWNER_TYPES.ORGANISATION),
+      where("modelIds", "array-contains", modelUid)
+    );
+    const orgSnap = await getDocs(orgQ);
+    orgSnap.docs.forEach((doc) => {
+      results.push({ id: doc.id, ownerType: "organisation", ...doc.data() });
+    });
+  }
+
+  // Team lists
+  if (teamId) {
+    const teamQ = query(
+      collection(db, "favouriteLists"),
+      where("teamId", "==", teamId),
+      where("ownerType", "==", LIST_OWNER_TYPES.TEAM),
+      where("modelIds", "array-contains", modelUid)
+    );
+    const teamSnap = await getDocs(teamQ);
+    teamSnap.docs.forEach((doc) => {
+      results.push({ id: doc.id, ownerType: "team", ...doc.data() });
+    });
+  }
+
+  return results;
+};
+
+/**
+ * Transfer list ownership to organisation or team
+ * @param {string} listId - List ID
+ * @param {string} newOwnerType - "organisation" | "team"
+ * @param {object} ownerInfo - { organisationId, organisationName, teamId, teamName }
+ * @returns {Promise<void>}
+ */
+export const transferListOwnership = async (listId, newOwnerType, ownerInfo) => {
+  const docRef = doc(db, "favouriteLists", listId);
+
+  const updates = {
+    ownerType: newOwnerType,
+    updatedAt: serverTimestamp(),
+  };
+
+  if (newOwnerType === LIST_OWNER_TYPES.ORGANISATION) {
+    updates.organisationId = ownerInfo.organisationId;
+    updates.organisationName = ownerInfo.organisationName;
+    updates.teamId = null;
+    updates.teamName = null;
+  } else if (newOwnerType === LIST_OWNER_TYPES.TEAM) {
+    updates.organisationId = ownerInfo.organisationId;
+    updates.organisationName = ownerInfo.organisationName;
+    updates.teamId = ownerInfo.teamId;
+    updates.teamName = ownerInfo.teamName;
+  }
+
+  await updateDoc(docRef, updates);
 };
 
 // ============================================================================

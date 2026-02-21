@@ -20,7 +20,7 @@ import Chip from "@mui/material/Chip";
 import MDBox from "components/MDBox";
 import MDTypography from "components/MDTypography";
 
-function ListCard({ list, onShare, onDelete, onEdit }) {
+function ListCard({ list, onShare, onDelete, onEdit, showOwnerBadge }) {
   const {
     id,
     title,
@@ -29,7 +29,33 @@ function ListCard({ list, onShare, onDelete, onEdit }) {
     modelCount,
     visibility,
     linkedJobTitle,
+    ownerType,
+    organisationName,
+    teamName,
   } = list;
+
+  // Get owner badge info
+  const getOwnerBadge = () => {
+    if (!showOwnerBadge) return null;
+    switch (ownerType) {
+      case "organisation":
+        return {
+          label: organisationName || "Organisation",
+          icon: "business",
+          color: "primary",
+        };
+      case "team":
+        return {
+          label: teamName || "Team",
+          icon: "groups",
+          color: "secondary",
+        };
+      default:
+        return null; // Don't show badge for personal lists
+    }
+  };
+
+  const ownerBadge = getOwnerBadge();
 
   // Get first 4 models for avatar preview
   const previewModels = (models || []).slice(0, 4);
@@ -169,7 +195,7 @@ function ListCard({ list, onShare, onDelete, onEdit }) {
             </MDTypography>
           )}
 
-          <MDBox display="flex" alignItems="center" gap={1} mt={1}>
+          <MDBox display="flex" alignItems="center" gap={1} mt={1} flexWrap="wrap">
             <MDTypography variant="caption" color="text">
               {modelCount || 0} {modelCount === 1 ? "model" : "models"}
             </MDTypography>
@@ -179,6 +205,16 @@ function ListCard({ list, onShare, onDelete, onEdit }) {
                 {getVisibilityIcon()}
               </Icon>
             </Tooltip>
+
+            {ownerBadge && (
+              <Chip
+                label={ownerBadge.label}
+                size="small"
+                color={ownerBadge.color}
+                icon={<Icon fontSize="small">{ownerBadge.icon}</Icon>}
+                sx={{ maxWidth: 120, height: 20, "& .MuiChip-label": { px: 0.5, fontSize: "0.65rem" } }}
+              />
+            )}
 
             {linkedJobTitle && (
               <Chip
@@ -233,6 +269,7 @@ ListCard.defaultProps = {
   onShare: null,
   onDelete: null,
   onEdit: null,
+  showOwnerBadge: false,
 };
 
 ListCard.propTypes = {
@@ -251,10 +288,14 @@ ListCard.propTypes = {
     modelCount: PropTypes.number,
     visibility: PropTypes.oneOf(["private", "authenticated", "public"]),
     linkedJobTitle: PropTypes.string,
+    ownerType: PropTypes.oneOf(["user", "organisation", "team"]),
+    organisationName: PropTypes.string,
+    teamName: PropTypes.string,
   }).isRequired,
   onShare: PropTypes.func,
   onDelete: PropTypes.func,
   onEdit: PropTypes.func,
+  showOwnerBadge: PropTypes.bool,
 };
 
 export default ListCard;

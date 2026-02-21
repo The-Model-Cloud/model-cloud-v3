@@ -312,7 +312,65 @@ firestore.rules
 
 ---
 
-### 1.5 Organisation Model Relationships (Favourites)
+### 1.4.1 Organisation Management (Admin) ✅ COMPLETE
+
+**Problem:** Admins had no way to create organisations or manage their tiers, licences, and expiry dates.
+
+**Implementation:**
+
+**Pricing Tiers from Firestore:**
+- Tiers now fetched from `pricingTiers` Firestore collection
+- Fallback to hardcoded defaults if collection unavailable
+- 5-minute cache to reduce Firestore reads
+- Tiers include: Demo, Starter, Professional, Enterprise, Agency, Custom
+
+**Organisation Creation/Management:**
+```
+src/layouts/admin/organisations/index.js
+└── "Create Organisation" button and dialog
+└── Fields: Company Name, Number, Address, VAT, Tier, Licence Limit, Expiry Date
+└── Table columns: Tier (chip), Licences (X/Y), Status, Expiry
+
+src/layouts/admin/organisations/detail/index.js
+└── "Edit Settings" button and dialog
+└── Can change tier, licence limit, expiry, status (Active/Suspended)
+└── Shows subscription details section
+```
+
+**Company Name → Organisation Linking:**
+```
+src/layouts/pages/account/settings/components/BasicInfo/index.js
+└── Company Name field only editable by admin/super admin
+└── On blur, creates or links to organisation via getOrCreateOrganisation()
+└── Updates user's organisationId field
+└── Account managers see company section but cannot edit Company Name
+```
+
+**Files Modified:**
+```
+src/utils/organisations.js
+└── Added getPricingTiers() - fetches from Firestore with caching
+└── Added TIER_CONFIG_FALLBACK for offline/error handling
+└── Added clearPricingTiersCache() utility
+└── Added "custom" tier for flexible licensing
+
+src/routes.js
+└── Moved Organisations under Tools menu
+```
+
+**Acceptance Criteria:**
+- [x] Admins can create organisations with tier, licences, expiry
+- [x] Admins can edit organisation settings
+- [x] Pricing tiers fetched from Firestore pricingTiers collection
+- [x] Company Name in edit-profile creates/links organisation
+- [x] Company Name read-only for non-admin users
+- [x] Organisations menu under Tools
+
+**Status: COMPLETE** (2026-02-21)
+
+---
+
+### 1.5 Organisation Model Relationships (Favourites) ✅ COMPLETE
 
 **Problem:** Favourites are user-owned. When a user leaves, model relationships are lost.
 
@@ -351,11 +409,21 @@ firestore.rules
 ```
 
 **Acceptance Criteria:**
-- [ ] Lists can be owned by user, organisation, or team
-- [ ] Organisation lists visible to all org members
-- [ ] Team lists visible to team members
-- [ ] Lists persist when individual users leave
-- [ ] Clear ownership indication in UI
+- [x] Lists can be owned by user, organisation, or team
+- [x] Organisation lists visible to all org members
+- [x] Team lists visible to team members
+- [x] Lists persist when individual users leave
+- [x] Clear ownership indication in UI
+
+**Status: COMPLETE** (2026-02-21)
+
+Implementation details:
+- `src/utils/favourites.js` - Added LIST_OWNER_TYPES, ownerType/organisationId/teamId fields
+- `src/context/FavouritesContext.js` - Added organisationLists and teamLists with real-time listeners
+- `src/layouts/favourites/overview/index.js` - Added tabs for My Lists / Organisation / Team
+- `src/components/Favourites/ListCard/index.js` - Added ownership badges
+- `src/components/Favourites/CreateListModal/index.js` - Added owner type selector
+- `firestore.rules` - Updated favouriteLists rules for org/team access
 
 ---
 
@@ -365,7 +433,182 @@ These should be completed before public launch.
 
 ---
 
-### 2.1 Direct Messaging to Models
+### 2.1 Rating System (Post-Job Reviews)
+
+**Problem:** No way for clients and models to rate each other after job completion. No trust indicators on profiles.
+
+**User Story:**
+- After a job is marked "completed", both parties receive a rating request
+- Client rates the model (professionalism, punctuality, quality, etc.)
+- Model rates the client (communication, professionalism, payment, etc.)
+- Average ratings displayed on profiles
+
+**Implementation:**
+
+**Data Model:**
+
+```javascript
+// New collection: ratings/{ratingId}
+{
+  jobId: "jobId",                    // Reference to completed job
+  jobReference: "TMC-20260220-...",  // Human-readable job ref
+
+  // Who is being rated
+  ratedUserId: "userId",
+  ratedUserType: "model" | "client",
+  ratedUserName: "John Smith",
+
+  // Who is doing the rating
+  raterUserId: "userId",
+  raterUserType: "model" | "client",
+  raterUserName: "Jane Doe",
+
+  // Rating data
+  overallRating: 4.5,               // 1-5 stars (0.5 increments)
+  categories: {
+    professionalism: 5,
+    communication: 4,
+    punctuality: 5,
+    // Model-specific:
+    appearance: 4,                  // Only for model ratings
+    skillLevel: 5,                  // Only for model ratings
+    // Client-specific:
+    briefClarity: 4,                // Only for client ratings
+    paymentPromptness: 5,           // Only for client ratings
+  },
+  comment: "Great to work with...", // Optional public comment
+  privateNote: "Internal note...",  // Optional private feedback (admin only)
+
+  // Metadata
+  createdAt: Timestamp,
+  status: "pending" | "submitted" | "flagged",
+  isPublic: true,                   // Can be hidden if flagged
+}
+
+// Update users collection - add fields:
+{
+  // ... existing fields
+  averageRating: 4.7,               // Calculated average
+  ratingCount: 23,                  // Number of ratings received
+  ratingBreakdown: {                // Category averages
+    professionalism: 4.8,
+    communication: 4.5,
+    punctuality: 4.9,
+    // etc.
+  },
+}
+
+// New collection: ratingRequests/{requestId}
+{
+  jobId: "jobId",
+  jobReference: "TMC-20260220-...",
+  requestedFromUserId: "userId",
+  requestedFromUserType: "model" | "client",
+  rateUserId: "userId",             // Who to rate
+  rateUserType: "model" | "client",
+  status: "pending" | "completed" | "expired",
+  createdAt: Timestamp,
+  completedAt: Timestamp | null,
+  reminderSentAt: Timestamp | null,
+  expiresAt: Timestamp,             // 30 days after job completion
+}
+```
+
+**Files to Create:**
+
+```
+src/components/RatingModal/
+├── index.js                        # Main rating modal
+├── StarRating.js                   # Reusable star input component
+└── CategoryRatings.js              # Category breakdown input
+
+src/layouts/ratings/
+├── index.js                        # Pending ratings list (My Ratings to Give)
+└── received/index.js               # Ratings received (My Reviews)
+
+src/utils/ratings.js
+├── createRatingRequest()           # Called after job completion
+├── submitRating()                  # Submit a rating
+├── getRatingsForUser()             # Get user's received ratings
+├── getPendingRatingRequests()      # Get ratings user needs to give
+├── calculateUserAverages()         # Recalculate user's average ratings
+├── flagRating()                    # Admin: flag inappropriate rating
+```
+
+**Files to Modify:**
+
+```
+src/layouts/jobs/job-details/index.js
+└── After job completion, trigger rating request creation
+
+src/layouts/pages/profile/public-profile/index.jsx
+└── Display average rating and rating count
+└── Link to view all ratings/reviews
+
+src/layouts/pages/profile/components/Header/index.js
+└── Display star rating badge
+
+functions/index.js
+└── onJobCompleted() - Create rating requests for both parties
+└── sendRatingReminder() - Scheduled function for reminders
+└── onRatingSubmitted() - Update user's average ratings
+```
+
+**Notification Flow:**
+
+1. Job marked as "completed"
+2. Cloud Function creates two `ratingRequests` documents
+3. Email sent to both parties: "How was your experience with [Name]?"
+4. In-app notification appears
+5. After 7 days, send reminder if not completed
+6. Request expires after 30 days
+
+**UI Components:**
+
+1. **Rating Request Banner** - Shows on dashboard if pending ratings
+2. **Rating Modal** - Star rating + categories + optional comment
+3. **Profile Rating Badge** - Stars + count next to user name
+4. **Reviews Section** - Full list of reviews on profile
+5. **Ratings Dashboard** - View pending/given/received ratings
+
+**Rating Categories:**
+
+*For rating Models:*
+- Overall Experience (required, 1-5 stars)
+- Professionalism
+- Punctuality
+- Communication
+- Appearance/Presentation
+- Skill Level
+
+*For rating Clients:*
+- Overall Experience (required, 1-5 stars)
+- Professionalism
+- Communication
+- Brief Clarity
+- Payment Promptness
+- Would Work Again
+
+**Display Rules:**
+- Only show ratings from verified, completed jobs
+- Minimum 1 rating to show average
+- Show "New" badge if < 3 ratings
+- Comments are public (can be flagged/hidden by admin)
+- Private notes visible only to platform admins
+
+**Acceptance Criteria:**
+- [ ] Rating requests created automatically on job completion
+- [ ] Email notifications sent for rating requests
+- [ ] Rating modal with star input and categories
+- [ ] Ratings stored in Firestore
+- [ ] Average ratings calculated and displayed on profiles
+- [ ] Pending ratings shown on user dashboard
+- [ ] Admin can flag/hide inappropriate ratings
+- [ ] Reminder sent after 7 days if not rated
+
+---
+
+### 2.3 Direct Messaging to Models
 
 **Problem:** Clients can only message models via job applications.
 
@@ -401,7 +644,7 @@ Files to modify:
 
 ---
 
-### 2.2 Job Cancellation/Withdrawal
+### 2.4 Job Cancellation/Withdrawal
 
 **Problem:** Clients cannot close a job posting or cancel an awarded booking.
 
@@ -426,7 +669,7 @@ Files to create/modify:
 
 ---
 
-### 2.3 Account Manager Self-Service UI
+### 2.5 Account Manager Self-Service UI
 
 **Problem:** Route exists but points to placeholder component.
 

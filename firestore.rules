@@ -111,22 +111,95 @@ service cloud.firestore {
     // FAVOURITES - Lists and Model Collections
     // ============================================================================
 
+    // Helper: Get user's team ID
+    function getUserTeamId() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data.teamId;
+    }
+
+    // Helper: Check if user is in the same team as the list
+    function isInListTeam(listData) {
+      return isAuthenticated() &&
+        listData.teamId != null &&
+        getUserTeamId() == listData.teamId;
+    }
+
+    // Helper: Check if user is in the same organisation as the list
+    function isInListOrganisation(listData) {
+      return isAuthenticated() &&
+        listData.organisationId != null &&
+        getUserOrganisationId() == listData.organisationId;
+    }
+
     // Favourite Lists collection
     match /favouriteLists/{listId} {
+      // Read rules:
+      // - Personal lists: owner can read
+      // - Organisation lists: all org members can read
+      // - Team lists: all team members can read
+      // - Shared/public lists: authenticated users or anyone
+      // - Admins can read all
       allow read: if
+        // Owner can always read their lists
         (isAuthenticated() && resource.data.ownerId == request.auth.uid)
+        // Organisation members can read organisation lists
+        || (isAuthenticated() && resource.data.ownerType == "organisation" && isInListOrganisation(resource.data))
+        // Team members can read team lists
+        || (isAuthenticated() && resource.data.ownerType == "team" && isInListTeam(resource.data))
+        // Shared lists visible to authenticated users
         || (isAuthenticated() && resource.data.visibility == "authenticated")
+        // Public lists visible to anyone
         || resource.data.visibility == "public"
+        // Admins can read all
         || isAdmin();
 
+      // Create rules:
+      // - Personal lists: user sets themselves as owner
+      // - Organisation lists: user must be in the organisation
+      // - Team lists: user must be in the team
       allow create: if isAuthenticated()
-        && request.resource.data.ownerId == request.auth.uid;
+        && request.resource.data.ownerId == request.auth.uid
+        && (
+          // Personal list
+          (request.resource.data.ownerType == null || request.resource.data.ownerType == "user")
+          // Organisation list - user must be in the organisation
+          || (request.resource.data.ownerType == "organisation" && isInListOrganisation(request.resource.data))
+          // Team list - user must be in the team
+          || (request.resource.data.ownerType == "team" && isInListTeam(request.resource.data))
+        );
 
+      // Update rules:
+      // - Personal lists: owner can update
+      // - Organisation lists: org members can update (could restrict to admin/owner later)
+      // - Team lists: team members can update
+      // - Admins can update any
       allow update: if isAuthenticated()
-        && (resource.data.ownerId == request.auth.uid || isAdmin());
+        && (
+          // Owner can update their lists
+          resource.data.ownerId == request.auth.uid
+          // Organisation members can update org lists
+          || (resource.data.ownerType == "organisation" && isInListOrganisation(resource.data))
+          // Team members can update team lists
+          || (resource.data.ownerType == "team" && isInListTeam(resource.data))
+          // Admins can update any
+          || isAdmin()
+        );
 
+      // Delete rules:
+      // - Personal lists: owner can delete
+      // - Organisation lists: org admins/owners can delete (stricter than update)
+      // - Team lists: team members can delete (or org admins)
+      // - Super admins can delete any
       allow delete: if isAuthenticated()
-        && (resource.data.ownerId == request.auth.uid || isSuperAdmin());
+        && (
+          // Owner can delete their lists
+          resource.data.ownerId == request.auth.uid
+          // Org admin/owner can delete org lists
+          || (resource.data.ownerType == "organisation" && resource.data.organisationId != null && isOrgAdminOrOwner(resource.data.organisationId))
+          // Team members can delete team lists (or use isOrgAdminOrOwner for stricter control)
+          || (resource.data.ownerType == "team" && isInListTeam(resource.data))
+          // Super admins can delete any
+          || isSuperAdmin()
+        );
     }
 
     // ============================================================================
