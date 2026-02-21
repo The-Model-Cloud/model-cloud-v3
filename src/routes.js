@@ -41,6 +41,7 @@ import NewJob from "layouts/jobs/new-job";
 import MyJobs from "layouts/jobs/my-jobs";
 import JobSearch from "layouts/jobs/search";
 import ImportModels from "layouts/models/import";
+import ImportClients from "layouts/clients/import";
 import ImportModelImages from "layouts/models/import-images";
 import ImportPortfolioImages from "layouts/models/import-portfolio-images";
 import AddUser from "layouts/admin/add-user";
@@ -556,6 +557,14 @@ const routes = [
         component: <ImportModels />,
         roles: ADMIN_ROLES,
         icon: <Icon fontSize="small">cloud_upload</Icon>,
+      },
+      {
+        name: "Import Clients",
+        key: "import-clients",
+        route: "/clients/import",
+        component: <ImportClients />,
+        roles: ["super admin"],
+        icon: <Icon fontSize="small">person_add</Icon>,
       },
       {
         name: "Import Headshots",

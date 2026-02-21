@@ -781,6 +781,125 @@ After implementation, verify:
 
 ---
 
+### 2.4 Client Import (CSV)
+
+**Problem:** Admins need an easy way to bulk import clients and their organisations, similar to model import.
+
+**Implementation:**
+
+**New Page:**
+```
+src/layouts/clients/import/index.js
+└── CSV upload with drag & drop
+└── Downloadable example template
+└── Progress tracking and results display
+└── Super admin only access
+```
+
+**Cloud Function:**
+```javascript
+// functions/index.js - importClients()
+// - Creates client users with Firebase Auth
+// - Creates or links to organisations by company name
+// - All imports default to "free" tier
+// - Default password: "Client123!"
+// - Logs action to adminLogs collection
+```
+
+**CSV Template Columns:**
+- Required: email, firstName, lastName
+- Organisation: companyName, companyNumber, vatNumber
+- Address: address1, address2, city, county, country, postcode
+- Contact: phone
+
+**Acceptance Criteria:**
+- [x] CSV upload with validation
+- [x] Downloadable example template
+- [x] Creates Firebase Auth users
+- [x] Creates/links organisations automatically
+- [x] All clients default to "free" tier
+- [x] Super admin only access
+- [x] Results summary with status per client
+
+**Status: COMPLETE** (2026-02-21)
+
+---
+
+### 2.5 Subscription Upgrade Process
+
+**Problem:** Clients imported on the free tier need a clear path to upgrade to paid tiers.
+
+**Current Tier System:**
+```javascript
+// Organisation tiers (from pricingTiers collection):
+- free: Basic access, 1 licence (default for imports)
+- demo: Trial account, 3 licences, has expiry date
+- starter: £49.99/mo, 5 licences
+- professional: £99.99/mo, 15 licences
+- enterprise: Custom, 50 licences
+- agency: £149.99/mo, 100 licences
+- custom: Flexible configuration
+```
+
+**Manual Upgrade Process (Current):**
+1. Admin navigates to Tools > Organisations
+2. Click on organisation name to view details
+3. Click "Edit Settings" button
+4. Change tier dropdown (e.g., "free" → "professional")
+5. Update licence limit if needed
+6. Set expiry date for time-limited tiers (demo)
+7. Save changes
+
+**Implementation Required - Self-Service Upgrade:**
+
+```
+Files to create:
+├── src/layouts/organisation/billing/index.js
+│   └── Current plan display
+│   └── Available plans comparison table
+│   └── Upgrade/downgrade buttons
+│   └── Stripe Checkout integration
+│
+├── src/components/UpgradePlanModal/index.js
+│   └── Plan selection
+│   └── Payment method
+│   └── Confirmation
+│
+├── functions/index.js
+│   └── createSubscriptionCheckout()
+│   └── handleSubscriptionWebhook()
+│   └── updateOrganisationTier()
+│   └── handleSubscriptionCancellation()
+```
+
+**Stripe Integration:**
+- Use existing Stripe Connect setup
+- Create Checkout Sessions for upgrades
+- Webhook handlers for subscription events
+- Automatic tier updates on payment success
+
+**User Flow:**
+1. Account manager clicks "Upgrade Plan" in org settings
+2. Comparison table shows current plan vs available plans
+3. Select desired plan
+4. Redirected to Stripe Checkout
+5. On success, organisation tier updated automatically
+6. Email confirmation sent
+
+**Acceptance Criteria:**
+- [ ] Billing page shows current plan
+- [ ] Plan comparison table with features
+- [ ] Stripe Checkout for upgrades
+- [ ] Webhook handles subscription changes
+- [ ] Automatic tier updates
+- [ ] Email notifications for plan changes
+- [ ] Downgrade with pro-rata handling
+- [ ] Cancellation flow
+
+**Priority:** HIGH - Required for monetisation
+
+---
+
 ## Dependencies
 
 | Feature | Depends On |
@@ -790,3 +909,4 @@ After implementation, verify:
 | Team Permissions | Team structure implemented |
 | Org Favourites | Team structure implemented |
 | Account Manager UI | Team structure implemented |
+| Self-Service Upgrade | Stripe Connect, Organisation tiers |

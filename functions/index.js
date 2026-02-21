@@ -7385,3 +7385,299 @@ exports.getRandomModelImages = onRequest({
     });
   }
 });
+
+
+/**
+ * Import clients from CSV data (Super Admin only)
+ * Creates client users and links them to organisations
+ * All imported clients default to "free" tier
+ * @param {Array} clients - Array of client objects with email, firstName, lastName, companyName, etc.
+ * @returns {Object} - Results for each client (created, updated, or error)
+ */
+exports.importClients = onCall({ timeoutSeconds: 540 }, async (request) => {
+  // 1. Verify authentication
+  if (!request.auth) {
+    throw new HttpsError("unauthenticated", "User must be logged in");
+  }
+
+  const callerUid = request.auth.uid;
+  const { clients } = request.data;
+
+  if (!clients || !Array.isArray(clients) || clients.length === 0) {
+    throw new HttpsError("invalid-argument", "Clients array is required");
+  }
+
+  // 2. Verify caller is a super admin
+  const callerDoc = await db.collection("users").doc(callerUid).get();
+  if (!callerDoc.exists) {
+    throw new HttpsError("permission-denied", "Caller user not found");
+  }
+
+  const callerData = callerDoc.data();
+  const callerRole = callerData.role;
+
+  if (callerRole !== "super admin") {
+    throw new HttpsError("permission-denied", "Only super admins can import clients");
+  }
+
+  console.log(`Super Admin ${callerData.email} starting import of ${clients.length} clients`);
+
+  const defaultPassword = "Client123!";
+  const BATCH_SIZE = 10;
+
+  // Track organisations created during this import
+  let organisationsCreated = 0;
+
+  // Helper function to get or create organisation
+  const getOrCreateOrganisation = async (companyName, companyNumber, vatNumber, registeredAddress) => {
+    if (!companyName || companyName.trim() === "") {
+      return null;
+    }
+
+    const normalisedName = companyName.trim();
+
+    // Check if organisation already exists
+    const existingOrgQuery = await db.collection("organisations")
+      .where("companyName", "==", normalisedName)
+      .limit(1)
+      .get();
+
+    if (!existingOrgQuery.empty) {
+      const existingOrg = existingOrgQuery.docs[0];
+      console.log(`Found existing organisation: ${normalisedName} (${existingOrg.id})`);
+      return { id: existingOrg.id, name: normalisedName, created: false };
+    }
+
+    // Create new organisation with free tier
+    const newOrgRef = db.collection("organisations").doc();
+    const newOrgData = {
+      companyName: normalisedName,
+      companyNumber: companyNumber || "",
+      vatNumber: vatNumber || "",
+      registeredAddress: registeredAddress || "",
+      tier: "free",
+      licenceLimit: 1,
+      status: "active",
+      expiryDate: null,
+      userCount: 0,
+      createdAt: admin.firestore.FieldValue.serverTimestamp(),
+      createdBy: callerUid,
+    };
+
+    await newOrgRef.set(newOrgData);
+    organisationsCreated++;
+    console.log(`Created new organisation: ${normalisedName} (${newOrgRef.id}) on Free tier`);
+
+    return { id: newOrgRef.id, name: normalisedName, created: true };
+  };
+
+  // Helper function to process a single client
+  const processClient = async (client) => {
+    const email = client.email?.toLowerCase()?.trim();
+
+    if (!email) {
+      return { email: "(missing)", status: "error", message: "Missing email address" };
+    }
+
+    // Generate public slug
+    const firstName = (client.firstName || "").trim();
+    const lastName = (client.lastName || "").trim();
+    const firstNameLower = firstName.toLowerCase();
+    const lastInitial = lastName.charAt(0).toLowerCase();
+    const publicSlug = `${firstNameLower}.${lastInitial}`;
+
+    // Build address string
+    const addressParts = [
+      client.address1,
+      client.address2,
+      client.city,
+      client.county,
+      client.postcode,
+      client.country,
+    ].filter(Boolean).map(p => p.trim()).filter(p => p);
+    const fullAddress = addressParts.join(", ");
+
+    // Get or create organisation if company name provided
+    let organisationInfo = null;
+    if (client.companyName && client.companyName.trim()) {
+      try {
+        organisationInfo = await getOrCreateOrganisation(
+          client.companyName,
+          client.companyNumber,
+          client.vatNumber,
+          fullAddress
+        );
+      } catch (orgError) {
+        console.error(`Error creating organisation for ${email}:`, orgError);
+        // Continue without organisation
+      }
+    }
+
+    const clientData = {
+      firstName,
+      lastName,
+      email,
+      phone: client.phone || "",
+      companyName: client.companyName?.trim() || "",
+      company: client.companyName?.trim() || "", // For backwards compatibility
+      address1: client.address1?.trim() || "",
+      address2: client.address2?.trim() || "",
+      city: client.city?.trim() || "",
+      county: client.county?.trim() || "",
+      country: client.country?.trim() || "United Kingdom",
+      postcode: client.postcode?.trim() || "",
+      role: "client",
+      publicSlug,
+      updatedAt: new Date().toISOString(),
+      importedViaCSV: true,
+    };
+
+    // Add organisation reference if exists
+    if (organisationInfo) {
+      clientData.organisationId = organisationInfo.id;
+      clientData.organisationRole = "member";
+    }
+
+    try {
+      // Check if user exists in Firestore first
+      const firestoreQuery = await db.collection("users").where("email", "==", email).get();
+
+      if (!firestoreQuery.empty) {
+        // User exists in Firestore - update them
+        const existingDoc = firestoreQuery.docs[0];
+        try {
+          await existingDoc.ref.update({
+            ...clientData,
+            status: "imported",
+          });
+
+          // Update organisation user count if applicable
+          if (organisationInfo) {
+            await db.collection("organisations").doc(organisationInfo.id).update({
+              userCount: admin.firestore.FieldValue.increment(1),
+            });
+          }
+
+          console.log(`Updated existing Firestore user: ${email}`);
+          return {
+            email,
+            status: "updated",
+            message: "Existing Firestore user updated",
+            organisationName: organisationInfo?.name || null,
+          };
+        } catch (updateError) {
+          console.error(`Failed to update ${email}:`, updateError);
+          return { email, status: "error", message: `Update failed: ${updateError.message}` };
+        }
+      }
+
+      // User doesn't exist in Firestore - check if they exist in Auth
+      let uid;
+      let authUserExisted = false;
+
+      try {
+        // Try to get existing Auth user by email
+        const existingAuthUser = await admin.auth().getUserByEmail(email);
+        uid = existingAuthUser.uid;
+        authUserExisted = true;
+        console.log(`Found existing Auth user for ${email}: ${uid}`);
+      } catch (authError) {
+        if (authError.code === "auth/user-not-found") {
+          // User doesn't exist in Auth - create them
+          try {
+            const newAuthUser = await admin.auth().createUser({
+              email,
+              password: defaultPassword,
+              displayName: `${firstName} ${lastName}`.trim(),
+            });
+            uid = newAuthUser.uid;
+            console.log(`Created new Auth user for ${email}: ${uid}`);
+          } catch (createError) {
+            return { email, status: "error", message: `Auth creation failed: ${createError.message}` };
+          }
+        } else {
+          return { email, status: "error", message: `Auth lookup failed: ${authError.message}` };
+        }
+      }
+
+      // Create Firestore document
+      await db.collection("users").doc(uid).set({
+        ...clientData,
+        uid,
+        createdAt: new Date().toISOString(),
+        status: "activated",
+      });
+
+      // Update organisation user count if applicable
+      if (organisationInfo) {
+        await db.collection("organisations").doc(organisationInfo.id).update({
+          userCount: admin.firestore.FieldValue.increment(1),
+        });
+      }
+
+      if (authUserExisted) {
+        return {
+          email,
+          status: "linked",
+          message: "Linked to existing Auth user",
+          organisationName: organisationInfo?.name || null,
+        };
+      } else {
+        return {
+          email,
+          status: "created",
+          message: "New user created",
+          organisationName: organisationInfo?.name || null,
+        };
+      }
+
+    } catch (err) {
+      console.error(`Error processing ${email}:`, err);
+      return { email, status: "error", message: err.message };
+    }
+  };
+
+  // 3. Process clients in parallel batches
+  const results = [];
+  for (let i = 0; i < clients.length; i += BATCH_SIZE) {
+    const batch = clients.slice(i, i + BATCH_SIZE);
+    const batchResults = await Promise.all(batch.map(processClient));
+    results.push(...batchResults);
+    console.log(`Processed batch ${Math.floor(i / BATCH_SIZE) + 1}/${Math.ceil(clients.length / BATCH_SIZE)}`);
+  }
+
+  // 4. Summary
+  const summary = {
+    total: clients.length,
+    created: results.filter(r => r.status === "created").length,
+    updated: results.filter(r => r.status === "updated").length,
+    linked: results.filter(r => r.status === "linked").length,
+    errors: results.filter(r => r.status === "error").length,
+    organisationsCreated,
+  };
+
+  console.log(`Import complete:`, summary);
+
+  // 5. Log admin action
+  try {
+    await db.collection("adminLogs").add({
+      adminUid: callerUid,
+      adminEmail: callerData.email,
+      adminName: `${callerData.firstName || ""} ${callerData.lastName || ""}`.trim(),
+      action: "IMPORT_CLIENTS",
+      description: `Imported ${summary.total} clients via CSV`,
+      details: {
+        summary,
+        importedEmails: results.filter(r => r.status !== "error").map(r => r.email),
+        errorEmails: results.filter(r => r.status === "error").map(r => ({ email: r.email, error: r.message })),
+      },
+      createdAt: admin.firestore.FieldValue.serverTimestamp(),
+      timestamp: new Date().toISOString(),
+    });
+    console.log(`Admin action logged: IMPORT_CLIENTS by ${callerData.email}`);
+  } catch (logError) {
+    console.error("Failed to log admin action:", logError);
+  }
+
+  return { success: true, results, summary };
+});

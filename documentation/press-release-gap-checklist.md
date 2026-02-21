@@ -3,7 +3,7 @@
 This checklist tracks the gaps between the February 2026 press release claims and the current platform implementation.
 
 **Last Updated:** 2026-02-21
-**Overall Completion:** ~97% (11 critical/high items completed)
+**Overall Completion:** ~97% (12 critical/high items completed, Client Import added)
 
 ---
 
@@ -240,6 +240,31 @@ This checklist tracks the gaps between the February 2026 press release claims an
     - `src/components/Favourites/CreateListModal/index.js` - Owner type selector
     - `firestore.rules` - Org/team list access rules
 
+- [x] **Client Import (CSV)** - COMPLETED 2026-02-21
+  - Bulk import clients via CSV file (super admin only)
+  - Automatically creates/links organisations by company name
+  - All imported clients default to "Free" tier
+  - Default password: "Client123!"
+  - Downloadable example CSV template
+  - Created files:
+    - `src/layouts/clients/import/index.js` - Import page UI
+    - `functions/index.js` - importClients() cloud function
+  - Route: `/clients/import` (Data Management menu)
+
+### Planned - Monetisation
+- [ ] **Subscription Upgrade Process** - Required for revenue
+  - Self-service tier upgrade for organisations
+  - Stripe Checkout integration for plan changes
+  - Current tiers: Free, Demo, Starter, Professional, Enterprise, Agency
+  - Manual upgrade available now (Admin > Organisations > Edit Settings)
+  - Self-service flow planned:
+    - Billing page showing current plan
+    - Plan comparison table
+    - Stripe Checkout for upgrades
+    - Webhook for automatic tier updates
+    - Email confirmations
+  - See `implementation-plan.md` section 2.5 for full spec
+
 ### Missing - Enhancement
 - [ ] Organisation branding/customisation
 - [ ] Organisation-wide notification settings
@@ -280,6 +305,10 @@ This checklist tracks the gaps between the February 2026 press release claims an
 16. [ ] Apple Pay / Google Pay
 17. [ ] Model experience/history display
 18. [ ] Custom permission sets
+19. [ ] Self-service subscription upgrade (spec in implementation-plan.md 2.5)
+
+### ADMIN TOOLS (Recently Added)
+20. [x] ~~Client Import (CSV)~~ - **COMPLETED** (super admin, free tier default)
 
 ---
 
