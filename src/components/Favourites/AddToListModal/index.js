@@ -35,10 +35,19 @@ import { useFavourites } from "context/FavouritesContext";
 function AddToListModal({ open, onClose, model }) {
   const {
     favouriteLists,
+    organisationLists,
+    teamLists,
     addModelToList,
     removeModelFromList,
     getListsWithModel,
   } = useFavourites();
+
+  // Combine all accessible lists
+  const allLists = [
+    ...favouriteLists.map(l => ({ ...l, section: "personal" })),
+    ...organisationLists.map(l => ({ ...l, section: "organisation" })),
+    ...teamLists.map(l => ({ ...l, section: "team" })),
+  ];
 
   const [selectedLists, setSelectedLists] = useState([]);
   const [initialLists, setInitialLists] = useState([]);
@@ -127,7 +136,7 @@ function AddToListModal({ open, onClose, model }) {
         </DialogTitle>
 
         <DialogContent dividers>
-          {favouriteLists.length === 0 ? (
+          {allLists.length === 0 ? (
             <MDBox textAlign="center" py={4}>
               <Icon sx={{ fontSize: 48, color: "grey.400" }}>folder_open</Icon>
               <MDTypography variant="body1" color="text" mt={2}>
@@ -147,35 +156,112 @@ function AddToListModal({ open, onClose, model }) {
             </MDBox>
           ) : (
             <List sx={{ pt: 0 }}>
-              {favouriteLists.map((list) => {
-                const isSelected = selectedLists.includes(list.id);
-                return (
-                  <ListItem key={list.id} disablePadding>
-                    <ListItemButton onClick={() => handleToggleList(list.id)}>
-                      <ListItemIcon>
-                        <Checkbox
-                          edge="start"
-                          checked={isSelected}
-                          tabIndex={-1}
-                          disableRipple
-                        />
-                      </ListItemIcon>
-                      <ListItemText
-                        primary={list.title}
-                        secondary={`${list.modelCount || 0} models`}
-                      />
-                      {list.linkedJobId && (
-                        <Icon
-                          sx={{ color: "info.main", ml: 1 }}
-                          fontSize="small"
-                        >
-                          work
-                        </Icon>
-                      )}
-                    </ListItemButton>
-                  </ListItem>
-                );
-              })}
+              {/* Personal Lists */}
+              {favouriteLists.length > 0 && (
+                <>
+                  <MDBox px={2} py={0.5} bgcolor="grey.100">
+                    <MDTypography variant="caption" fontWeight="medium" color="text">
+                      My Lists
+                    </MDTypography>
+                  </MDBox>
+                  {favouriteLists.map((list) => {
+                    const isSelected = selectedLists.includes(list.id);
+                    return (
+                      <ListItem key={list.id} disablePadding>
+                        <ListItemButton onClick={() => handleToggleList(list.id)}>
+                          <ListItemIcon>
+                            <Checkbox
+                              edge="start"
+                              checked={isSelected}
+                              tabIndex={-1}
+                              disableRipple
+                            />
+                          </ListItemIcon>
+                          <ListItemText
+                            primary={list.title}
+                            secondary={`${list.modelCount || 0} models`}
+                          />
+                          {list.linkedJobId && (
+                            <Icon sx={{ color: "info.main", ml: 1 }} fontSize="small">
+                              work
+                            </Icon>
+                          )}
+                        </ListItemButton>
+                      </ListItem>
+                    );
+                  })}
+                </>
+              )}
+
+              {/* Organisation Lists */}
+              {organisationLists.length > 0 && (
+                <>
+                  <MDBox px={2} py={0.5} bgcolor="grey.100" mt={favouriteLists.length > 0 ? 1 : 0}>
+                    <MDTypography variant="caption" fontWeight="medium" color="text">
+                      Organisation Lists
+                    </MDTypography>
+                  </MDBox>
+                  {organisationLists.map((list) => {
+                    const isSelected = selectedLists.includes(list.id);
+                    return (
+                      <ListItem key={list.id} disablePadding>
+                        <ListItemButton onClick={() => handleToggleList(list.id)}>
+                          <ListItemIcon>
+                            <Checkbox
+                              edge="start"
+                              checked={isSelected}
+                              tabIndex={-1}
+                              disableRipple
+                            />
+                          </ListItemIcon>
+                          <ListItemText
+                            primary={list.title}
+                            secondary={`${list.modelCount || 0} models`}
+                          />
+                          <Icon sx={{ color: "primary.main", ml: 1 }} fontSize="small">
+                            business
+                          </Icon>
+                        </ListItemButton>
+                      </ListItem>
+                    );
+                  })}
+                </>
+              )}
+
+              {/* Team Lists */}
+              {teamLists.length > 0 && (
+                <>
+                  <MDBox px={2} py={0.5} bgcolor="grey.100" mt={(favouriteLists.length > 0 || organisationLists.length > 0) ? 1 : 0}>
+                    <MDTypography variant="caption" fontWeight="medium" color="text">
+                      Team Lists
+                    </MDTypography>
+                  </MDBox>
+                  {teamLists.map((list) => {
+                    const isSelected = selectedLists.includes(list.id);
+                    return (
+                      <ListItem key={list.id} disablePadding>
+                        <ListItemButton onClick={() => handleToggleList(list.id)}>
+                          <ListItemIcon>
+                            <Checkbox
+                              edge="start"
+                              checked={isSelected}
+                              tabIndex={-1}
+                              disableRipple
+                            />
+                          </ListItemIcon>
+                          <ListItemText
+                            primary={list.title}
+                            secondary={`${list.modelCount || 0} models`}
+                          />
+                          <Icon sx={{ color: "secondary.main", ml: 1 }} fontSize="small">
+                            groups
+                          </Icon>
+                        </ListItemButton>
+                      </ListItem>
+                    );
+                  })}
+                </>
+              )}
 
               <Divider sx={{ my: 1 }} />
 

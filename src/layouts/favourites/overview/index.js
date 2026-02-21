@@ -298,14 +298,14 @@ function FavouritesOverview() {
                 />
                 {showOrgTab && (
                   <Tab
-                    label={getTabLabel("Organisation", organisationLists.length)}
+                    label={getTabLabel("Organisation Lists", organisationLists.length)}
                     icon={<Icon>business</Icon>}
                     iconPosition="start"
                   />
                 )}
                 {showTeamTab && (
                   <Tab
-                    label={getTabLabel("Team", teamLists.length)}
+                    label={getTabLabel("Team Lists", teamLists.length)}
                     icon={<Icon>groups</Icon>}
                     iconPosition="start"
                   />

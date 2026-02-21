@@ -2,7 +2,7 @@
  * CreateListModal - Modal for creating a new favourite list
  */
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import PropTypes from "prop-types";
 
 // MUI components
@@ -30,15 +30,28 @@ function CreateListModal({ open, onClose, onCreated, linkedJob, defaultOwnerType
   const { user } = useAuth();
   const { createFavouriteList, canCreateOrgList, canCreateTeamList, LIST_OWNER_TYPES } = useFavourites();
 
+  // Determine default visibility based on owner type
+  const getDefaultVisibility = (owner) => {
+    if (owner === LIST_OWNER_TYPES.ORGANISATION || owner === LIST_OWNER_TYPES.TEAM) {
+      return "authenticated"; // Shared by default for org/team lists
+    }
+    return "private";
+  };
+
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
-  const [visibility, setVisibility] = useState("private");
   const [ownerType, setOwnerType] = useState(defaultOwnerType || LIST_OWNER_TYPES.USER);
+  const [visibility, setVisibility] = useState(getDefaultVisibility(defaultOwnerType || LIST_OWNER_TYPES.USER));
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
   const isSuperAdmin = user?.role === "super admin";
   const showOwnerTypeSelector = canCreateOrgList || canCreateTeamList;
+
+  // Update visibility when owner type changes
+  useEffect(() => {
+    setVisibility(getDefaultVisibility(ownerType));
+  }, [ownerType]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
