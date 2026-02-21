@@ -387,21 +387,6 @@ const routes = [
   },
 
   // ============================================================
-  // ============================================================
-  // CASTINGS SECTION
-  // ============================================================
-  {
-    type: "collapse",
-    name: "Castings",
-    key: "castings",
-    icon: <Icon fontSize="small">camera</Icon>,
-    roles: [...CLIENT_ROLES, "super admin"], // Hidden from admin role
-    noCollapse: true,
-    route: "/castings",
-    component: <Calendar />, // Placeholder - will need castings component
-  },
-
-  // ============================================================
   // MESSAGES SECTION
   // ============================================================
   {
@@ -413,20 +398,6 @@ const routes = [
     noCollapse: true,
     route: "/messages",
     component: <MessagesInbox />,
-  },
-
-  // ============================================================
-  // MESSAGING SECTION (Super Admin only)
-  // ============================================================
-  {
-    type: "collapse",
-    name: "Messaging",
-    key: "messaging",
-    icon: <Icon fontSize="small">forum</Icon>,
-    roles: ["super admin"], // Hidden from admin role
-    noCollapse: true,
-    route: "/admin/messaging",
-    component: <Kanban />, // Placeholder
   },
 
   // ============================================================
@@ -458,45 +429,44 @@ const routes = [
   },
 
   // ============================================================
-  // CUSTOMER BRIEFS (Super Admin only)
+  // SANDBOX SECTION (Super Admin only - features in development)
   // ============================================================
   {
     type: "collapse",
-    name: "Customer Briefs",
-    key: "briefs",
-    icon: <Icon fontSize="small">description</Icon>,
-    roles: ["super admin"], // Hidden from admin role
-    noCollapse: true,
-    route: "/admin/briefs",
-    component: <DataTables />, // Placeholder
-  },
-
-  // ============================================================
-  // ANALYTICS SECTION (Admin and Super Admin)
-  // ============================================================
-  {
-    type: "collapse",
-    name: "Analytics",
-    key: "analytics",
-    icon: <Icon fontSize="small">analytics</Icon>,
-    roles: ADMIN_ROLES, // Admin and Super Admin can access
-    noCollapse: true,
-    route: "/admin/analytics",
-    component: <Analytics />,
-  },
-
-  // ============================================================
-  // FINANCE SECTION (Super Admin)
-  // ============================================================
-  {
-    type: "collapse",
-    name: "Finance",
-    key: "finance",
-    icon: <Icon fontSize="small">attach_money</Icon>,
+    name: "Sandbox",
+    key: "sandbox",
+    icon: <Icon fontSize="small">science</Icon>,
     roles: ["super admin"],
-    noCollapse: true,
-    route: "/admin/finance",
-    component: <Sales />, // Use sales dashboard as placeholder
+    collapse: [
+      {
+        name: "Castings",
+        key: "castings",
+        route: "/castings",
+        component: <Calendar />, // Placeholder - will need castings component
+        icon: <Icon fontSize="small">camera</Icon>,
+      },
+      {
+        name: "Messaging",
+        key: "messaging",
+        route: "/admin/messaging",
+        component: <Kanban />, // Placeholder
+        icon: <Icon fontSize="small">forum</Icon>,
+      },
+      {
+        name: "Customer Briefs",
+        key: "briefs",
+        route: "/admin/briefs",
+        component: <DataTables />, // Placeholder
+        icon: <Icon fontSize="small">description</Icon>,
+      },
+      {
+        name: "Finance",
+        key: "finance",
+        route: "/admin/finance",
+        component: <Sales />, // Use sales dashboard as placeholder
+        icon: <Icon fontSize="small">attach_money</Icon>,
+      },
+    ],
   },
 
   // ============================================================
@@ -550,6 +520,13 @@ const routes = [
         route: "/admin/optimize-images",
         component: <OptimizeImages />,
         icon: <Icon fontSize="small">photo_size_select_large</Icon>,
+      },
+      {
+        name: "Analytics",
+        key: "analytics",
+        route: "/admin/analytics",
+        component: <Analytics />,
+        icon: <Icon fontSize="small">analytics</Icon>,
       },
       {
         name: "Admin Logs",
