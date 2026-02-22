@@ -116,10 +116,11 @@ npm run install:functions
 
 ### 3. Environment setup
 
-Create a `.env` file in the root directory with the required environment variables:
+Each app requires its own environment file with the appropriate prefix:
 
+**Platform** (`apps/platform/.env`):
 ```env
-# Firebase
+# Firebase (REACT_APP_ prefix for Create React App)
 REACT_APP_FIREBASE_API_KEY=your-api-key
 REACT_APP_FIREBASE_AUTH_DOMAIN=your-project.firebaseapp.com
 REACT_APP_FIREBASE_PROJECT_ID=your-project-id
@@ -128,8 +129,35 @@ REACT_APP_FIREBASE_MESSAGING_SENDER_ID=your-sender-id
 REACT_APP_FIREBASE_APP_ID=your-app-id
 
 # Stripe
+REACT_APP_STRIPE_PUBLISHABLE_KEY=pk_...
+
+# Cloudinary
+REACT_APP_CLOUDINARY_CLOUD_NAME=your-cloud-name
+REACT_APP_CLOUDINARY_API_KEY=your-api-key
+REACT_APP_CLOUDINARY_UPLOAD_PRESET=ml_default
+```
+
+**Website** (`apps/website/.env.local`):
+```env
+# Firebase (NEXT_PUBLIC_ prefix for Next.js)
+NEXT_PUBLIC_FIREBASE_API_KEY=your-api-key
+NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN=your-project.firebaseapp.com
+NEXT_PUBLIC_FIREBASE_PROJECT_ID=your-project-id
+NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET=your-project.appspot.com
+NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID=your-sender-id
+NEXT_PUBLIC_FIREBASE_APP_ID=your-app-id
+
+# Stripe
+NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY=pk_...
+
+# App URL
+NEXT_PUBLIC_APP_URL=https://v4.themodel.cloud
+```
+
+**Cloud Functions** (`functions/.env`):
+```env
+# Stripe (server-side)
 STRIPE_SECRET_KEY=sk_...
-STRIPE_PUBLISHABLE_KEY=pk_...
 
 # SendGrid
 SENDGRID_API_KEY=SG...
