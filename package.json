@@ -14,11 +14,11 @@
     "install:website": "cd apps/website && npm install",
     "install:functions": "cd functions && npm install",
     "install:all": "npm run install:platform && npm run install:website && npm run install:functions",
-    "deploy:platform": "firebase deploy --only hosting:platform",
-    "deploy:website": "firebase deploy --only hosting:website",
+    "deploy:platform": "cd apps/platform && npm run deploy",
+    "deploy:website": "cd apps/website && npm run deploy",
     "deploy:functions": "firebase deploy --only functions",
     "deploy:firestore": "firebase deploy --only firestore",
-    "deploy:all": "npm run build:all && firebase deploy"
+    "deploy:all": "npm run deploy:platform && npm run deploy:website && npm run deploy:functions"
   },
   "engines": {
     "node": ">=18.0.0"
