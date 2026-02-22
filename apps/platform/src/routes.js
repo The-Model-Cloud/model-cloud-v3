@@ -66,6 +66,9 @@ import Organisations from "layouts/admin/organisations";
 import OrganisationDetail from "layouts/admin/organisations/detail";
 import AdminDashboard from "layouts/admin/dashboard";
 
+// CMS management layouts (for super admin)
+import { CMSSiteContent, CMSPricing, CMSContactSubmissions } from "layouts/admin/cms";
+
 // Organisation management layouts (for account managers)
 import OrganisationDashboard from "layouts/organisation/dashboard";
 import OrganisationTeams from "layouts/organisation/teams";
@@ -639,6 +642,40 @@ const routes = [
         component: <CleanupCloudinary />,
         roles: ["super admin"],
         icon: <Icon fontSize="small">cloud_off</Icon>,
+      },
+    ],
+  },
+
+  // ============================================================
+  // CMS SECTION (Super Admin only - manage website content)
+  // ============================================================
+  {
+    type: "collapse",
+    name: "CMS",
+    key: "cms",
+    icon: <Icon fontSize="small">web</Icon>,
+    roles: ["super admin"],
+    collapse: [
+      {
+        name: "Site Content",
+        key: "cms-site-content",
+        route: "/admin/cms/content",
+        component: <CMSSiteContent />,
+        icon: <Icon fontSize="small">edit_note</Icon>,
+      },
+      {
+        name: "Pricing Tiers",
+        key: "cms-pricing",
+        route: "/admin/cms/pricing",
+        component: <CMSPricing />,
+        icon: <Icon fontSize="small">payments</Icon>,
+      },
+      {
+        name: "Contact Submissions",
+        key: "cms-contact",
+        route: "/admin/cms/contact",
+        component: <CMSContactSubmissions />,
+        icon: <Icon fontSize="small">contact_mail</Icon>,
       },
     ],
   },
