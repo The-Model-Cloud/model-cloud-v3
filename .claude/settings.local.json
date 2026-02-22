@@ -26,7 +26,8 @@
       "Bash(copy \"The_Model_Cloud_Press_Release.docx\" \"temp_press_release.zip\")",
       "Bash(find:*)",
       "Bash(npm run deploy:*)",
-      "Bash(npm uninstall:*)"
+      "Bash(npm uninstall:*)",
+      "Bash(unzip:*)"
     ]
   }
 }

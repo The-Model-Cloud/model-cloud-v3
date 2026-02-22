@@ -1,5 +1,13 @@
 {
   "projects": {
     "default": "model-cloud"
+  },
+  "targets": {
+    "model-cloud": {
+      "hosting": {
+        "platform": ["model-cloud"],
+        "website": ["model-cloud-website"]
+      }
+    }
   }
 }
