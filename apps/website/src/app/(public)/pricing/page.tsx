@@ -52,11 +52,92 @@ const fallbackFaqs = [
   },
 ];
 
+// Fallback pricing tiers when Firestore is empty
+const fallbackTiers: import("@/types/pricing").PricingTier[] = [
+  {
+    id: "starter",
+    name: "Starter",
+    description: "Perfect for individuals just getting started",
+    price: 0,
+    billingPeriod: "monthly",
+    features: [
+      "Browse model profiles",
+      "Save up to 10 favorites",
+      "Basic search filters",
+      "Email support",
+    ],
+    highlighted: false,
+    order: 1,
+    published: true,
+    hide: false,
+  },
+  {
+    id: "professional",
+    name: "Professional",
+    description: "For growing businesses with regular booking needs",
+    price: 49,
+    billingPeriod: "monthly",
+    features: [
+      "Everything in Starter",
+      "Unlimited favorites",
+      "Advanced search & filters",
+      "Direct messaging",
+      "Up to 5 team members",
+      "Priority support",
+    ],
+    highlighted: true,
+    order: 2,
+    published: true,
+    hide: false,
+  },
+  {
+    id: "agency",
+    name: "Agency",
+    description: "For agencies managing multiple clients and campaigns",
+    price: 149,
+    billingPeriod: "monthly",
+    features: [
+      "Everything in Professional",
+      "Unlimited team members",
+      "Client workspaces",
+      "Booking analytics",
+      "API access",
+      "Dedicated account manager",
+    ],
+    highlighted: false,
+    order: 3,
+    published: true,
+    hide: false,
+  },
+  {
+    id: "enterprise",
+    name: "Enterprise",
+    description: "Custom solutions for large organizations",
+    price: 0,
+    billingPeriod: "monthly",
+    features: [
+      "Everything in Agency",
+      "Custom integrations",
+      "SLA guarantee",
+      "On-premise options",
+      "Custom branding",
+      "Dedicated support team",
+    ],
+    highlighted: false,
+    order: 4,
+    published: true,
+    hide: false,
+  },
+];
+
 export default function PricingPage() {
-  const { tiers, loading: tiersLoading } = usePricingTiers();
+  const { tiers: firestoreTiers, loading: tiersLoading } = usePricingTiers();
   const { content, loading: contentLoading } = usePricingContent();
 
   const loading = tiersLoading || contentLoading;
+
+  // Use fallback tiers if Firestore returns empty
+  const tiers = firestoreTiers.length > 0 ? firestoreTiers : fallbackTiers;
 
   const hero = content.hero ?? {
     title: "Simple, Transparent Pricing",

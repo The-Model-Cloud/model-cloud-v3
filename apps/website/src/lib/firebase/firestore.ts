@@ -57,9 +57,18 @@ export async function getPricingTiers(publishedOnly = true): Promise<PricingTier
   }
 
   const querySnapshot = await getDocs(q);
-  const tiers = querySnapshot.docs.map(
-    (doc) => ({ id: doc.id, ...doc.data() } as PricingTier)
-  );
+  const tiers = querySnapshot.docs.map((doc) => {
+    const data = doc.data();
+    // Normalize boolean fields that may be stored as strings
+    return {
+      id: doc.id,
+      ...data,
+      // Convert string "true"/"false" to actual booleans
+      hide: data.hide === true || data.hide === "true",
+      highlighted: data.highlighted === true || data.highlighted === "true",
+      published: data.published === true || data.published === "true",
+    } as PricingTier;
+  });
 
   // Sort by order client-side
   tiers.sort((a, b) => (a.order || 0) - (b.order || 0));
