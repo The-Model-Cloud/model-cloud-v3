@@ -1,0 +1,52 @@
+# Basic Authentication for sandbox access
+AuthType Basic
+AuthName "Model Cloud v4 - Sandbox Access"
+AuthUserFile /home/sites/15b/a/aa0da6f891/.htpasswd
+Require valid-user 
+
+
+# Disable PageSpeed for this site (if module is installed)
+# PageSpeed rewrites URLs which breaks Next.js static exports
+<IfModule mod_pagespeed.c>
+  ModPagespeed off
+  ModPagespeedDisallow "*"
+</IfModule>
+
+# Enable GZIP compression
+<IfModule mod_deflate.c>
+  AddOutputFilterByType DEFLATE text/html text/plain text/css application/json
+  AddOutputFilterByType DEFLATE application/javascript text/javascript
+</IfModule>
+
+# Set caching headers for static assets
+<IfModule mod_expires.c>
+  ExpiresActive On
+  ExpiresByType text/css "access plus 1 year"
+  ExpiresByType application/javascript "access plus 1 year"
+  ExpiresByType image/png "access plus 1 year"
+  ExpiresByType image/jpeg "access plus 1 year"
+  ExpiresByType image/gif "access plus 1 year"
+  ExpiresByType image/svg+xml "access plus 1 year"
+  ExpiresByType font/woff2 "access plus 1 year"
+</IfModule>
+
+# Serve correct MIME types
+AddType text/css .css
+AddType application/javascript .js
+AddType application/json .json
+
+# Handle SPA routing - redirect all requests to index.html if file doesn't exist
+<IfModule mod_rewrite.c>
+  RewriteEngine On
+  RewriteBase /
+
+  # Don't rewrite files or directories
+  RewriteCond %{REQUEST_FILENAME} !-f
+  RewriteCond %{REQUEST_FILENAME} !-d
+
+  # Don't rewrite _next static files
+  RewriteCond %{REQUEST_URI} !^/_next/
+
+  # Rewrite to index.html for SPA
+  RewriteRule ^([^.]+)$ $1/index.html [L]
+</IfModule>

@@ -11,7 +11,7 @@ const config = {
   port: parseInt(process.env.FTP_PORT, 10) || 21,
   localRoot: path.join(__dirname, "out"),
   remoteRoot: process.env.FTP_REMOTE_ROOT || "/",
-  include: ["*", "**/*"],
+  include: ["*", "**/*", ".htaccess"],  // Include dotfiles like .htaccess
   deleteRemote: false,
   forcePasv: true,
 };
