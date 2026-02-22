@@ -20,6 +20,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { toast } from "sonner";
 import { Loader2, Mail, MapPin, Phone, Clock } from "lucide-react";
 import { useContactContent } from "@/lib/hooks/useContactContent";
+import { submitContactForm } from "@/lib/firebase/firestore";
 
 // Fallback data
 const fallbackContact = {
@@ -69,15 +70,12 @@ export default function ContactPage() {
   async function onSubmit(data: ContactFormData) {
     setIsLoading(true);
     try {
-      const response = await fetch("/api/contact", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(data),
+      await submitContactForm({
+        name: data.name,
+        email: data.email,
+        company: data.company || "",
+        message: data.message,
       });
-
-      if (!response.ok) {
-        throw new Error("Failed to submit");
-      }
 
       toast.success("Message sent! We'll get back to you soon.");
       form.reset();
