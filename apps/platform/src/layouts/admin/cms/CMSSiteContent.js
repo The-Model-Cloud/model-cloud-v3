@@ -34,6 +34,9 @@ import MDBox from "components/MDBox";
 import MDTypography from "components/MDTypography";
 import MDButton from "components/MDButton";
 
+// Custom components
+import CloudinaryImageInput from "components/CloudinaryImageInput";
+
 // Layout components
 import DashboardLayout from "examples/LayoutContainers/DashboardLayout";
 import DashboardNavbar from "examples/Navbars/DashboardNavbar";
@@ -304,6 +307,9 @@ function CMSSiteContent() {
 
   // Render array field (items, steps, members)
   const renderArrayField = (sectionId, field, items) => {
+    // Check if this is a field that should have image support
+    const supportsImages = field === "members" || field === "items";
+
     return (
       <MDBox mb={2}>
         <MDTypography variant="subtitle2" mb={1}>
@@ -323,17 +329,35 @@ function CMSSiteContent() {
                 <Icon>delete</Icon>
               </IconButton>
             </MDBox>
-            {Object.keys(item).map((key) => (
-              <TextField
-                key={key}
-                fullWidth
-                size="small"
-                label={key.charAt(0).toUpperCase() + key.slice(1)}
-                value={item[key] || ""}
-                onChange={(e) => handleArrayItemChange(sectionId, field, index, key, e.target.value)}
-                sx={{ mb: 1 }}
-              />
-            ))}
+            {Object.keys(item).map((key) => {
+              // Use CloudinaryImageInput for imageUrl fields
+              if (key === "imageUrl") {
+                return (
+                  <MDBox key={key} mb={1}>
+                    <CloudinaryImageInput
+                      value={item[key] || ""}
+                      onChange={(value) => handleArrayItemChange(sectionId, field, index, key, value)}
+                      label="Image URL"
+                      folder={`website/${sectionId}`}
+                      previewSize={60}
+                    />
+                  </MDBox>
+                );
+              }
+              return (
+                <TextField
+                  key={key}
+                  fullWidth
+                  size="small"
+                  label={key.charAt(0).toUpperCase() + key.slice(1).replace(/([A-Z])/g, " $1")}
+                  value={item[key] || ""}
+                  onChange={(e) => handleArrayItemChange(sectionId, field, index, key, e.target.value)}
+                  multiline={key === "quote" || key === "bio" || key === "description"}
+                  rows={key === "quote" || key === "bio" || key === "description" ? 2 : 1}
+                  sx={{ mb: 1 }}
+                />
+              );
+            })}
             {Object.keys(item).length === 0 && (
               <>
                 <TextField
@@ -352,6 +376,17 @@ function CMSSiteContent() {
                   }
                   sx={{ mb: 1 }}
                 />
+                {supportsImages && (
+                  <MDBox mb={1}>
+                    <CloudinaryImageInput
+                      value=""
+                      onChange={(value) => handleArrayItemChange(sectionId, field, index, "imageUrl", value)}
+                      label="Image URL (optional)"
+                      folder={`website/${sectionId}`}
+                      previewSize={60}
+                    />
+                  </MDBox>
+                )}
               </>
             )}
           </Card>

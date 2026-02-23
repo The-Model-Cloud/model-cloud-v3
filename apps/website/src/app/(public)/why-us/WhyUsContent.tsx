@@ -1,11 +1,13 @@
 "use client";
 
+import Image from "next/image";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { DynamicIcon } from "@/components/ui/DynamicIcon";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useWhyUsContent } from "@/lib/hooks/useWhyUsContent";
 import { PLATFORM_URLS } from "@/lib/urls";
+import { cloudinaryAvatar } from "@/lib/cloudinary";
 import { CheckCircle, Star, Award } from "lucide-react";
 
 // Fallback data
@@ -81,7 +83,7 @@ const fallbackComparisons = [
   },
 ];
 
-const fallbackTestimonials = [
+const fallbackTestimonials: { quote: string; author: string; role: string; imageUrl?: string }[] = [
   {
     quote:
       "Switching to The Model Cloud was the best decision for my agency. We've increased our booking efficiency by 70%.",
@@ -320,29 +322,45 @@ export default function WhyUsContent() {
             What Our Users Say
           </h2>
           <div className="grid md:grid-cols-2 gap-8 max-w-4xl mx-auto">
-            {testimonials.map((testimonial) => (
-              <Card key={testimonial.author} className="bg-muted/30">
-                <CardContent className="pt-6">
-                  <div className="flex mb-4">
-                    {[1, 2, 3, 4, 5].map((i) => (
-                      <Star
-                        key={i}
-                        className="h-5 w-5 text-yellow-500 fill-yellow-500"
-                      />
-                    ))}
-                  </div>
-                  <blockquote className="text-lg mb-4">
-                    &ldquo;{testimonial.quote}&rdquo;
-                  </blockquote>
-                  <div>
-                    <p className="font-semibold">{testimonial.author}</p>
-                    <p className="text-sm text-muted-foreground">
-                      {testimonial.role}
-                    </p>
-                  </div>
-                </CardContent>
-              </Card>
-            ))}
+            {testimonials.map((testimonial) => {
+              const avatarUrl = cloudinaryAvatar(testimonial.imageUrl, 80);
+              return (
+                <Card key={testimonial.author} className="bg-muted/30">
+                  <CardContent className="pt-6">
+                    <div className="flex mb-4">
+                      {[1, 2, 3, 4, 5].map((i) => (
+                        <Star
+                          key={i}
+                          className="h-5 w-5 text-yellow-500 fill-yellow-500"
+                        />
+                      ))}
+                    </div>
+                    <blockquote className="text-lg mb-4">
+                      &ldquo;{testimonial.quote}&rdquo;
+                    </blockquote>
+                    <div className="flex items-center">
+                      {avatarUrl ? (
+                        <div className="w-10 h-10 rounded-full mr-3 overflow-hidden">
+                          <Image
+                            src={avatarUrl}
+                            alt={testimonial.author}
+                            width={40}
+                            height={40}
+                            className="w-full h-full object-cover"
+                          />
+                        </div>
+                      ) : null}
+                      <div>
+                        <p className="font-semibold">{testimonial.author}</p>
+                        <p className="text-sm text-muted-foreground">
+                          {testimonial.role}
+                        </p>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              );
+            })}
           </div>
         </div>
       </section>

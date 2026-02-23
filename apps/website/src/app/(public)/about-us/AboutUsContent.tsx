@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -7,6 +8,7 @@ import { DynamicIcon } from "@/components/ui/DynamicIcon";
 import { useAboutUsContent } from "@/lib/hooks/useAboutUsContent";
 import { Skeleton } from "@/components/ui/skeleton";
 import { PLATFORM_URLS } from "@/lib/urls";
+import { cloudinaryAvatar } from "@/lib/cloudinary";
 
 // Fallback data for when Firestore is not seeded
 const fallbackValues = [
@@ -43,7 +45,7 @@ const fallbackStats = [
   { value: "100,000+", label: "Successful Bookings" },
 ];
 
-const fallbackTeam = [
+const fallbackTeam: { name: string; role: string; bio: string; imageUrl?: string }[] = [
   {
     name: "Matthew Smith",
     role: "CEO & Co-Founder",
@@ -192,23 +194,38 @@ export default function AboutUsContent() {
             </p>
           </div>
           <div className="flex flex-wrap justify-center gap-8 max-w-5xl mx-auto">
-            {team.map((member) => (
-              <Card key={member.name} className="bg-background text-center w-full sm:w-[calc(50%-1rem)] lg:w-[calc(25%-1.5rem)]">
-                <CardContent className="pt-6">
-                  <div className="w-20 h-20 rounded-full bg-primary/20 flex items-center justify-center mx-auto mb-4">
-                    <span className="text-2xl font-bold text-primary">
-                      {member.name
-                        .split(" ")
-                        .map((n) => n[0])
-                        .join("")}
-                    </span>
-                  </div>
-                  <h3 className="font-semibold">{member.name}</h3>
-                  <p className="text-sm text-primary mb-2">{member.role}</p>
-                  <p className="text-sm text-muted-foreground">{member.bio}</p>
-                </CardContent>
-              </Card>
-            ))}
+            {team.map((member) => {
+              const avatarUrl = cloudinaryAvatar(member.imageUrl, 160);
+              return (
+                <Card key={member.name} className="bg-background text-center w-full sm:w-[calc(50%-1rem)] lg:w-[calc(25%-1.5rem)]">
+                  <CardContent className="pt-6">
+                    {avatarUrl ? (
+                      <div className="w-20 h-20 rounded-full mx-auto mb-4 overflow-hidden">
+                        <Image
+                          src={avatarUrl}
+                          alt={member.name}
+                          width={80}
+                          height={80}
+                          className="w-full h-full object-cover"
+                        />
+                      </div>
+                    ) : (
+                      <div className="w-20 h-20 rounded-full bg-primary/20 flex items-center justify-center mx-auto mb-4">
+                        <span className="text-2xl font-bold text-primary">
+                          {member.name
+                            .split(" ")
+                            .map((n) => n[0])
+                            .join("")}
+                        </span>
+                      </div>
+                    )}
+                    <h3 className="font-semibold">{member.name}</h3>
+                    <p className="text-sm text-primary mb-2">{member.role}</p>
+                    <p className="text-sm text-muted-foreground">{member.bio}</p>
+                  </CardContent>
+                </Card>
+              );
+            })}
           </div>
         </div>
       </section>
