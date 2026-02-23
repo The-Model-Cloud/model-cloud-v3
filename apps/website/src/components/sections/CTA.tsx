@@ -5,13 +5,14 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ArrowRight } from "lucide-react";
 import { useSiteContent } from "@/lib/hooks/useSiteContent";
+import { PLATFORM_URLS } from "@/lib/urls";
 import type { HomeCTA } from "@/types/siteContent";
 
 const fallbackCta = {
   title: "Ready to Transform Your Booking Experience?",
   subtitle:
     "Join thousands of models and clients already using The Model Cloud to streamline their workflow and grow their business.",
-  primaryCta: { text: "Start Free Trial", href: "/sign-up" },
+  primaryCta: { text: "Start Free Trial", href: PLATFORM_URLS.signUp },
   secondaryCta: { text: "Contact Sales", href: "/contact" },
 };
 
