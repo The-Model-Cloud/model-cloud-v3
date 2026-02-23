@@ -134,6 +134,18 @@ export interface ContactInfo extends SiteContentBase {
   hours: ContactHours;
 }
 
+// Page Metadata type (for SEO)
+export interface PageMetadata extends SiteContentBase {
+  title: string;
+  description: string;
+  keywords?: string[];
+  ogImage?: string;
+  ogType?: string;
+  twitterCard?: "summary" | "summary_large_image";
+  noIndex?: boolean;
+  canonicalUrl?: string;
+}
+
 // Homepage types
 export interface HomeHero extends SiteContentBase {
   badge: string;
@@ -189,7 +201,8 @@ export type SiteContent =
   | HomeFeatures
   | HomeHowItWorks
   | HomeTestimonials
-  | HomeCTA;
+  | HomeCTA
+  | PageMetadata;
 
 // Content section identifiers
 export type SiteContentId =
@@ -210,4 +223,12 @@ export type SiteContentId =
   | "home-features"
   | "home-howItWorks"
   | "home-testimonials"
-  | "home-cta";
+  | "home-cta"
+  // Page metadata
+  | "meta-home"
+  | "meta-about"
+  | "meta-pricing"
+  | "meta-whyUs"
+  | "meta-contact"
+  | "meta-signIn"
+  | "meta-signUp";

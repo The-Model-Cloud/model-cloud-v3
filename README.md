@@ -191,15 +191,47 @@ Run these from the root directory:
 | `npm run build:website` | Build website for production |
 | `npm run build:all` | Build both applications |
 | `npm run install:all` | Install all dependencies |
-| `npm run deploy:platform` | Deploy platform to Firebase Hosting |
-| `npm run deploy:website` | Deploy website to Firebase Hosting |
-| `npm run deploy:functions` | Deploy Cloud Functions |
+| `npm run deploy:platform` | Build and deploy platform to 20i (FTP) |
+| `npm run deploy:website` | Build and deploy website to 20i (FTP) |
+| `npm run deploy:functions` | Deploy Cloud Functions to Firebase |
 | `npm run deploy:firestore` | Deploy Firestore rules and indexes |
 | `npm run deploy:all` | Build and deploy everything |
 
-## Firebase Deployment
+## Deployment
 
-### Initial Setup
+### Hosting Setup
+
+Both the **Platform** and **Website** are deployed to **20i hosting via FTP**. Firebase is used only for backend services (Cloud Functions, Firestore, Auth, Storage).
+
+| Application | Hosting | URL |
+|-------------|---------|-----|
+| Platform | 20i (FTP) | https://v4.themodel.cloud |
+| Website | 20i (FTP) | https://sandbox.themodel.cloud |
+| Cloud Functions | Firebase | europe-west2 |
+
+### FTP Configuration
+
+Each app requires FTP credentials in its environment file:
+
+**Platform** (`apps/platform/.env`):
+```env
+FTP_USER=your-ftp-user
+FTP_PASSWORD=your-ftp-password
+FTP_HOST=ftp.gb.stackcp.com
+FTP_PORT=21
+FTP_REMOTE_ROOT=/
+```
+
+**Website** (`apps/website/.env.local`):
+```env
+FTP_USER=your-ftp-user
+FTP_PASSWORD=your-ftp-password
+FTP_HOST=ftp.gb.stackcp.com
+FTP_PORT=21
+FTP_REMOTE_ROOT=/sandbox
+```
+
+### Firebase Setup (for Cloud Functions)
 
 1. Login to Firebase:
    ```bash
@@ -214,15 +246,13 @@ Run these from the root directory:
 ### Deploy Individual Components
 
 ```bash
-# Deploy only the platform
-npm run build:platform
+# Deploy only the platform (builds then FTP uploads)
 npm run deploy:platform
 
-# Deploy only the website
-npm run build:website
+# Deploy only the website (builds then FTP uploads)
 npm run deploy:website
 
-# Deploy Cloud Functions
+# Deploy Cloud Functions to Firebase
 npm run deploy:functions
 
 # Deploy Firestore rules
@@ -234,6 +264,8 @@ npm run deploy:firestore
 ```bash
 npm run deploy:all
 ```
+
+**Note:** The `.htaccess` file is automatically included in deployments to maintain server configuration (Basic Auth, caching headers, etc.).
 
 ## Key Features
 
