@@ -5,6 +5,7 @@ import Image from "next/image";
 import { useState } from "react";
 import { useAuth } from "@/lib/hooks/useAuth";
 import { signOut } from "@/lib/firebase/auth";
+import { PLATFORM_URLS, platformUrl } from "@/lib/urls";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import {
@@ -33,7 +34,7 @@ export function Header() {
     await signOut();
   };
 
-  const appUrl = process.env.NEXT_PUBLIC_APP_URL || "https://app.themodel.cloud";
+  const dashboardUrl = platformUrl("/dashboard");
 
   return (
     <header className="sticky top-0 z-50 w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
@@ -86,10 +87,10 @@ export function Header() {
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end">
                 <DropdownMenuItem asChild>
-                  <Link href={`${appUrl}/dashboard`}>
+                  <a href={dashboardUrl}>
                     <LayoutDashboard className="mr-2 h-4 w-4" />
                     Go to Dashboard
-                  </Link>
+                  </a>
                 </DropdownMenuItem>
                 {isAdmin && (
                   <DropdownMenuItem asChild>
@@ -109,10 +110,10 @@ export function Header() {
           ) : (
             <>
               <Button variant="ghost" size="sm" asChild>
-                <Link href="/sign-in">Sign In</Link>
+                <a href={PLATFORM_URLS.signIn}>Sign In</a>
               </Button>
               <Button size="sm" asChild>
-                <Link href="/sign-up">Get Started</Link>
+                <a href={PLATFORM_URLS.signUp}>Get Started</a>
               </Button>
             </>
           )}
@@ -144,13 +145,13 @@ export function Header() {
               <div className="border-t pt-4 space-y-4">
                 {firebaseUser ? (
                   <>
-                    <Link
-                      href={`${appUrl}/dashboard`}
+                    <a
+                      href={dashboardUrl}
                       className="block text-lg font-medium text-foreground hover:text-primary"
                       onClick={() => setMobileMenuOpen(false)}
                     >
                       Go to Dashboard
-                    </Link>
+                    </a>
                     {isAdmin && (
                       <Link
                         href="/cms"
@@ -173,17 +174,17 @@ export function Header() {
                   </>
                 ) : (
                   <>
-                    <Link
-                      href="/sign-in"
+                    <a
+                      href={PLATFORM_URLS.signIn}
                       className="block text-lg font-medium text-foreground hover:text-primary"
                       onClick={() => setMobileMenuOpen(false)}
                     >
                       Sign In
-                    </Link>
+                    </a>
                     <Button asChild className="w-full">
-                      <Link href="/sign-up" onClick={() => setMobileMenuOpen(false)}>
+                      <a href={PLATFORM_URLS.signUp} onClick={() => setMobileMenuOpen(false)}>
                         Get Started
-                      </Link>
+                      </a>
                     </Button>
                   </>
                 )}

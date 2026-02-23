@@ -67,7 +67,7 @@ import OrganisationDetail from "layouts/admin/organisations/detail";
 import AdminDashboard from "layouts/admin/dashboard";
 
 // CMS management layouts (for super admin)
-import { CMSSiteContent, CMSPricing, CMSContactSubmissions } from "layouts/admin/cms";
+import { CMSSiteContent, CMSPricing, CMSContactSubmissions, CMSPageMetadata } from "layouts/admin/cms";
 
 // Organisation management layouts (for account managers)
 import OrganisationDashboard from "layouts/organisation/dashboard";
@@ -676,6 +676,13 @@ const routes = [
         route: "/admin/cms/contact",
         component: <CMSContactSubmissions />,
         icon: <Icon fontSize="small">contact_mail</Icon>,
+      },
+      {
+        name: "Page Metadata",
+        key: "cms-metadata",
+        route: "/admin/cms/metadata",
+        component: <CMSPageMetadata />,
+        icon: <Icon fontSize="small">search</Icon>,
       },
     ],
   },
