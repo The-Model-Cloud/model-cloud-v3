@@ -28,7 +28,8 @@
       "Bash(npm run deploy:*)",
       "Bash(npm uninstall:*)",
       "Bash(unzip:*)",
-      "Bash(npm run build:website:*)"
+      "Bash(npm run build:website:*)",
+      "Bash(npx tsc:*)"
     ]
   }
 }
