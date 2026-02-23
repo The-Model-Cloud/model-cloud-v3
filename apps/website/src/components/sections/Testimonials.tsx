@@ -1,12 +1,15 @@
 "use client";
 
+import Image from "next/image";
 import { Star } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useSiteContent } from "@/lib/hooks/useSiteContent";
+import { cloudinaryAvatar } from "@/lib/cloudinary";
 import type { HomeTestimonials } from "@/types/siteContent";
 
-const fallbackTestimonials = {
+const fallbackTestimonials: HomeTestimonials = {
+  id: "home-testimonials",
   sectionTitle: "Loved by Industry Professionals",
   sectionSubtitle:
     "See what our users have to say about their experience with The Model Cloud.",
@@ -85,37 +88,52 @@ export function Testimonials() {
         </div>
 
         <div className="grid md:grid-cols-3 gap-8">
-          {testimonials.items.map((testimonial) => (
-            <Card key={testimonial.author} className="bg-background">
-              <CardContent className="pt-6">
-                <div className="flex mb-4">
-                  {Array.from({ length: testimonial.rating ?? 5 }).map((_, i) => (
-                    <Star
-                      key={i}
-                      className="h-5 w-5 text-yellow-500 fill-yellow-500"
-                    />
-                  ))}
-                </div>
-                <blockquote className="text-lg mb-6">
-                  &ldquo;{testimonial.quote}&rdquo;
-                </blockquote>
-                <div className="flex items-center">
-                  <div className="w-12 h-12 rounded-full bg-primary/20 flex items-center justify-center mr-4">
-                    <span className="text-lg font-semibold text-primary">
-                      {testimonial.author[0]}
-                    </span>
+          {testimonials.items.map((testimonial) => {
+            const avatarUrl = cloudinaryAvatar(testimonial.imageUrl, 96);
+            return (
+              <Card key={testimonial.author} className="bg-background">
+                <CardContent className="pt-6">
+                  <div className="flex mb-4">
+                    {Array.from({ length: testimonial.rating ?? 5 }).map((_, i) => (
+                      <Star
+                        key={i}
+                        className="h-5 w-5 text-yellow-500 fill-yellow-500"
+                      />
+                    ))}
                   </div>
-                  <div>
-                    <p className="font-semibold">{testimonial.author}</p>
-                    <p className="text-sm text-muted-foreground">
-                      {testimonial.role}
-                      {testimonial.company && `, ${testimonial.company}`}
-                    </p>
+                  <blockquote className="text-lg mb-6">
+                    &ldquo;{testimonial.quote}&rdquo;
+                  </blockquote>
+                  <div className="flex items-center">
+                    {avatarUrl ? (
+                      <div className="w-12 h-12 rounded-full mr-4 overflow-hidden">
+                        <Image
+                          src={avatarUrl}
+                          alt={testimonial.author}
+                          width={48}
+                          height={48}
+                          className="w-full h-full object-cover"
+                        />
+                      </div>
+                    ) : (
+                      <div className="w-12 h-12 rounded-full bg-primary/20 flex items-center justify-center mr-4">
+                        <span className="text-lg font-semibold text-primary">
+                          {testimonial.author[0]}
+                        </span>
+                      </div>
+                    )}
+                    <div>
+                      <p className="font-semibold">{testimonial.author}</p>
+                      <p className="text-sm text-muted-foreground">
+                        {testimonial.role}
+                        {testimonial.company && `, ${testimonial.company}`}
+                      </p>
+                    </div>
                   </div>
-                </div>
-              </CardContent>
-            </Card>
-          ))}
+                </CardContent>
+              </Card>
+            );
+          })}
         </div>
       </div>
     </section>

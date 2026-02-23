@@ -37,6 +37,7 @@ export interface TestimonialItem {
   role: string;
   company?: string;
   rating?: number;
+  imageUrl?: string; // Author photo (Cloudinary URL)
 }
 
 export interface ComparisonItem {
@@ -155,6 +156,7 @@ export interface HomeHero extends SiteContentBase {
   primaryCta: CTAButton;
   secondaryCta: CTAButton;
   trustText: string;
+  heroImage?: string; // Hero section image (Cloudinary URL)
 }
 
 export interface HomeFeatures extends SiteContentBase {
