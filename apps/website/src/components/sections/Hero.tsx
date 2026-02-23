@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ArrowRight, Play } from "lucide-react";
 import { useSiteContent } from "@/lib/hooks/useSiteContent";
+import { PLATFORM_URLS } from "@/lib/urls";
 import type { HomeHero } from "@/types/siteContent";
 
 const fallbackHero = {
@@ -13,7 +14,7 @@ const fallbackHero = {
   titleHighlight: "Book Models",
   subtitle:
     "Streamline your talent booking process with our powerful platform. Connect with top models, manage bookings, and grow your business effortlessly.",
-  primaryCta: { text: "Get Started Free", href: "/sign-up" },
+  primaryCta: { text: "Get Started Free", href: PLATFORM_URLS.signUp },
   secondaryCta: { text: "See How It Works", href: "/pricing" },
   trustText: "Trusted by leading agencies worldwide",
 };
