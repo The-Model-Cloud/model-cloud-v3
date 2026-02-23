@@ -4,7 +4,6 @@ import { useState } from "react";
 import { useAuth } from "@/lib/hooks/useAuth";
 import { useSubscription } from "@/lib/hooks/useSubscription";
 import { useCheckout } from "@/lib/hooks/useCheckout";
-import { platformUrl } from "@/lib/urls";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardFooter, CardHeader } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -134,7 +133,7 @@ export function PricingCard({ tier, allTiers = [] }: PricingCardProps) {
             variant={tier.highlighted ? "default" : "outline"}
             asChild
           >
-            <a href={platformUrl(`/sign-up?plan=${tier.id}`)}>Get Started</a>
+            <a href={`/client/sign-up?tier=${subscriptionTierId}`}>Get Started</a>
           </Button>
         ) : (
           <Button

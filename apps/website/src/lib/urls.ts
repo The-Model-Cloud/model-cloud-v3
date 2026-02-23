@@ -23,7 +23,7 @@ export const PLATFORM_URLS = {
   signIn: platformUrl("/sign-in"),
   signUp: platformUrl("/sign-up"),
   signUpModel: platformUrl("/sign-up?type=model"),
-  signUpClient: platformUrl("/sign-up?type=client"),
+  signUpClient: "/client/sign-up", // Client sign-up is on the website
   dashboard: platformUrl("/dashboard"),
   onboarding: platformUrl("/onboarding"),
 } as const;
