@@ -1091,10 +1091,28 @@ exports.sendApplicationEmail = onCall(async (request) => {
     return { success: false, skipped: true, reason: "disabled" };
   }
 
-  const { to, modelName, jobTitle, jobReference } = request.data;
+  const { to, modelName, jobTitle, jobReference, clientUid } = request.data;
 
   if (!to || !modelName || !jobTitle || !jobReference) {
     throw new HttpsError("invalid-argument", "Missing required fields");
+  }
+
+  // Check if the client has disabled job application email notifications
+  if (clientUid) {
+    try {
+      const clientDoc = await db.collection("users").doc(clientUid).get();
+      if (clientDoc.exists) {
+        const clientData = clientDoc.data();
+        const notificationSettings = clientData.notificationSettings || {};
+        if (notificationSettings.emailOnJobApplication === false) {
+          console.log(`📧 Skipping email - client ${clientUid} has disabled job application notifications`);
+          return { success: true, skipped: true, reason: "user_preference" };
+        }
+      }
+    } catch (error) {
+      console.warn("Could not check client notification settings:", error.message);
+      // Continue anyway - better to send email than not
+    }
   }
 
   const msg = {
@@ -1507,6 +1525,249 @@ exports.onUserCreated = onDocumentCreated("users/{userId}", async (event) => {
 
 
 // ============================================================================
+// JOB MATCHING NOTIFICATION FUNCTIONS
+// ============================================================================
+
+/**
+ * Model matching algorithm - checks if a model matches a job's requirements
+ * Same logic as apps/platform/src/utils/matching.js
+ */
+const doesModelMatchJob = (model, job) => {
+  if (!model || !job) return false;
+
+  // Gender match - at least one gender must match
+  const genderMatch =
+    job.gender?.length > 0 &&
+    model.gender?.length > 0 &&
+    job.gender.some((g) => model.gender.includes(g));
+
+  // Category match - at least one category must match
+  const categoryMatch =
+    job.categories?.some((cat) => model.categories?.includes(cat));
+
+  return genderMatch && categoryMatch;
+};
+
+/**
+ * Firestore trigger: When a job is created, notify matching models and the client
+ */
+exports.onJobCreated = onDocumentCreated("jobs/{jobId}", async (event) => {
+  const snap = event.data;
+  if (!snap) {
+    console.log("No data associated with the event");
+    return null;
+  }
+
+  const jobData = snap.data();
+  const jobId = event.params.jobId;
+
+  // Skip if job is a draft or not active
+  if (jobData.status === "draft" || jobData.status === "closed") {
+    console.log(`Skipping notifications for job ${jobId} - status: ${jobData.status}`);
+    return null;
+  }
+
+  console.log(`📧 Processing job matching notifications for job: ${jobData.title || jobId}`);
+
+  // Check if emails are enabled in system settings
+  const emailEnabled = await isEmailEnabled();
+  if (!emailEnabled) {
+    console.log("📧 Job matching emails disabled by system settings");
+    return null;
+  }
+
+  if (!sendgridApiKey) {
+    console.warn("SendGrid not configured - skipping job match notifications");
+    return null;
+  }
+
+  try {
+    // 1. Get the job creator (client)
+    const clientDoc = await db.collection("users").doc(jobData.userId).get();
+    if (!clientDoc.exists) {
+      console.warn(`Job creator not found: ${jobData.userId}`);
+      return null;
+    }
+    const clientData = clientDoc.data();
+    const clientNotificationSettings = clientData.notificationSettings || {};
+
+    // 2. Find all verified models
+    const modelsSnapshot = await db.collection("users")
+      .where("role", "==", "model")
+      .where("isVerified", "==", true)
+      .get();
+
+    console.log(`Found ${modelsSnapshot.size} verified models to check for matching`);
+
+    // 3. Filter models that match the job
+    const matchingModels = [];
+    for (const modelDoc of modelsSnapshot.docs) {
+      const modelData = modelDoc.data();
+      if (doesModelMatchJob(modelData, jobData)) {
+        matchingModels.push({ uid: modelDoc.id, ...modelData });
+      }
+    }
+
+    console.log(`Found ${matchingModels.length} matching models for job: ${jobData.title}`);
+
+    if (matchingModels.length === 0) {
+      return { success: true, matchingModels: 0, emailsSent: 0 };
+    }
+
+    let modelEmailsSent = 0;
+    let clientEmailSent = false;
+
+    // 4. Email each matching model (if they have emailOnJobMatch enabled)
+    for (const model of matchingModels) {
+      const modelNotificationSettings = model.notificationSettings || {};
+
+      // Check if model has disabled job match notifications (default is enabled)
+      if (modelNotificationSettings.emailOnJobMatch === false) {
+        console.log(`Skipping model ${model.uid} - job match notifications disabled`);
+        continue;
+      }
+
+      if (!model.email) {
+        console.warn(`No email for model: ${model.uid}`);
+        continue;
+      }
+
+      const modelName = model.firstName || "there";
+      const jobUrl = `https://themodel.cloud/jobs/${jobData.reference || jobId}`;
+
+      const msg = {
+        to: model.email,
+        from: sendgridFromEmail,
+        subject: `New Job Match: ${jobData.title}`,
+        html: `
+          <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+            <h2 style="color: #333;">New Job Matching Your Profile!</h2>
+            <p>Hi ${modelName},</p>
+            <p>Great news! A new job has been posted that matches your profile:</p>
+
+            <div style="background: #f8f9fa; padding: 20px; border-radius: 8px; margin: 20px 0;">
+              <h3 style="margin: 0 0 10px 0; color: #333;">${jobData.title}</h3>
+              ${jobData.location ? `<p style="margin: 5px 0; color: #666;"><strong>Location:</strong> ${jobData.location}</p>` : ""}
+              ${jobData.dateFrom ? `<p style="margin: 5px 0; color: #666;"><strong>Date:</strong> ${jobData.dateFrom}${jobData.dateTo ? ` - ${jobData.dateTo}` : ""}</p>` : ""}
+              ${jobData.rate ? `<p style="margin: 5px 0; color: #666;"><strong>Rate:</strong> ${jobData.currency || "£"}${jobData.rate}</p>` : ""}
+            </div>
+
+            <p>
+              <a href="${jobUrl}"
+                 style="background-color: #667eea; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; display: inline-block; font-weight: bold;">
+                View Job & Apply
+              </a>
+            </p>
+
+            <p style="color: #999; font-size: 12px; margin-top: 32px; border-top: 1px solid #eee; padding-top: 16px;">
+              You received this email because a job matching your profile was posted on The Model Cloud.
+              <br>
+              <a href="https://themodel.cloud/profile/settings" style="color: #667eea;">Manage your notification preferences</a>
+            </p>
+          </div>
+        `
+      };
+
+      try {
+        await sgMail.send(msg);
+        modelEmailsSent++;
+        console.log(`✅ Job match email sent to model: ${model.email}`);
+      } catch (error) {
+        console.error(`Failed to send job match email to ${model.email}:`, error.message);
+      }
+    }
+
+    // 5. Email the client with matching models (if they have emailOnModelMatch enabled)
+    if (clientNotificationSettings.emailOnModelMatch !== false && matchingModels.length > 0) {
+      const clientName = clientData.firstName || "there";
+      const jobUrl = `https://themodel.cloud/jobs/${jobData.reference || jobId}`;
+
+      // Build model list HTML (limit to first 10 for email)
+      const displayModels = matchingModels.slice(0, 10);
+      const modelListHtml = displayModels.map(model => {
+        const modelUrl = `https://themodel.cloud/models/${model.publicSlug || model.uid}`;
+        const modelName = `${model.firstName || ""} ${model.lastName || ""}`.trim() || "Model";
+        const avatarUrl = model.profileAvatar || "https://themodel.cloud/default-avatar.png";
+
+        return `
+          <tr>
+            <td style="padding: 10px; border-bottom: 1px solid #eee;">
+              <a href="${modelUrl}" style="display: flex; align-items: center; text-decoration: none; color: #333;">
+                <img src="${avatarUrl}" alt="${modelName}" style="width: 50px; height: 50px; border-radius: 50%; object-fit: cover; margin-right: 12px;">
+                <div>
+                  <strong>${modelName}</strong>
+                  ${model.city ? `<br><span style="color: #666; font-size: 12px;">${model.city}${model.country ? `, ${model.country}` : ""}</span>` : ""}
+                </div>
+              </a>
+            </td>
+            <td style="padding: 10px; border-bottom: 1px solid #eee; text-align: right;">
+              <a href="${modelUrl}" style="background-color: #28a745; color: white; padding: 6px 12px; text-decoration: none; border-radius: 4px; font-size: 12px;">View Profile</a>
+            </td>
+          </tr>
+        `;
+      }).join("");
+
+      const msg = {
+        to: clientData.email,
+        from: sendgridFromEmail,
+        subject: `${matchingModels.length} Models Match Your Job: ${jobData.title}`,
+        html: `
+          <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+            <h2 style="color: #333;">Models Matching Your Job Listing</h2>
+            <p>Hi ${clientName},</p>
+            <p>Great news! We found <strong>${matchingModels.length} models</strong> that match your job posting:</p>
+
+            <div style="background: #f8f9fa; padding: 15px; border-radius: 8px; margin: 15px 0;">
+              <strong>${jobData.title}</strong>
+            </div>
+
+            <table style="width: 100%; border-collapse: collapse; margin: 20px 0;">
+              ${modelListHtml}
+            </table>
+
+            ${matchingModels.length > 10 ? `<p style="color: #666; text-align: center;">...and ${matchingModels.length - 10} more</p>` : ""}
+
+            <p style="text-align: center;">
+              <a href="${jobUrl}"
+                 style="background-color: #667eea; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; display: inline-block; font-weight: bold;">
+                View All Matching Models
+              </a>
+            </p>
+
+            <p style="color: #999; font-size: 12px; margin-top: 32px; border-top: 1px solid #eee; padding-top: 16px;">
+              You received this email because you posted a job on The Model Cloud.
+              <br>
+              <a href="https://themodel.cloud/profile/settings" style="color: #667eea;">Manage your notification preferences</a>
+            </p>
+          </div>
+        `
+      };
+
+      try {
+        await sgMail.send(msg);
+        clientEmailSent = true;
+        console.log(`✅ Model match summary email sent to client: ${clientData.email}`);
+      } catch (error) {
+        console.error(`Failed to send model match email to client ${clientData.email}:`, error.message);
+      }
+    }
+
+    console.log(`📧 Job matching complete: ${modelEmailsSent} model emails, client email: ${clientEmailSent}`);
+
+    return {
+      success: true,
+      matchingModels: matchingModels.length,
+      modelEmailsSent,
+      clientEmailSent
+    };
+  } catch (error) {
+    console.error("Error processing job matching notifications:", error);
+    return { success: false, error: error.message };
+  }
+});
+
+
+// ============================================================================
 // MESSAGING FUNCTIONS
 // ============================================================================
 
@@ -1736,7 +1997,7 @@ exports.onMessageCreated = onDocumentCreated(
         continue;
       }
 
-      // Get recipient email
+      // Get recipient email and notification preferences
       const recipientDoc = await db.collection("users").doc(recipientUid).get();
       if (!recipientDoc.exists) continue;
 
@@ -1746,6 +2007,13 @@ exports.onMessageCreated = onDocumentCreated(
 
       if (!recipientEmail) {
         console.warn(`No email for recipient: ${recipientUid}`);
+        continue;
+      }
+
+      // Check if recipient has disabled message email notifications
+      const notificationSettings = recipientData.notificationSettings || {};
+      if (notificationSettings.emailOnMessage === false) {
+        console.log(`Skipping email - user ${recipientUid} has disabled message notifications`);
         continue;
       }
 
@@ -7870,4 +8138,121 @@ exports.deleteOrganisation = functions.https.onCall(async (data, context) => {
     message: `Organisation "${orgName}" deleted successfully`,
     summary,
   };
+});
+
+
+// ============================================================================
+// MAILCHIMP MARKETING SUBSCRIPTION MANAGEMENT
+// ============================================================================
+
+/**
+ * Update Mailchimp subscription for a user
+ * Adds or removes tags based on their marketing preferences
+ *
+ * @param {string} email - User's email address
+ * @param {string} tag - The marketing tag (newLaunches, productUpdates, newsletter)
+ * @param {boolean} subscribed - Whether to subscribe or unsubscribe
+ * @param {string} firstName - User's first name
+ * @param {string} lastName - User's last name
+ */
+exports.updateMailchimpSubscription = onCall(async (request) => {
+  if (!request.auth) {
+    throw new HttpsError("unauthenticated", "User must be logged in");
+  }
+
+  const { email, tag, subscribed, firstName = "", lastName = "" } = request.data;
+
+  if (!email || !tag) {
+    throw new HttpsError("invalid-argument", "Email and tag are required");
+  }
+
+  // Map internal tag names to Mailchimp tag names
+  const tagMapping = {
+    newLaunches: "New Launches",
+    productUpdates: "Product Updates",
+    newsletter: "Newsletter",
+  };
+
+  const mailchimpTag = tagMapping[tag];
+  if (!mailchimpTag) {
+    throw new HttpsError("invalid-argument", `Invalid tag: ${tag}`);
+  }
+
+  const mailchimpApiKey = process.env.MAILCHIMP_API_KEY;
+  const mailchimpAudienceId = process.env.MAILCHIMP_AUDIENCE_ID;
+  const mailchimpServerPrefix = process.env.MAILCHIMP_SERVER_PREFIX; // e.g., "us21"
+
+  if (!mailchimpApiKey || !mailchimpAudienceId || !mailchimpServerPrefix) {
+    console.warn("Mailchimp not configured. Skipping subscription update.");
+    return {
+      success: true,
+      skipped: true,
+      message: "Mailchimp not configured",
+    };
+  }
+
+  try {
+    const crypto = require("crypto");
+    const subscriberHash = crypto.createHash("md5").update(email.toLowerCase()).digest("hex");
+    const mailchimpUrl = `https://${mailchimpServerPrefix}.api.mailchimp.com/3.0/lists/${mailchimpAudienceId}/members/${subscriberHash}`;
+
+    // First, ensure the member exists (add or update)
+    const memberResponse = await axios.put(
+      mailchimpUrl,
+      {
+        email_address: email,
+        status_if_new: "subscribed",
+        merge_fields: {
+          FNAME: firstName,
+          LNAME: lastName,
+        },
+      },
+      {
+        headers: {
+          Authorization: `Basic ${Buffer.from(`anystring:${mailchimpApiKey}`).toString("base64")}`,
+          "Content-Type": "application/json",
+        },
+      }
+    );
+
+    console.log(`Mailchimp member ${subscribed ? "added/updated" : "found"}:`, memberResponse.data.id);
+
+    // Now update the tag
+    const tagUrl = `https://${mailchimpServerPrefix}.api.mailchimp.com/3.0/lists/${mailchimpAudienceId}/members/${subscriberHash}/tags`;
+
+    await axios.post(
+      tagUrl,
+      {
+        tags: [
+          {
+            name: mailchimpTag,
+            status: subscribed ? "active" : "inactive",
+          },
+        ],
+      },
+      {
+        headers: {
+          Authorization: `Basic ${Buffer.from(`anystring:${mailchimpApiKey}`).toString("base64")}`,
+          "Content-Type": "application/json",
+        },
+      }
+    );
+
+    console.log(`Mailchimp tag "${mailchimpTag}" ${subscribed ? "added" : "removed"} for ${email}`);
+
+    return {
+      success: true,
+      email,
+      tag: mailchimpTag,
+      subscribed,
+    };
+  } catch (error) {
+    console.error("Mailchimp API error:", error.response?.data || error.message);
+
+    // Don't throw - we don't want to fail the whole operation if Mailchimp fails
+    return {
+      success: false,
+      error: error.response?.data?.detail || error.message,
+    };
+  }
 });

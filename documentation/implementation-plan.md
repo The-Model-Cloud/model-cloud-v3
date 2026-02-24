@@ -745,6 +745,10 @@ Week 6:   Phase 2.1-2.3 (High Priority)
 - [ ] Account manager manages team
 - [ ] Client books model from profile
 - [ ] Organisation views all their jobs
+- [ ] Test Job Creation from a Client perspective
+- [ ] Test Client Paying for Job
+- [ ] Test Job Application from a Model perspective
+- [ ] Test Model Completing Job and Viewing Balance in Payouts page, then withdrawing the available balance to their bank account
 
 ---
 
@@ -900,6 +904,115 @@ Files to create:
 
 ---
 
+---
+
+### 2.6 Platform Settings & Email Notifications ✅ COMPLETE
+
+**Problem:** Users had no control over email notifications, and notification settings were not persisted or functional.
+
+**Implementation:**
+
+**User Notification Preferences:**
+
+The Platform Settings component (`src/layouts/pages/profile/profile-overview/components/PlatformSettings/index.js`) now manages:
+
+| Setting | User Type | Description |
+|---------|-----------|-------------|
+| `emailOnMessage` | All | Email when someone sends a message |
+| `emailOnJobMatch` | Models | Email when profile matches a new job listing |
+| `emailOnModelMatch` | Clients | Email with matching models when posting a job |
+| `emailOnJobApplication` | Clients | Email when a model applies to their job |
+
+**Deferred Features (noted for future):**
+- `emailOnPostAnswer` - Email when someone answers on my post
+- `emailOnMention` - Email when someone mentions me
+
+**Marketing Preferences (Mailchimp Integration):**
+
+| Preference | Mailchimp Tag | Description |
+|------------|---------------|-------------|
+| `newLaunches` | "New Launches" | New features and launches |
+| `productUpdates` | "Product Updates" | Monthly product updates |
+| `newsletter` | "Newsletter" | General news and insights |
+
+**Data Model - User Document:**
+```javascript
+{
+  // ... existing fields
+  notificationSettings: {
+    emailOnMessage: true,         // Default: true
+    emailOnJobMatch: true,        // Models only
+    emailOnModelMatch: true,      // Clients only
+    emailOnJobApplication: true,  // Clients only
+  },
+  marketingPreferences: {
+    newLaunches: false,
+    productUpdates: false,
+    newsletter: false,
+  }
+}
+```
+
+**Cloud Functions Created/Updated:**
+
+| Function | Location | Purpose |
+|----------|----------|---------|
+| `onJobCreated` | functions/index.js:1527 | Trigger when job posted - emails matching models and client |
+| `updateMailchimpSubscription` | functions/index.js:7875 | Syncs marketing preferences with Mailchimp |
+| `onMessageCreated` (updated) | functions/index.js:1740 | Checks `emailOnMessage` before sending |
+| `sendApplicationEmail` (updated) | functions/index.js:1077 | Checks `emailOnJobApplication` before sending |
+
+**Files Modified:**
+```
+apps/platform/src/layouts/pages/profile/profile-overview/components/PlatformSettings/index.js
+└── Complete rewrite with role-based toggles
+└── Loads/saves settings from Firestore
+└── Mailchimp integration for marketing preferences
+
+apps/platform/src/utils/api.js
+└── Updated sendApplicationEmail to accept clientUid
+
+apps/platform/src/layouts/jobs/job-details/index.js
+└── Pass clientUid to sendApplicationEmail
+
+functions/index.js
+└── Added onJobCreated trigger
+└── Added updateMailchimpSubscription function
+└── Updated onMessageCreated to check user preferences
+└── Updated sendApplicationEmail to check user preferences
+```
+
+**Environment Variables Required (for Mailchimp):**
+```env
+MAILCHIMP_API_KEY=your-api-key
+MAILCHIMP_AUDIENCE_ID=your-audience-id
+MAILCHIMP_SERVER_PREFIX=us21
+```
+
+**Email Templates in Cloud Functions:**
+
+| Email | Lines | Description |
+|-------|-------|-------------|
+| Job Match (to Model) | ~1615-1645 | New job matching profile |
+| Model Match Summary (to Client) | ~1660-1720 | List of matching models |
+| New Message | ~1770-1800 | Someone sent a message |
+| Job Application (to Client) | ~1100-1115 | Model applied to job |
+| Job Application Confirmation (to Model) | ~1138-1150 | Application submitted |
+
+**Acceptance Criteria:**
+- [x] Settings load from Firestore on mount
+- [x] Toggle changes save to Firestore immediately
+- [x] Role-based toggles (models see job match, clients see application alerts)
+- [x] Marketing preferences sync with Mailchimp
+- [x] onMessageCreated respects emailOnMessage setting
+- [x] sendApplicationEmail respects emailOnJobApplication setting
+- [x] onJobCreated sends matching emails to models and clients
+- [x] All emails check user preferences before sending
+
+**Status: COMPLETE** (2026-02-24)
+
+---
+
 ## Dependencies
 
 | Feature | Depends On |
@@ -910,3 +1023,5 @@ Files to create:
 | Org Favourites | Team structure implemented |
 | Account Manager UI | Team structure implemented |
 | Self-Service Upgrade | Stripe Connect, Organisation tiers |
+| Email Notifications | SendGrid configured, user preferences |
+| Mailchimp Marketing | Mailchimp API credentials |
