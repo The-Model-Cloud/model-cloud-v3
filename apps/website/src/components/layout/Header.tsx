@@ -4,6 +4,7 @@ import Link from "next/link";
 import Image from "next/image";
 import { useState } from "react";
 import { useAuth } from "@/lib/hooks/useAuth";
+import { useLayoutContent } from "@/lib/hooks/useLayoutContent";
 import { signOut } from "@/lib/firebase/auth";
 import { PLATFORM_URLS, platformUrl } from "@/lib/urls";
 import { Button } from "@/components/ui/button";
@@ -17,8 +18,11 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Menu, User, LogOut, LayoutDashboard } from "lucide-react";
 import { ModeToggle } from "@/components/ui/mode-toggle";
+import { FAIcon } from "@/components/ui/FAIcon";
+import type { NavLink } from "@/types/siteContent";
 
-const navLinks = [
+// Fallback navigation links when CMS content is not available
+const fallbackNavLinks: NavLink[] = [
   { href: "/", label: "Home" },
   { href: "/pricing", label: "Pricing" },
   { href: "/about-us", label: "About Us" },
@@ -26,8 +30,12 @@ const navLinks = [
   { href: "/contact", label: "Contact" },
 ];
 
+const fallbackSignInText = "Sign In";
+const fallbackSignUpText = "Get Started";
+
 export function Header() {
-  const { firebaseUser, userData, loading, isAdmin } = useAuth();
+  const { firebaseUser, userData, loading: authLoading, isAdmin } = useAuth();
+  const { content } = useLayoutContent();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   const handleSignOut = async () => {
@@ -36,13 +44,21 @@ export function Header() {
 
   const dashboardUrl = platformUrl("/dashboard");
 
+  // Use CMS content or fallbacks
+  const headerContent = content.header;
+  const navLinks = headerContent?.navLinks ?? fallbackNavLinks;
+  const signInButtonText = headerContent?.signInButtonText ?? fallbackSignInText;
+  const signUpButtonText = headerContent?.signUpButtonText ?? fallbackSignUpText;
+  const logoLightUrl = headerContent?.logoLightUrl || "/assets/logo-light.png";
+  const logoDarkUrl = headerContent?.logoDarkUrl || "/assets/logo-dark.png";
+
   return (
     <header className="sticky top-0 z-50 w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
       <div className="container flex h-16 items-center justify-between">
         {/* Logo */}
         <Link href="/" className="flex items-center">
           <Image
-            src="/assets/logo-light.png"
+            src={logoLightUrl}
             alt="The Model Cloud"
             width={180}
             height={40}
@@ -50,7 +66,7 @@ export function Header() {
             priority
           />
           <Image
-            src="/assets/logo-dark.png"
+            src={logoDarkUrl}
             alt="The Model Cloud"
             width={180}
             height={40}
@@ -65,8 +81,10 @@ export function Header() {
             <Link
               key={link.href}
               href={link.href}
-              className="text-sm font-medium text-muted-foreground transition-colors hover:text-primary"
+              className="text-sm font-medium text-muted-foreground transition-colors hover:text-primary flex items-center gap-2"
+              {...(link.external ? { target: "_blank", rel: "noopener noreferrer" } : {})}
             >
+              {link.icon && <FAIcon name={link.icon} className="h-4 w-4" />}
               {link.label}
             </Link>
           ))}
@@ -75,7 +93,7 @@ export function Header() {
         {/* Desktop Auth */}
         <div className="hidden md:flex items-center space-x-4">
           <ModeToggle />
-          {loading ? (
+          {authLoading ? (
             <div className="h-9 w-20 animate-pulse rounded-md bg-muted" />
           ) : firebaseUser ? (
             <DropdownMenu>
@@ -110,10 +128,10 @@ export function Header() {
           ) : (
             <>
               <Button variant="ghost" size="sm" asChild>
-                <a href={PLATFORM_URLS.signIn}>Sign In</a>
+                <a href={PLATFORM_URLS.signIn}>{signInButtonText}</a>
               </Button>
               <Button size="sm" asChild>
-                <a href={PLATFORM_URLS.signUp}>Get Started</a>
+                <a href={PLATFORM_URLS.signUp}>{signUpButtonText}</a>
               </Button>
             </>
           )}
@@ -136,9 +154,11 @@ export function Header() {
                 <Link
                   key={link.href}
                   href={link.href}
-                  className="text-lg font-medium text-foreground hover:text-primary"
+                  className="text-lg font-medium text-foreground hover:text-primary flex items-center gap-2"
                   onClick={() => setMobileMenuOpen(false)}
+                  {...(link.external ? { target: "_blank", rel: "noopener noreferrer" } : {})}
                 >
+                  {link.icon && <FAIcon name={link.icon} className="h-5 w-5" />}
                   {link.label}
                 </Link>
               ))}
@@ -179,11 +199,11 @@ export function Header() {
                       className="block text-lg font-medium text-foreground hover:text-primary"
                       onClick={() => setMobileMenuOpen(false)}
                     >
-                      Sign In
+                      {signInButtonText}
                     </a>
                     <Button asChild className="w-full">
                       <a href={PLATFORM_URLS.signUp} onClick={() => setMobileMenuOpen(false)}>
-                        Get Started
+                        {signUpButtonText}
                       </a>
                     </Button>
                   </>
