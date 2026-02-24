@@ -530,8 +530,8 @@ function CMSSiteContent() {
                     <CloudinaryImageInput
                       value={item[key] || ""}
                       onChange={(value) => handleArrayItemChange(sectionId, field, index, key, value)}
-                      label="Image URL"
-                      folder={`website/${sectionId}`}
+                      label="Author Photo"
+                      folder={`website/testimonials`}
                       previewSize={60}
                     />
                   </MDBox>
@@ -551,6 +551,18 @@ function CMSSiteContent() {
                 />
               );
             })}
+            {/* Show imageUrl field if item supports images but doesn't have one yet */}
+            {supportsImages && Object.keys(item).length > 0 && !item.imageUrl && (
+              <MDBox mb={1}>
+                <CloudinaryImageInput
+                  value=""
+                  onChange={(value) => handleArrayItemChange(sectionId, field, index, "imageUrl", value)}
+                  label="Author Photo (optional)"
+                  folder={`website/testimonials`}
+                  previewSize={60}
+                />
+              </MDBox>
+            )}
             {Object.keys(item).length === 0 && (
               <>
                 <TextField
