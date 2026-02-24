@@ -108,8 +108,48 @@ export default function WhyUsContent() {
   };
 
   const benefits = content.benefits?.items ?? fallbackBenefits;
-  const comparisons = content.comparisons?.items ?? fallbackComparisons;
+
+  const comparisonSection = content.comparisons ?? {
+    title: "The Model Cloud vs Traditional Methods",
+    subtitle: "See how we compare to traditional booking methods",
+    items: fallbackComparisons,
+  };
+  const comparisons = comparisonSection.items ?? fallbackComparisons;
+
+  const forModelsSection = content.forModels ?? {
+    title: "For Models",
+    features: [
+      { title: "Professional Portfolio", description: "Showcase your work with a stunning, professional portfolio that gets noticed." },
+      { title: "Direct Client Access", description: "Connect directly with brands and agencies without middlemen." },
+      { title: "Career Management", description: "Tools to manage your schedule, track earnings, and grow your career." },
+    ],
+    ctaTitle: "Join 10,000+ Models",
+    ctaSubtitle: "Building successful careers on The Model Cloud",
+    ctaButtonText: "Start Your Journey",
+    ctaButtonLink: PLATFORM_URLS.signUp,
+  };
+
+  const forClientsSection = content.forClients ?? {
+    title: "For Clients",
+    features: [
+      { title: "Verified Talent Pool", description: "Access pre-vetted, professional models ready for your projects." },
+      { title: "Streamlined Booking", description: "Book talent in minutes with our intuitive booking system." },
+      { title: "Budget Management", description: "Transparent pricing and powerful budget tracking tools." },
+    ],
+    ctaTitle: "Trusted by 5,000+ Clients",
+    ctaSubtitle: "From startups to Fortune 500 brands",
+    ctaButtonText: "Find Talent Today",
+    ctaButtonLink: PLATFORM_URLS.signUp,
+  };
+
   const testimonials = content.testimonials?.items ?? fallbackTestimonials;
+
+  const ctaSection = content.cta ?? {
+    title: "Ready to Experience the Difference?",
+    subtitle: "Join thousands of professionals who've already made the switch.",
+    buttonText: "Get Started Free",
+    buttonLink: PLATFORM_URLS.signUp,
+  };
 
   if (loading) {
     return (
@@ -176,12 +216,8 @@ export default function WhyUsContent() {
       <section className="py-20 bg-muted/30">
         <div className="container">
           <div className="text-center mb-12">
-            <h2 className="text-3xl font-bold mb-4">
-              The Model Cloud vs Traditional Methods
-            </h2>
-            <p className="text-muted-foreground">
-              See how we compare to traditional booking methods
-            </p>
+            <h2 className="text-3xl font-bold mb-4">{comparisonSection.title}</h2>
+            <p className="text-muted-foreground">{comparisonSection.subtitle}</p>
           </div>
           <div className="max-w-4xl mx-auto">
             <div className="grid grid-cols-3 gap-4 mb-4">
@@ -217,47 +253,25 @@ export default function WhyUsContent() {
         <div className="container">
           <div className="grid md:grid-cols-2 gap-12 items-center">
             <div>
-              <h2 className="text-3xl font-bold mb-6">For Models</h2>
+              <h2 className="text-3xl font-bold mb-6">{forModelsSection.title}</h2>
               <ul className="space-y-4">
-                <li className="flex items-start">
-                  <CheckCircle className="h-6 w-6 text-primary shrink-0 mr-3" />
-                  <div>
-                    <span className="font-medium">Professional Portfolio</span>
-                    <p className="text-muted-foreground">
-                      Showcase your work with a stunning, professional portfolio
-                      that gets noticed.
-                    </p>
-                  </div>
-                </li>
-                <li className="flex items-start">
-                  <CheckCircle className="h-6 w-6 text-primary shrink-0 mr-3" />
-                  <div>
-                    <span className="font-medium">Direct Client Access</span>
-                    <p className="text-muted-foreground">
-                      Connect directly with brands and agencies without middlemen.
-                    </p>
-                  </div>
-                </li>
-                <li className="flex items-start">
-                  <CheckCircle className="h-6 w-6 text-primary shrink-0 mr-3" />
-                  <div>
-                    <span className="font-medium">Career Management</span>
-                    <p className="text-muted-foreground">
-                      Tools to manage your schedule, track earnings, and grow your
-                      career.
-                    </p>
-                  </div>
-                </li>
+                {forModelsSection.features.map((feature) => (
+                  <li key={feature.title} className="flex items-start">
+                    <CheckCircle className="h-6 w-6 text-primary shrink-0 mr-3" />
+                    <div>
+                      <span className="font-medium">{feature.title}</span>
+                      <p className="text-muted-foreground">{feature.description}</p>
+                    </div>
+                  </li>
+                ))}
               </ul>
             </div>
             <div className="bg-gradient-to-br from-primary/20 to-purple-400/20 rounded-2xl p-8 text-center">
               <Star className="h-16 w-16 text-primary mx-auto mb-4" />
-              <h3 className="text-2xl font-bold mb-2">Join 10,000+ Models</h3>
-              <p className="text-muted-foreground mb-6">
-                Building successful careers on The Model Cloud
-              </p>
+              <h3 className="text-2xl font-bold mb-2">{forModelsSection.ctaTitle}</h3>
+              <p className="text-muted-foreground mb-6">{forModelsSection.ctaSubtitle}</p>
               <Button asChild>
-                <a href={PLATFORM_URLS.signUp}>Start Your Journey</a>
+                <a href={forModelsSection.ctaButtonLink}>{forModelsSection.ctaButtonText}</a>
               </Button>
             </div>
           </div>
@@ -270,45 +284,24 @@ export default function WhyUsContent() {
           <div className="grid md:grid-cols-2 gap-12 items-center">
             <div className="order-2 md:order-1 bg-gradient-to-br from-primary/20 to-purple-400/20 rounded-2xl p-8 text-center">
               <Award className="h-16 w-16 text-primary mx-auto mb-4" />
-              <h3 className="text-2xl font-bold mb-2">Trusted by 5,000+ Clients</h3>
-              <p className="text-muted-foreground mb-6">
-                From startups to Fortune 500 brands
-              </p>
+              <h3 className="text-2xl font-bold mb-2">{forClientsSection.ctaTitle}</h3>
+              <p className="text-muted-foreground mb-6">{forClientsSection.ctaSubtitle}</p>
               <Button asChild>
-                <a href={PLATFORM_URLS.signUp}>Find Talent Today</a>
+                <a href={forClientsSection.ctaButtonLink}>{forClientsSection.ctaButtonText}</a>
               </Button>
             </div>
             <div className="order-1 md:order-2">
-              <h2 className="text-3xl font-bold mb-6">For Clients</h2>
+              <h2 className="text-3xl font-bold mb-6">{forClientsSection.title}</h2>
               <ul className="space-y-4">
-                <li className="flex items-start">
-                  <CheckCircle className="h-6 w-6 text-primary shrink-0 mr-3" />
-                  <div>
-                    <span className="font-medium">Verified Talent Pool</span>
-                    <p className="text-muted-foreground">
-                      Access pre-vetted, professional models ready for your
-                      projects.
-                    </p>
-                  </div>
-                </li>
-                <li className="flex items-start">
-                  <CheckCircle className="h-6 w-6 text-primary shrink-0 mr-3" />
-                  <div>
-                    <span className="font-medium">Streamlined Booking</span>
-                    <p className="text-muted-foreground">
-                      Book talent in minutes with our intuitive booking system.
-                    </p>
-                  </div>
-                </li>
-                <li className="flex items-start">
-                  <CheckCircle className="h-6 w-6 text-primary shrink-0 mr-3" />
-                  <div>
-                    <span className="font-medium">Budget Management</span>
-                    <p className="text-muted-foreground">
-                      Transparent pricing and powerful budget tracking tools.
-                    </p>
-                  </div>
-                </li>
+                {forClientsSection.features.map((feature) => (
+                  <li key={feature.title} className="flex items-start">
+                    <CheckCircle className="h-6 w-6 text-primary shrink-0 mr-3" />
+                    <div>
+                      <span className="font-medium">{feature.title}</span>
+                      <p className="text-muted-foreground">{feature.description}</p>
+                    </div>
+                  </li>
+                ))}
               </ul>
             </div>
           </div>
@@ -369,19 +362,15 @@ export default function WhyUsContent() {
       <section className="py-20 bg-gradient-to-br from-primary to-purple-600">
         <div className="container">
           <div className="text-center max-w-2xl mx-auto">
-            <h2 className="text-3xl font-bold text-white mb-4">
-              Ready to Experience the Difference?
-            </h2>
-            <p className="text-white/80 mb-8">
-              Join thousands of professionals who&apos;ve already made the switch.
-            </p>
+            <h2 className="text-3xl font-bold text-white mb-4">{ctaSection.title}</h2>
+            <p className="text-white/80 mb-8">{ctaSection.subtitle}</p>
             <Button
               size="lg"
               variant="secondary"
               className="bg-white text-primary hover:bg-white/90"
               asChild
             >
-              <a href={PLATFORM_URLS.signUp}>Get Started Free</a>
+              <a href={ctaSection.buttonLink}>{ctaSection.buttonText}</a>
             </Button>
           </div>
         </div>

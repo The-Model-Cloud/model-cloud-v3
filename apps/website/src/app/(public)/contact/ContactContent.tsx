@@ -51,11 +51,20 @@ const contactSchema = z.object({
 
 type ContactFormData = z.infer<typeof contactSchema>;
 
+const fallbackFAQTeaser = {
+  title: "Looking for Quick Answers?",
+  subtitle:
+    "Check out our pricing page for frequently asked questions, or browse our help center for detailed guides and tutorials.",
+  buttonText: "View FAQ",
+  buttonLink: "/faq",
+};
+
 export default function ContactContent() {
   const [isLoading, setIsLoading] = useState(false);
   const { content, loading } = useContactContent();
 
-  const contactInfo = content ?? fallbackContact;
+  const contactInfo = content.info ?? fallbackContact;
+  const faqTeaser = content.faqTeaser ?? fallbackFAQTeaser;
 
   const form = useForm<ContactFormData>({
     resolver: zodResolver(contactSchema),
@@ -309,16 +318,11 @@ export default function ContactContent() {
       <section className="py-20 bg-muted/30">
         <div className="container">
           <div className="text-center max-w-2xl mx-auto">
-            <h2 className="text-3xl font-bold mb-4">
-              Looking for Quick Answers?
-            </h2>
-            <p className="text-muted-foreground mb-8">
-              Check out our pricing page for frequently asked questions, or
-              browse our help center for detailed guides and tutorials.
-            </p>
+            <h2 className="text-3xl font-bold mb-4">{faqTeaser.title}</h2>
+            <p className="text-muted-foreground mb-8">{faqTeaser.subtitle}</p>
             <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
               <Button variant="outline" asChild>
-                <a href="/pricing#faq">View FAQ</a>
+                <a href={faqTeaser.buttonLink}>{faqTeaser.buttonText}</a>
               </Button>
             </div>
           </div>

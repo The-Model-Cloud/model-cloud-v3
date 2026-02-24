@@ -80,6 +80,41 @@ export interface AboutUsTeam extends SiteContentBase {
   items: TeamMember[];
 }
 
+export interface AboutUsCTA extends SiteContentBase {
+  title: string;
+  subtitle: string;
+  primaryButtonText: string;
+  primaryButtonLink: string;
+  secondaryButtonText: string;
+  secondaryButtonLink: string;
+}
+
+// Why Us additional types
+export interface WhyUsForModels extends SiteContentBase {
+  title: string;
+  features: { title: string; description: string }[];
+  ctaTitle: string;
+  ctaSubtitle: string;
+  ctaButtonText: string;
+  ctaButtonLink: string;
+}
+
+export interface WhyUsForClients extends SiteContentBase {
+  title: string;
+  features: { title: string; description: string }[];
+  ctaTitle: string;
+  ctaSubtitle: string;
+  ctaButtonText: string;
+  ctaButtonLink: string;
+}
+
+export interface WhyUsCTA extends SiteContentBase {
+  title: string;
+  subtitle: string;
+  buttonText: string;
+  buttonLink: string;
+}
+
 // Pricing types
 export interface PricingHero extends SiteContentBase {
   title: string;
@@ -151,6 +186,8 @@ export interface WhyUsBenefits extends SiteContentBase {
 }
 
 export interface WhyUsComparisons extends SiteContentBase {
+  title: string;
+  subtitle: string;
   items: ComparisonItem[];
 }
 
@@ -179,6 +216,21 @@ export interface ContactInfo extends SiteContentBase {
   phone: string;
   address: ContactAddress;
   hours: ContactHours;
+}
+
+export interface ContactFAQTeaser extends SiteContentBase {
+  title: string;
+  subtitle: string;
+  buttonText: string;
+  buttonLink: string;
+}
+
+// FAQ Page CTA section
+export interface FAQContactCTA extends SiteContentBase {
+  title: string;
+  subtitle: string;
+  buttonText: string;
+  buttonLink: string;
 }
 
 // Page Metadata type (for SEO)
@@ -297,6 +349,10 @@ export type SiteContent =
   | AboutUsValues
   | AboutUsStats
   | AboutUsTeam
+  | AboutUsCTA
+  | WhyUsForModels
+  | WhyUsForClients
+  | WhyUsCTA
   | PricingHero
   | PricingModelsSection
   | PricingModelCard
@@ -310,6 +366,8 @@ export type SiteContent =
   | WhyUsComparisons
   | WhyUsTestimonials
   | ContactInfo
+  | ContactFAQTeaser
+  | FAQContactCTA
   | HomeHero
   | HomeFeatures
   | HomeHowItWorks
@@ -328,6 +386,10 @@ export type SiteContentId =
   | "aboutUs-values"
   | "aboutUs-stats"
   | "aboutUs-team"
+  | "aboutUs-cta"
+  | "whyUs-forModels"
+  | "whyUs-forClients"
+  | "whyUs-cta"
   | "pricing-hero"
   | "pricing-modelsSection"
   | "pricing-modelCard"
@@ -341,6 +403,8 @@ export type SiteContentId =
   | "whyUs-comparisons"
   | "whyUs-testimonials"
   | "contact-info"
+  | "contact-faqTeaser"
+  | "faq-cta"
   | "home-hero"
   | "home-features"
   | "home-howItWorks"
