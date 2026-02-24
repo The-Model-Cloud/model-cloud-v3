@@ -224,6 +224,26 @@ export interface FooterContent extends SiteContentBase {
   copyrightText: string;
 }
 
+// FAQ Page types
+export interface FAQPageContent extends SiteContentBase {
+  heroTitle: string;
+  heroSubtitle: string;
+  categories: FAQCategory[];
+}
+
+export interface FAQCategory {
+  title: string;
+  icon?: string; // Font Awesome icon name
+  items: FAQItem[];
+}
+
+// Legal Page types (Privacy & Terms)
+export interface LegalPageContent extends SiteContentBase {
+  title: string;
+  lastUpdated: string;
+  content: string; // HTML/Markdown content
+}
+
 // Union type for all site content
 export type SiteContent =
   | AboutUsHero
@@ -246,6 +266,8 @@ export type SiteContent =
   | HomeCTA
   | HeaderContent
   | FooterContent
+  | FAQPageContent
+  | LegalPageContent
   | PageMetadata;
 
 // Content section identifiers
@@ -271,6 +293,11 @@ export type SiteContentId =
   // Layout content
   | "layout-header"
   | "layout-footer"
+  // FAQ page
+  | "faq-content"
+  // Legal pages
+  | "legal-privacy"
+  | "legal-terms"
   // Page metadata
   | "meta-home"
   | "meta-about"
@@ -278,4 +305,7 @@ export type SiteContentId =
   | "meta-whyUs"
   | "meta-contact"
   | "meta-signIn"
-  | "meta-signUp";
+  | "meta-signUp"
+  | "meta-faq"
+  | "meta-privacy"
+  | "meta-terms";
