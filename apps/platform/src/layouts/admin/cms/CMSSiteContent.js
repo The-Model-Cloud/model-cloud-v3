@@ -89,9 +89,14 @@ const CONTENT_SECTIONS = [
     label: "Pricing Page",
     icon: "payments",
     subsections: [
-      { id: "pricing-hero", label: "Hero Section", fields: ["title", "subtitle"] },
+      { id: "pricing-hero", label: "Hero Section", fields: ["title", "subtitle", "modelButtonText", "clientButtonText"] },
+      { id: "pricing-modelsSection", label: "Models Section", fields: ["title", "subtitle", "icon"] },
+      { id: "pricing-modelCard", label: "Model Card", fields: ["badge", "title", "description", "price", "priceSuffix", "buttonText", "buttonLink"] },
       { id: "pricing-modelFeatures", label: "Model Features", fields: ["items"] },
+      { id: "pricing-clientsSection", label: "Clients Section", fields: ["title", "subtitle", "icon"] },
+      { id: "pricing-comparison", label: "Plan Comparison", fields: ["title", "subtitle", "rows"] },
       { id: "pricing-faqs", label: "FAQs", fields: ["items"] },
+      { id: "pricing-cta", label: "Call to Action", fields: ["title", "subtitle", "modelButtonText", "modelButtonLink", "clientButtonText", "clientButtonLink"] },
     ],
   },
   {
@@ -352,6 +357,10 @@ function CMSSiteContent() {
 
     if (field === "categories") {
       return renderFAQCategoriesField(sectionId, field, value || []);
+    }
+
+    if (field === "rows") {
+      return renderComparisonRowsField(sectionId, field, value || []);
     }
 
     if (field === "logoLightUrl" || field === "logoDarkUrl") {
@@ -1053,6 +1062,120 @@ function CMSSiteContent() {
           onClick={addCategory}
         >
           Add FAQ Category
+        </Button>
+      </MDBox>
+    );
+  };
+
+  // Render comparison rows field (for pricing plan comparison table)
+  const renderComparisonRowsField = (sectionId, field, rows) => {
+    const handleRowChange = (rowIndex, key, value) => {
+      setEditedContent((prev) => {
+        const currentRows = [...(prev[sectionId]?.[field] || [])];
+        currentRows[rowIndex] = {
+          ...currentRows[rowIndex],
+          [key]: value,
+        };
+        return {
+          ...prev,
+          [sectionId]: {
+            ...prev[sectionId],
+            [field]: currentRows,
+          },
+        };
+      });
+    };
+
+    const addRow = () => {
+      setEditedContent((prev) => {
+        const currentRows = [...(prev[sectionId]?.[field] || [])];
+        currentRows.push({ feature: "", starter: "", professional: "", enterprise: "" });
+        return {
+          ...prev,
+          [sectionId]: {
+            ...prev[sectionId],
+            [field]: currentRows,
+          },
+        };
+      });
+    };
+
+    const removeRow = (rowIndex) => {
+      setEditedContent((prev) => {
+        const currentRows = [...(prev[sectionId]?.[field] || [])];
+        currentRows.splice(rowIndex, 1);
+        return {
+          ...prev,
+          [sectionId]: {
+            ...prev[sectionId],
+            [field]: currentRows,
+          },
+        };
+      });
+    };
+
+    return (
+      <MDBox mb={2}>
+        <MDTypography variant="subtitle2" mb={1}>
+          Comparison Table Rows
+        </MDTypography>
+        <MDTypography variant="caption" color="text" mb={2} display="block">
+          Use &quot;check&quot; for a checkmark, &quot;-&quot; for not available, or any text value
+        </MDTypography>
+        {rows.map((row, rowIndex) => (
+          <Card key={rowIndex} sx={{ mb: 1, p: 2, bgcolor: "grey.50" }}>
+            <MDBox display="flex" justifyContent="space-between" alignItems="center" mb={1}>
+              <MDTypography variant="caption" fontWeight="medium">
+                Row {rowIndex + 1}
+              </MDTypography>
+              <IconButton
+                size="small"
+                color="error"
+                onClick={() => removeRow(rowIndex)}
+              >
+                <Icon>delete</Icon>
+              </IconButton>
+            </MDBox>
+            <TextField
+              fullWidth
+              size="small"
+              label="Feature Name"
+              value={row.feature || ""}
+              onChange={(e) => handleRowChange(rowIndex, "feature", e.target.value)}
+              sx={{ mb: 1 }}
+            />
+            <MDBox display="flex" gap={1}>
+              <TextField
+                size="small"
+                label="Starter"
+                value={row.starter || ""}
+                onChange={(e) => handleRowChange(rowIndex, "starter", e.target.value)}
+                sx={{ flex: 1 }}
+              />
+              <TextField
+                size="small"
+                label="Professional"
+                value={row.professional || ""}
+                onChange={(e) => handleRowChange(rowIndex, "professional", e.target.value)}
+                sx={{ flex: 1 }}
+              />
+              <TextField
+                size="small"
+                label="Enterprise"
+                value={row.enterprise || ""}
+                onChange={(e) => handleRowChange(rowIndex, "enterprise", e.target.value)}
+                sx={{ flex: 1 }}
+              />
+            </MDBox>
+          </Card>
+        ))}
+        <Button
+          variant="outlined"
+          size="small"
+          startIcon={<Icon>add</Icon>}
+          onClick={addRow}
+        >
+          Add Comparison Row
         </Button>
       </MDBox>
     );
