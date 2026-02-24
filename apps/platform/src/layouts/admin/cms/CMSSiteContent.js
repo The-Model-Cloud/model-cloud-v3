@@ -275,6 +275,38 @@ function CMSSiteContent() {
     });
   };
 
+  // Handle string array item change (for simple string arrays like model features)
+  const handleStringArrayItemChange = (sectionId, field, index, value) => {
+    setEditedContent((prev) => {
+      const section = prev[sectionId] || {};
+      const items = [...(section[field] || [])];
+      items[index] = value;
+      return {
+        ...prev,
+        [sectionId]: {
+          ...section,
+          [field]: items,
+        },
+      };
+    });
+  };
+
+  // Add string array item
+  const handleAddStringArrayItem = (sectionId, field) => {
+    setEditedContent((prev) => {
+      const section = prev[sectionId] || {};
+      const items = [...(section[field] || [])];
+      items.push("");
+      return {
+        ...prev,
+        [sectionId]: {
+          ...section,
+          [field]: items,
+        },
+      };
+    });
+  };
+
   // Save content
   const handleSave = async (sectionId) => {
     setSaving(true);
@@ -346,6 +378,11 @@ function CMSSiteContent() {
 
   // Render field based on type
   const renderField = (sectionId, field, value) => {
+    // Handle string arrays (like pricing-modelFeatures items which are just strings)
+    if (sectionId === "pricing-modelFeatures" && field === "items") {
+      return renderStringArrayField(sectionId, field, value || []);
+    }
+
     if (field === "items" || field === "steps" || field === "members") {
       return renderArrayField(sectionId, field, value || []);
     }
@@ -522,6 +559,46 @@ function CMSSiteContent() {
           onClick={() => handleAddArrayItem(sectionId, field)}
         >
           Add Item
+        </Button>
+      </MDBox>
+    );
+  };
+
+  // Render string array field (for simple string arrays like model features)
+  const renderStringArrayField = (sectionId, field, items) => {
+    return (
+      <MDBox mb={2}>
+        <MDTypography variant="subtitle2" mb={1}>
+          {field.charAt(0).toUpperCase() + field.slice(1)}
+        </MDTypography>
+        {items.map((item, index) => (
+          <Card key={index} sx={{ mb: 1, p: 2, bgcolor: "grey.50" }}>
+            <MDBox display="flex" justifyContent="space-between" alignItems="center">
+              <TextField
+                fullWidth
+                size="small"
+                label={`Feature ${index + 1}`}
+                value={item || ""}
+                onChange={(e) => handleStringArrayItemChange(sectionId, field, index, e.target.value)}
+                sx={{ mr: 1 }}
+              />
+              <IconButton
+                size="small"
+                color="error"
+                onClick={() => handleRemoveArrayItem(sectionId, field, index)}
+              >
+                <Icon>delete</Icon>
+              </IconButton>
+            </MDBox>
+          </Card>
+        ))}
+        <Button
+          variant="outlined"
+          size="small"
+          startIcon={<Icon>add</Icon>}
+          onClick={() => handleAddStringArrayItem(sectionId, field)}
+        >
+          Add Feature
         </Button>
       </MDBox>
     );
