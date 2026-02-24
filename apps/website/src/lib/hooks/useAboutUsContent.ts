@@ -8,6 +8,7 @@ import type {
   AboutUsValues,
   AboutUsStats,
   AboutUsTeam,
+  AboutUsCTA,
 } from "@/types/siteContent";
 
 export interface AboutUsContent {
@@ -16,6 +17,7 @@ export interface AboutUsContent {
   values: AboutUsValues | null;
   stats: AboutUsStats | null;
   team: AboutUsTeam | null;
+  cta: AboutUsCTA | null;
 }
 
 export function useAboutUsContent() {
@@ -25,6 +27,7 @@ export function useAboutUsContent() {
     values: null,
     stats: null,
     team: null,
+    cta: null,
   });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<Error | null>(null);
@@ -39,6 +42,7 @@ export function useAboutUsContent() {
           "aboutUs-values",
           "aboutUs-stats",
           "aboutUs-team",
+          "aboutUs-cta",
         ]);
 
         setContent({
@@ -47,6 +51,7 @@ export function useAboutUsContent() {
           values: results.get("aboutUs-values") as AboutUsValues | null,
           stats: results.get("aboutUs-stats") as AboutUsStats | null,
           team: results.get("aboutUs-team") as AboutUsTeam | null,
+          cta: results.get("aboutUs-cta") as AboutUsCTA | null,
         });
       } catch (err) {
         setError(

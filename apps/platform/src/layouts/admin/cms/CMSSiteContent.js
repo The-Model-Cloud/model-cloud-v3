@@ -66,10 +66,11 @@ const CONTENT_SECTIONS = [
     label: "Home Page",
     icon: "home",
     subsections: [
-      { id: "home-hero", label: "Hero Section", fields: ["title", "subtitle", "ctaText", "ctaLink"] },
-      { id: "home-features", label: "Features", fields: ["title", "subtitle", "items"] },
-      { id: "home-howItWorks", label: "How It Works", fields: ["title", "subtitle", "steps"] },
-      { id: "home-cta", label: "Call to Action", fields: ["title", "subtitle", "primaryButton", "secondaryButton"] },
+      { id: "home-hero", label: "Hero Section", fields: ["badge", "title", "titleHighlight", "subtitle", "primaryCta", "secondaryCta", "trustText", "heroImage"] },
+      { id: "home-features", label: "Features", fields: ["sectionTitle", "sectionSubtitle", "items"] },
+      { id: "home-howItWorks", label: "How It Works", fields: ["sectionTitle", "sectionSubtitle", "items"] },
+      { id: "home-testimonials", label: "Testimonials", fields: ["sectionTitle", "sectionSubtitle", "items"] },
+      { id: "home-cta", label: "Call to Action", fields: ["title", "subtitle", "primaryCta", "secondaryCta"] },
     ],
   },
   {
@@ -82,6 +83,7 @@ const CONTENT_SECTIONS = [
       { id: "aboutUs-values", label: "Values", fields: ["title", "items"] },
       { id: "aboutUs-stats", label: "Statistics", fields: ["items"] },
       { id: "aboutUs-team", label: "Team", fields: ["title", "subtitle", "members"] },
+      { id: "aboutUs-cta", label: "Call to Action", fields: ["title", "subtitle", "primaryButtonText", "primaryButtonLink", "secondaryButtonText", "secondaryButtonLink"] },
     ],
   },
   {
@@ -106,8 +108,11 @@ const CONTENT_SECTIONS = [
     subsections: [
       { id: "whyUs-hero", label: "Hero Section", fields: ["title", "subtitle"] },
       { id: "whyUs-benefits", label: "Benefits", fields: ["title", "items"] },
-      { id: "whyUs-comparisons", label: "Comparisons", fields: ["title", "items"] },
+      { id: "whyUs-comparisons", label: "Comparisons", fields: ["title", "subtitle", "items"] },
+      { id: "whyUs-forModels", label: "For Models Section", fields: ["title", "features", "ctaTitle", "ctaSubtitle", "ctaButtonText", "ctaButtonLink"] },
+      { id: "whyUs-forClients", label: "For Clients Section", fields: ["title", "features", "ctaTitle", "ctaSubtitle", "ctaButtonText", "ctaButtonLink"] },
       { id: "whyUs-testimonials", label: "Testimonials", fields: ["title", "items"] },
+      { id: "whyUs-cta", label: "Call to Action", fields: ["title", "subtitle", "buttonText", "buttonLink"] },
     ],
   },
   {
@@ -120,6 +125,11 @@ const CONTENT_SECTIONS = [
         label: "Contact Info",
         fields: ["heroTitle", "heroSubtitle", "email", "phone", "address", "hours"],
       },
+      {
+        id: "contact-faqTeaser",
+        label: "FAQ Teaser Section",
+        fields: ["title", "subtitle", "buttonText", "buttonLink"],
+      },
     ],
   },
   {
@@ -131,6 +141,11 @@ const CONTENT_SECTIONS = [
         id: "faq-content",
         label: "FAQ Content",
         fields: ["heroTitle", "heroSubtitle", "categories"],
+      },
+      {
+        id: "faq-cta",
+        label: "Contact CTA Section",
+        fields: ["title", "subtitle", "buttonText", "buttonLink"],
       },
     ],
   },
@@ -339,7 +354,7 @@ function CMSSiteContent() {
       return renderObjectField(sectionId, field, value || {});
     }
 
-    if (field === "primaryButton" || field === "secondaryButton") {
+    if (field === "primaryButton" || field === "secondaryButton" || field === "primaryCta" || field === "secondaryCta") {
       return renderButtonField(sectionId, field, value || {});
     }
 
@@ -363,6 +378,10 @@ function CMSSiteContent() {
       return renderComparisonRowsField(sectionId, field, value || []);
     }
 
+    if (field === "features") {
+      return renderFeaturesField(sectionId, field, value || []);
+    }
+
     if (field === "logoLightUrl" || field === "logoDarkUrl") {
       return (
         <MDBox mb={2}>
@@ -377,9 +396,23 @@ function CMSSiteContent() {
       );
     }
 
+    if (field === "heroImage" || field === "imageUrl") {
+      return (
+        <MDBox mb={2}>
+          <CloudinaryImageInput
+            value={value || ""}
+            onChange={(val) => handleFieldChange(sectionId, field, val)}
+            label={field === "heroImage" ? "Hero Image" : "Image"}
+            folder={`website/${sectionId}`}
+            previewSize={120}
+          />
+        </MDBox>
+      );
+    }
+
     // Determine if this is a legal page content field (needs larger textarea)
     const isLegalContent = sectionId.startsWith("legal-") && field === "content";
-    const isMultiline = field === "content" || field === "subtitle" || field === "tagline";
+    const isMultiline = field === "content" || field === "subtitle" || field === "tagline" || field === "sectionSubtitle";
     const rowCount = isLegalContent ? 20 : field === "content" ? 6 : isMultiline ? 2 : 1;
 
     return (
@@ -1176,6 +1209,103 @@ function CMSSiteContent() {
           onClick={addRow}
         >
           Add Comparison Row
+        </Button>
+      </MDBox>
+    );
+  };
+
+  // Render features field (for Why Us For Models/Clients sections)
+  const renderFeaturesField = (sectionId, field, features) => {
+    const handleFeatureChange = (featureIndex, key, value) => {
+      setEditedContent((prev) => {
+        const currentFeatures = [...(prev[sectionId]?.[field] || [])];
+        currentFeatures[featureIndex] = {
+          ...currentFeatures[featureIndex],
+          [key]: value,
+        };
+        return {
+          ...prev,
+          [sectionId]: {
+            ...prev[sectionId],
+            [field]: currentFeatures,
+          },
+        };
+      });
+    };
+
+    const addFeature = () => {
+      setEditedContent((prev) => {
+        const currentFeatures = [...(prev[sectionId]?.[field] || [])];
+        currentFeatures.push({ title: "", description: "" });
+        return {
+          ...prev,
+          [sectionId]: {
+            ...prev[sectionId],
+            [field]: currentFeatures,
+          },
+        };
+      });
+    };
+
+    const removeFeature = (featureIndex) => {
+      setEditedContent((prev) => {
+        const currentFeatures = [...(prev[sectionId]?.[field] || [])];
+        currentFeatures.splice(featureIndex, 1);
+        return {
+          ...prev,
+          [sectionId]: {
+            ...prev[sectionId],
+            [field]: currentFeatures,
+          },
+        };
+      });
+    };
+
+    return (
+      <MDBox mb={2}>
+        <MDTypography variant="subtitle2" mb={1}>
+          Features
+        </MDTypography>
+        {features.map((feature, featureIndex) => (
+          <Card key={featureIndex} sx={{ mb: 1, p: 2, bgcolor: "grey.50" }}>
+            <MDBox display="flex" justifyContent="space-between" alignItems="center" mb={1}>
+              <MDTypography variant="caption" fontWeight="medium">
+                Feature {featureIndex + 1}
+              </MDTypography>
+              <IconButton
+                size="small"
+                color="error"
+                onClick={() => removeFeature(featureIndex)}
+              >
+                <Icon>delete</Icon>
+              </IconButton>
+            </MDBox>
+            <TextField
+              fullWidth
+              size="small"
+              label="Title"
+              value={feature.title || ""}
+              onChange={(e) => handleFeatureChange(featureIndex, "title", e.target.value)}
+              sx={{ mb: 1 }}
+            />
+            <TextField
+              fullWidth
+              size="small"
+              label="Description"
+              value={feature.description || ""}
+              onChange={(e) => handleFeatureChange(featureIndex, "description", e.target.value)}
+              multiline
+              rows={2}
+            />
+          </Card>
+        ))}
+        <Button
+          variant="outlined"
+          size="small"
+          startIcon={<Icon>add</Icon>}
+          onClick={addFeature}
+        >
+          Add Feature
         </Button>
       </MDBox>
     );

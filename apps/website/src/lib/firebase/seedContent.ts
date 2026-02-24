@@ -259,6 +259,8 @@ const whyUsComparisons: Omit<
   WhyUsComparisons,
   "id" | "updatedAt" | "updatedBy"
 > = {
+  title: "The Model Cloud vs Traditional Methods",
+  subtitle: "See how we compare to traditional booking methods",
   items: [
     {
       feature: "Booking Time",

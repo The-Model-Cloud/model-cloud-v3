@@ -6,14 +6,20 @@ import type {
   WhyUsHero,
   WhyUsBenefits,
   WhyUsComparisons,
+  WhyUsForModels,
+  WhyUsForClients,
   WhyUsTestimonials,
+  WhyUsCTA,
 } from "@/types/siteContent";
 
 export interface WhyUsContent {
   hero: WhyUsHero | null;
   benefits: WhyUsBenefits | null;
   comparisons: WhyUsComparisons | null;
+  forModels: WhyUsForModels | null;
+  forClients: WhyUsForClients | null;
   testimonials: WhyUsTestimonials | null;
+  cta: WhyUsCTA | null;
 }
 
 export function useWhyUsContent() {
@@ -21,7 +27,10 @@ export function useWhyUsContent() {
     hero: null,
     benefits: null,
     comparisons: null,
+    forModels: null,
+    forClients: null,
     testimonials: null,
+    cta: null,
   });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<Error | null>(null);
@@ -34,18 +43,20 @@ export function useWhyUsContent() {
           "whyUs-hero",
           "whyUs-benefits",
           "whyUs-comparisons",
+          "whyUs-forModels",
+          "whyUs-forClients",
           "whyUs-testimonials",
+          "whyUs-cta",
         ]);
 
         setContent({
           hero: results.get("whyUs-hero") as WhyUsHero | null,
           benefits: results.get("whyUs-benefits") as WhyUsBenefits | null,
-          comparisons: results.get(
-            "whyUs-comparisons"
-          ) as WhyUsComparisons | null,
-          testimonials: results.get(
-            "whyUs-testimonials"
-          ) as WhyUsTestimonials | null,
+          comparisons: results.get("whyUs-comparisons") as WhyUsComparisons | null,
+          forModels: results.get("whyUs-forModels") as WhyUsForModels | null,
+          forClients: results.get("whyUs-forClients") as WhyUsForClients | null,
+          testimonials: results.get("whyUs-testimonials") as WhyUsTestimonials | null,
+          cta: results.get("whyUs-cta") as WhyUsCTA | null,
         });
       } catch (err) {
         setError(

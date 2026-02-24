@@ -87,6 +87,15 @@ export default function AboutUsContent() {
   const stats = content.stats?.items ?? fallbackStats;
   const team = content.team?.items ?? fallbackTeam;
 
+  const cta = content.cta ?? {
+    title: "Join Our Journey",
+    subtitle: "Whether you're a model looking to grow your career or a client seeking top talent, we'd love to have you on board.",
+    primaryButtonText: "Get Started",
+    primaryButtonLink: PLATFORM_URLS.signUp,
+    secondaryButtonText: "Contact Us",
+    secondaryButtonLink: "/contact",
+  };
+
   if (loading) {
     return (
       <>
@@ -234,17 +243,14 @@ export default function AboutUsContent() {
       <section className="py-20">
         <div className="container">
           <div className="text-center max-w-2xl mx-auto">
-            <h2 className="text-3xl font-bold mb-4">Join Our Journey</h2>
-            <p className="text-muted-foreground mb-8">
-              Whether you&apos;re a model looking to grow your career or a client
-              seeking top talent, we&apos;d love to have you on board.
-            </p>
+            <h2 className="text-3xl font-bold mb-4">{cta.title}</h2>
+            <p className="text-muted-foreground mb-8">{cta.subtitle}</p>
             <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
               <Button size="lg" asChild>
-                <a href={PLATFORM_URLS.signUp}>Get Started</a>
+                <a href={cta.primaryButtonLink}>{cta.primaryButtonText}</a>
               </Button>
               <Button size="lg" variant="outline" asChild>
-                <Link href="/contact">Contact Us</Link>
+                <Link href={cta.secondaryButtonLink}>{cta.secondaryButtonText}</Link>
               </Button>
             </div>
           </div>

@@ -7,7 +7,7 @@ import { FAIcon } from "@/components/ui/FAIcon";
 import type { FAQCategory } from "@/types/siteContent";
 
 // Fallback content
-const fallbackContent = {
+const fallbackPage = {
   heroTitle: "Frequently Asked Questions",
   heroSubtitle: "Find answers to common questions about The Model Cloud",
   categories: [
@@ -78,6 +78,14 @@ const fallbackContent = {
   ] as FAQCategory[],
 };
 
+const fallbackCTA = {
+  title: "Still have questions?",
+  subtitle:
+    "Can't find the answer you're looking for? Please reach out to our friendly team.",
+  buttonText: "Contact Us",
+  buttonLink: "/contact",
+};
+
 function FAQCategorySection({ category }: { category: FAQCategory }) {
   return (
     <div className="mb-8">
@@ -108,9 +116,10 @@ function FAQCategorySection({ category }: { category: FAQCategory }) {
 export default function FAQContent() {
   const { content, loading } = useFAQContent();
 
-  const heroTitle = content?.heroTitle ?? fallbackContent.heroTitle;
-  const heroSubtitle = content?.heroSubtitle ?? fallbackContent.heroSubtitle;
-  const categories = content?.categories ?? fallbackContent.categories;
+  const heroTitle = content.page?.heroTitle ?? fallbackPage.heroTitle;
+  const heroSubtitle = content.page?.heroSubtitle ?? fallbackPage.heroSubtitle;
+  const categories = content.page?.categories ?? fallbackPage.categories;
+  const cta = content.cta ?? fallbackCTA;
 
   if (loading) {
     return (
@@ -158,16 +167,13 @@ export default function FAQContent() {
       <section className="py-16 bg-muted/30">
         <div className="container">
           <div className="text-center max-w-2xl mx-auto">
-            <h2 className="text-2xl font-bold mb-4">Still have questions?</h2>
-            <p className="text-muted-foreground mb-6">
-              Can&apos;t find the answer you&apos;re looking for? Please reach out to our
-              friendly team.
-            </p>
+            <h2 className="text-2xl font-bold mb-4">{cta.title}</h2>
+            <p className="text-muted-foreground mb-6">{cta.subtitle}</p>
             <a
-              href="/contact"
+              href={cta.buttonLink}
               className="inline-flex items-center justify-center rounded-md bg-primary px-6 py-3 text-sm font-medium text-primary-foreground shadow hover:bg-primary/90"
             >
-              Contact Us
+              {cta.buttonText}
             </a>
           </div>
         </div>
