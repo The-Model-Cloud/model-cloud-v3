@@ -117,6 +117,35 @@ const CONTENT_SECTIONS = [
       },
     ],
   },
+  {
+    id: "faq",
+    label: "FAQ Page",
+    icon: "help",
+    subsections: [
+      {
+        id: "faq-content",
+        label: "FAQ Content",
+        fields: ["heroTitle", "heroSubtitle", "categories"],
+      },
+    ],
+  },
+  {
+    id: "legal",
+    label: "Legal Pages",
+    icon: "gavel",
+    subsections: [
+      {
+        id: "legal-privacy",
+        label: "Privacy Policy",
+        fields: ["title", "lastUpdated", "content"],
+      },
+      {
+        id: "legal-terms",
+        label: "Terms of Service",
+        fields: ["title", "lastUpdated", "content"],
+      },
+    ],
+  },
 ];
 
 function CMSSiteContent() {
@@ -321,6 +350,10 @@ function CMSSiteContent() {
       return renderSocialLinksField(sectionId, field, value || []);
     }
 
+    if (field === "categories") {
+      return renderFAQCategoriesField(sectionId, field, value || []);
+    }
+
     if (field === "logoLightUrl" || field === "logoDarkUrl") {
       return (
         <MDBox mb={2}>
@@ -335,14 +368,20 @@ function CMSSiteContent() {
       );
     }
 
+    // Determine if this is a legal page content field (needs larger textarea)
+    const isLegalContent = sectionId.startsWith("legal-") && field === "content";
+    const isMultiline = field === "content" || field === "subtitle" || field === "tagline";
+    const rowCount = isLegalContent ? 20 : field === "content" ? 6 : isMultiline ? 2 : 1;
+
     return (
       <TextField
         fullWidth
         label={field.charAt(0).toUpperCase() + field.slice(1).replace(/([A-Z])/g, " $1")}
         value={value || ""}
         onChange={(e) => handleFieldChange(sectionId, field, e.target.value)}
-        multiline={field === "content" || field === "subtitle" || field === "tagline"}
-        rows={field === "content" ? 6 : field === "subtitle" || field === "tagline" ? 2 : 1}
+        multiline={isMultiline}
+        rows={rowCount}
+        helperText={isLegalContent ? "Supports markdown formatting (## for headings, - for lists, **bold**)" : undefined}
         sx={{ mb: 2 }}
       />
     );
@@ -812,6 +851,208 @@ function CMSSiteContent() {
           onClick={() => handleAddArrayItem(sectionId, field)}
         >
           Add Social Link
+        </Button>
+      </MDBox>
+    );
+  };
+
+  // Render FAQ categories field (categories with items)
+  const renderFAQCategoriesField = (sectionId, field, categories) => {
+    const handleCategoryChange = (categoryIndex, key, value) => {
+      setEditedContent((prev) => {
+        const currentCategories = [...(prev[sectionId]?.[field] || [])];
+        currentCategories[categoryIndex] = {
+          ...currentCategories[categoryIndex],
+          [key]: value,
+        };
+        return {
+          ...prev,
+          [sectionId]: {
+            ...prev[sectionId],
+            [field]: currentCategories,
+          },
+        };
+      });
+    };
+
+    const handleFAQItemChange = (categoryIndex, itemIndex, key, value) => {
+      setEditedContent((prev) => {
+        const currentCategories = [...(prev[sectionId]?.[field] || [])];
+        const currentItems = [...(currentCategories[categoryIndex]?.items || [])];
+        currentItems[itemIndex] = {
+          ...currentItems[itemIndex],
+          [key]: value,
+        };
+        currentCategories[categoryIndex] = {
+          ...currentCategories[categoryIndex],
+          items: currentItems,
+        };
+        return {
+          ...prev,
+          [sectionId]: {
+            ...prev[sectionId],
+            [field]: currentCategories,
+          },
+        };
+      });
+    };
+
+    const addItemToCategory = (categoryIndex) => {
+      setEditedContent((prev) => {
+        const currentCategories = [...(prev[sectionId]?.[field] || [])];
+        const currentItems = [...(currentCategories[categoryIndex]?.items || [])];
+        currentItems.push({ question: "", answer: "" });
+        currentCategories[categoryIndex] = {
+          ...currentCategories[categoryIndex],
+          items: currentItems,
+        };
+        return {
+          ...prev,
+          [sectionId]: {
+            ...prev[sectionId],
+            [field]: currentCategories,
+          },
+        };
+      });
+    };
+
+    const removeItemFromCategory = (categoryIndex, itemIndex) => {
+      setEditedContent((prev) => {
+        const currentCategories = [...(prev[sectionId]?.[field] || [])];
+        const currentItems = [...(currentCategories[categoryIndex]?.items || [])];
+        currentItems.splice(itemIndex, 1);
+        currentCategories[categoryIndex] = {
+          ...currentCategories[categoryIndex],
+          items: currentItems,
+        };
+        return {
+          ...prev,
+          [sectionId]: {
+            ...prev[sectionId],
+            [field]: currentCategories,
+          },
+        };
+      });
+    };
+
+    const addCategory = () => {
+      setEditedContent((prev) => {
+        const currentCategories = [...(prev[sectionId]?.[field] || [])];
+        currentCategories.push({ title: "", icon: "", items: [] });
+        return {
+          ...prev,
+          [sectionId]: {
+            ...prev[sectionId],
+            [field]: currentCategories,
+          },
+        };
+      });
+    };
+
+    const removeCategory = (categoryIndex) => {
+      setEditedContent((prev) => {
+        const currentCategories = [...(prev[sectionId]?.[field] || [])];
+        currentCategories.splice(categoryIndex, 1);
+        return {
+          ...prev,
+          [sectionId]: {
+            ...prev[sectionId],
+            [field]: currentCategories,
+          },
+        };
+      });
+    };
+
+    return (
+      <MDBox mb={2}>
+        <MDTypography variant="subtitle2" mb={1}>
+          FAQ Categories
+        </MDTypography>
+        {categories.map((category, categoryIndex) => (
+          <Card key={categoryIndex} sx={{ mb: 2, p: 2, bgcolor: "grey.50" }}>
+            <MDBox display="flex" justifyContent="space-between" alignItems="center" mb={1}>
+              <MDTypography variant="caption" fontWeight="medium">
+                Category {categoryIndex + 1}
+              </MDTypography>
+              <IconButton
+                size="small"
+                color="error"
+                onClick={() => removeCategory(categoryIndex)}
+              >
+                <Icon>delete</Icon>
+              </IconButton>
+            </MDBox>
+            <TextField
+              fullWidth
+              size="small"
+              label="Category Title"
+              value={category.title || ""}
+              onChange={(e) => handleCategoryChange(categoryIndex, "title", e.target.value)}
+              sx={{ mb: 1 }}
+            />
+            <TextField
+              fullWidth
+              size="small"
+              label="Icon (Font Awesome name, e.g., 'question-circle', 'credit-card')"
+              value={category.icon || ""}
+              onChange={(e) => handleCategoryChange(categoryIndex, "icon", e.target.value)}
+              sx={{ mb: 2 }}
+            />
+            <MDTypography variant="caption" color="text" mb={1}>
+              FAQ Items:
+            </MDTypography>
+            {(category.items || []).map((item, itemIndex) => (
+              <Card key={itemIndex} sx={{ mb: 1, p: 1.5, bgcolor: "white" }}>
+                <MDBox display="flex" justifyContent="space-between" alignItems="center" mb={1}>
+                  <MDTypography variant="caption">Q&A {itemIndex + 1}</MDTypography>
+                  <IconButton
+                    size="small"
+                    color="error"
+                    onClick={() => removeItemFromCategory(categoryIndex, itemIndex)}
+                  >
+                    <Icon fontSize="small">close</Icon>
+                  </IconButton>
+                </MDBox>
+                <TextField
+                  fullWidth
+                  size="small"
+                  label="Question"
+                  value={item.question || ""}
+                  onChange={(e) =>
+                    handleFAQItemChange(categoryIndex, itemIndex, "question", e.target.value)
+                  }
+                  sx={{ mb: 1 }}
+                />
+                <TextField
+                  fullWidth
+                  size="small"
+                  label="Answer"
+                  value={item.answer || ""}
+                  onChange={(e) =>
+                    handleFAQItemChange(categoryIndex, itemIndex, "answer", e.target.value)
+                  }
+                  multiline
+                  rows={2}
+                />
+              </Card>
+            ))}
+            <Button
+              variant="text"
+              size="small"
+              startIcon={<Icon>add</Icon>}
+              onClick={() => addItemToCategory(categoryIndex)}
+            >
+              Add FAQ Item
+            </Button>
+          </Card>
+        ))}
+        <Button
+          variant="outlined"
+          size="small"
+          startIcon={<Icon>add</Icon>}
+          onClick={addCategory}
+        >
+          Add FAQ Category
         </Button>
       </MDBox>
     );
