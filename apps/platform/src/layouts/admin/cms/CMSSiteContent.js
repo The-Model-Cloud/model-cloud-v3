@@ -164,6 +164,38 @@ const CONTENT_SECTIONS = [
         label: "Terms of Service",
         fields: ["title", "lastUpdated", "content"],
       },
+      {
+        id: "legal-cookies",
+        label: "Cookies Policy",
+        fields: ["title", "lastUpdated", "content"],
+      },
+    ],
+  },
+  {
+    id: "cookieConsent",
+    label: "Cookie Consent",
+    icon: "cookie",
+    subsections: [
+      {
+        id: "cookie-consent",
+        label: "Consent Banner Settings",
+        fields: [
+          "consentTitle",
+          "consentDescription",
+          "acceptAllButtonText",
+          "rejectAllButtonText",
+          "managePreferencesButtonText",
+          "preferencesTitle",
+          "preferencesDescription",
+          "savePreferencesButtonText",
+          "essentialTitle",
+          "essentialDescription",
+          "analyticsTitle",
+          "analyticsDescription",
+          "marketingTitle",
+          "marketingDescription",
+        ],
+      },
     ],
   },
 ];
