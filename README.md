@@ -167,6 +167,11 @@ SENDGRID_FROM_EMAIL=noreply@themodel.cloud
 CLOUDINARY_CLOUD_NAME=your-cloud-name
 CLOUDINARY_API_KEY=your-api-key
 CLOUDINARY_API_SECRET=your-api-secret
+
+# Mailchimp (for marketing email subscriptions)
+MAILCHIMP_API_KEY=your-mailchimp-api-key
+MAILCHIMP_AUDIENCE_ID=your-audience-list-id
+MAILCHIMP_SERVER_PREFIX=us21
 ```
 
 ### 4. Run the applications
@@ -298,6 +303,38 @@ npm run deploy:all
 - Organisation management
 - Pricing tier configuration
 - Client/model import tools
+- System-wide email toggle
+
+## Email Notifications
+
+The platform sends automated email notifications based on user preferences. Users can control their notification settings in Platform Settings.
+
+### Notification Types
+
+| Notification | Recipients | Trigger |
+|--------------|------------|---------|
+| New Message | All users | When someone sends a message |
+| Job Match | Models | When a new job matches their profile |
+| Matching Models | Clients | When posting a job, list of matching models |
+| Job Application | Clients | When a model applies to their job |
+| Application Confirmation | Models | When they apply to a job |
+| Job Invitation | Models | When invited to apply for a job |
+| Account Verification | Models | When admin verifies their account |
+| Welcome Email | All users | After registration |
+
+### Marketing Subscriptions (Mailchimp)
+
+Users can opt-in to marketing emails synced with Mailchimp:
+
+| Tag | Description |
+|-----|-------------|
+| New Launches | New features and product launches |
+| Product Updates | Monthly platform updates |
+| Newsletter | General news and industry insights |
+
+### Email Templates
+
+All email templates are defined in `functions/index.js`. Search for `html:` to find template locations.
 
 ## User Roles
 
@@ -337,9 +374,21 @@ npm run deploy:all
 
 Additional documentation is available in the `documentation/` folder:
 
-- [Implementation Plan](documentation/implementation-plan.md) - Feature development roadmap
+- [Implementation Plan](documentation/implementation-plan.md) - Feature development roadmap and completed features
 - [Press Release Gap Checklist](documentation/press-release-gap-checklist.md) - Feature status tracking
 - [Phase 1 Verification Checklist](documentation/phase-1-verification-checklist.md) - Launch readiness testing
+
+### Key Implementation Details
+
+| Feature | Documentation Section |
+|---------|----------------------|
+| Book Model Button | Implementation Plan §1.1 |
+| Organisation Teams | Implementation Plan §1.2 |
+| Organisation Dashboard | Implementation Plan §1.3 |
+| Job-Organisation Linking | Implementation Plan §1.4 |
+| Organisation Favourites | Implementation Plan §1.5 |
+| Email Notifications | Implementation Plan §2.6 |
+| Model Matching Algorithm | `apps/platform/src/utils/matching.js` |
 
 ## License
 

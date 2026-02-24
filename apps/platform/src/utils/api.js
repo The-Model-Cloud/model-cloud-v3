@@ -57,19 +57,21 @@ export const callCloudFunction = async (functionName, data) => {
  * @param {string} modelName - Model's full name
  * @param {string} jobTitle - Job title
  * @param {string} jobReference - Job reference number
+ * @param {string} clientUid - Client's user ID (to check notification preferences)
  * @returns {Promise<any>} - The response data
  */
-export const sendApplicationEmail = async (to, modelName, jobTitle, jobReference) => {
+export const sendApplicationEmail = async (to, modelName, jobTitle, jobReference, clientUid = null) => {
   try {
     const result = await callCloudFunction("sendApplicationEmail", {
       to,
       modelName,
       jobTitle,
       jobReference,
+      clientUid,
     });
 
     if (result.skipped) {
-      console.log("📧 Email skipped - SendGrid not configured");
+      console.log("📧 Email skipped - SendGrid not configured or user preference");
     }
 
     return result;

@@ -244,7 +244,8 @@ function JobDetails() {
                         client.email,
                         `${model.firstName} ${model.lastName || ""}`,
                         job.title,
-                        job.reference
+                        job.reference,
+                        job.userId // Pass client UID to check their notification preferences
                     );
 
                     // ✅ Step 8b: Send message to client (if accepting invitation)
