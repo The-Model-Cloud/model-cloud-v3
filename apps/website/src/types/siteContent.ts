@@ -184,6 +184,46 @@ export interface HomeCTA extends SiteContentBase {
   secondaryCta: CTAButton;
 }
 
+// Navigation link type
+export interface NavLink {
+  href: string;
+  label: string;
+  icon?: string; // Font Awesome icon name
+  external?: boolean;
+}
+
+// Social link type
+export interface SocialLink {
+  platform: string; // e.g., "instagram", "linkedin", "twitter", "facebook"
+  url: string;
+  icon: string; // Font Awesome icon name
+}
+
+// Footer link section
+export interface FooterLinkSection {
+  title: string;
+  links: NavLink[];
+}
+
+// Header content
+export interface HeaderContent extends SiteContentBase {
+  logoLightUrl?: string;
+  logoDarkUrl?: string;
+  navLinks: NavLink[];
+  signInButtonText: string;
+  signUpButtonText: string;
+}
+
+// Footer content
+export interface FooterContent extends SiteContentBase {
+  logoLightUrl?: string;
+  logoDarkUrl?: string;
+  tagline: string;
+  sections: FooterLinkSection[];
+  socialLinks: SocialLink[];
+  copyrightText: string;
+}
+
 // Union type for all site content
 export type SiteContent =
   | AboutUsHero
@@ -204,6 +244,8 @@ export type SiteContent =
   | HomeHowItWorks
   | HomeTestimonials
   | HomeCTA
+  | HeaderContent
+  | FooterContent
   | PageMetadata;
 
 // Content section identifiers
@@ -226,6 +268,9 @@ export type SiteContentId =
   | "home-howItWorks"
   | "home-testimonials"
   | "home-cta"
+  // Layout content
+  | "layout-header"
+  | "layout-footer"
   // Page metadata
   | "meta-home"
   | "meta-about"

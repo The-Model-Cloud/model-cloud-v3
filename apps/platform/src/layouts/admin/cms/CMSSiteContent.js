@@ -45,6 +45,23 @@ import Footer from "examples/Footer";
 // Content sections configuration
 const CONTENT_SECTIONS = [
   {
+    id: "layout",
+    label: "Layout",
+    icon: "view_quilt",
+    subsections: [
+      {
+        id: "layout-header",
+        label: "Header",
+        fields: ["logoLightUrl", "logoDarkUrl", "navLinks", "signInButtonText", "signUpButtonText"],
+      },
+      {
+        id: "layout-footer",
+        label: "Footer",
+        fields: ["logoLightUrl", "logoDarkUrl", "tagline", "sections", "socialLinks", "copyrightText"],
+      },
+    ],
+  },
+  {
     id: "home",
     label: "Home Page",
     icon: "home",
@@ -292,14 +309,40 @@ function CMSSiteContent() {
       return renderButtonField(sectionId, field, value || {});
     }
 
+    if (field === "navLinks") {
+      return renderNavLinksField(sectionId, field, value || []);
+    }
+
+    if (field === "sections") {
+      return renderFooterSectionsField(sectionId, field, value || []);
+    }
+
+    if (field === "socialLinks") {
+      return renderSocialLinksField(sectionId, field, value || []);
+    }
+
+    if (field === "logoLightUrl" || field === "logoDarkUrl") {
+      return (
+        <MDBox mb={2}>
+          <CloudinaryImageInput
+            value={value || ""}
+            onChange={(val) => handleFieldChange(sectionId, field, val)}
+            label={field === "logoLightUrl" ? "Logo (Light Mode)" : "Logo (Dark Mode)"}
+            folder="website/logos"
+            previewSize={80}
+          />
+        </MDBox>
+      );
+    }
+
     return (
       <TextField
         fullWidth
         label={field.charAt(0).toUpperCase() + field.slice(1).replace(/([A-Z])/g, " $1")}
         value={value || ""}
         onChange={(e) => handleFieldChange(sectionId, field, e.target.value)}
-        multiline={field === "content" || field === "subtitle"}
-        rows={field === "content" ? 6 : field === "subtitle" ? 2 : 1}
+        multiline={field === "content" || field === "subtitle" || field === "tagline"}
+        rows={field === "content" ? 6 : field === "subtitle" || field === "tagline" ? 2 : 1}
         sx={{ mb: 2 }}
       />
     );
@@ -462,6 +505,314 @@ function CMSSiteContent() {
             }
           />
         </Card>
+      </MDBox>
+    );
+  };
+
+  // Render navigation links field (header navLinks)
+  const renderNavLinksField = (sectionId, field, links) => {
+    return (
+      <MDBox mb={2}>
+        <MDTypography variant="subtitle2" mb={1}>
+          Navigation Links
+        </MDTypography>
+        {links.map((link, index) => (
+          <Card key={index} sx={{ mb: 1, p: 2, bgcolor: "grey.50" }}>
+            <MDBox display="flex" justifyContent="space-between" alignItems="center" mb={1}>
+              <MDTypography variant="caption" fontWeight="medium">
+                Link {index + 1}
+              </MDTypography>
+              <IconButton
+                size="small"
+                color="error"
+                onClick={() => handleRemoveArrayItem(sectionId, field, index)}
+              >
+                <Icon>delete</Icon>
+              </IconButton>
+            </MDBox>
+            <TextField
+              fullWidth
+              size="small"
+              label="Label"
+              value={link.label || ""}
+              onChange={(e) => handleArrayItemChange(sectionId, field, index, "label", e.target.value)}
+              sx={{ mb: 1 }}
+            />
+            <TextField
+              fullWidth
+              size="small"
+              label="Link (href)"
+              value={link.href || ""}
+              onChange={(e) => handleArrayItemChange(sectionId, field, index, "href", e.target.value)}
+              sx={{ mb: 1 }}
+            />
+            <TextField
+              fullWidth
+              size="small"
+              label="Icon (Font Awesome name, e.g., 'home', 'users')"
+              value={link.icon || ""}
+              onChange={(e) => handleArrayItemChange(sectionId, field, index, "icon", e.target.value)}
+              sx={{ mb: 1 }}
+            />
+          </Card>
+        ))}
+        <Button
+          variant="outlined"
+          size="small"
+          startIcon={<Icon>add</Icon>}
+          onClick={() => handleAddArrayItem(sectionId, field)}
+        >
+          Add Navigation Link
+        </Button>
+      </MDBox>
+    );
+  };
+
+  // Render footer sections field (sections with title and links)
+  const renderFooterSectionsField = (sectionId, field, sections) => {
+    const handleSectionChange = (sectionIndex, key, value) => {
+      setEditedContent((prev) => {
+        const currentSections = [...(prev[sectionId]?.[field] || [])];
+        currentSections[sectionIndex] = {
+          ...currentSections[sectionIndex],
+          [key]: value,
+        };
+        return {
+          ...prev,
+          [sectionId]: {
+            ...prev[sectionId],
+            [field]: currentSections,
+          },
+        };
+      });
+    };
+
+    const handleSectionLinkChange = (sectionIndex, linkIndex, key, value) => {
+      setEditedContent((prev) => {
+        const currentSections = [...(prev[sectionId]?.[field] || [])];
+        const currentLinks = [...(currentSections[sectionIndex]?.links || [])];
+        currentLinks[linkIndex] = {
+          ...currentLinks[linkIndex],
+          [key]: value,
+        };
+        currentSections[sectionIndex] = {
+          ...currentSections[sectionIndex],
+          links: currentLinks,
+        };
+        return {
+          ...prev,
+          [sectionId]: {
+            ...prev[sectionId],
+            [field]: currentSections,
+          },
+        };
+      });
+    };
+
+    const addLinkToSection = (sectionIndex) => {
+      setEditedContent((prev) => {
+        const currentSections = [...(prev[sectionId]?.[field] || [])];
+        const currentLinks = [...(currentSections[sectionIndex]?.links || [])];
+        currentLinks.push({ label: "", href: "" });
+        currentSections[sectionIndex] = {
+          ...currentSections[sectionIndex],
+          links: currentLinks,
+        };
+        return {
+          ...prev,
+          [sectionId]: {
+            ...prev[sectionId],
+            [field]: currentSections,
+          },
+        };
+      });
+    };
+
+    const removeLinkFromSection = (sectionIndex, linkIndex) => {
+      setEditedContent((prev) => {
+        const currentSections = [...(prev[sectionId]?.[field] || [])];
+        const currentLinks = [...(currentSections[sectionIndex]?.links || [])];
+        currentLinks.splice(linkIndex, 1);
+        currentSections[sectionIndex] = {
+          ...currentSections[sectionIndex],
+          links: currentLinks,
+        };
+        return {
+          ...prev,
+          [sectionId]: {
+            ...prev[sectionId],
+            [field]: currentSections,
+          },
+        };
+      });
+    };
+
+    const addSection = () => {
+      setEditedContent((prev) => {
+        const currentSections = [...(prev[sectionId]?.[field] || [])];
+        currentSections.push({ title: "", links: [] });
+        return {
+          ...prev,
+          [sectionId]: {
+            ...prev[sectionId],
+            [field]: currentSections,
+          },
+        };
+      });
+    };
+
+    const removeSection = (sectionIndex) => {
+      setEditedContent((prev) => {
+        const currentSections = [...(prev[sectionId]?.[field] || [])];
+        currentSections.splice(sectionIndex, 1);
+        return {
+          ...prev,
+          [sectionId]: {
+            ...prev[sectionId],
+            [field]: currentSections,
+          },
+        };
+      });
+    };
+
+    return (
+      <MDBox mb={2}>
+        <MDTypography variant="subtitle2" mb={1}>
+          Footer Sections
+        </MDTypography>
+        {sections.map((section, sectionIndex) => (
+          <Card key={sectionIndex} sx={{ mb: 2, p: 2, bgcolor: "grey.50" }}>
+            <MDBox display="flex" justifyContent="space-between" alignItems="center" mb={1}>
+              <MDTypography variant="caption" fontWeight="medium">
+                Section {sectionIndex + 1}
+              </MDTypography>
+              <IconButton
+                size="small"
+                color="error"
+                onClick={() => removeSection(sectionIndex)}
+              >
+                <Icon>delete</Icon>
+              </IconButton>
+            </MDBox>
+            <TextField
+              fullWidth
+              size="small"
+              label="Section Title"
+              value={section.title || ""}
+              onChange={(e) => handleSectionChange(sectionIndex, "title", e.target.value)}
+              sx={{ mb: 2 }}
+            />
+            <MDTypography variant="caption" color="text" mb={1}>
+              Links in this section:
+            </MDTypography>
+            {(section.links || []).map((link, linkIndex) => (
+              <Card key={linkIndex} sx={{ mb: 1, p: 1, bgcolor: "white" }}>
+                <MDBox display="flex" alignItems="center" gap={1}>
+                  <TextField
+                    size="small"
+                    label="Label"
+                    value={link.label || ""}
+                    onChange={(e) =>
+                      handleSectionLinkChange(sectionIndex, linkIndex, "label", e.target.value)
+                    }
+                    sx={{ flex: 1 }}
+                  />
+                  <TextField
+                    size="small"
+                    label="href"
+                    value={link.href || ""}
+                    onChange={(e) =>
+                      handleSectionLinkChange(sectionIndex, linkIndex, "href", e.target.value)
+                    }
+                    sx={{ flex: 1 }}
+                  />
+                  <IconButton
+                    size="small"
+                    color="error"
+                    onClick={() => removeLinkFromSection(sectionIndex, linkIndex)}
+                  >
+                    <Icon fontSize="small">close</Icon>
+                  </IconButton>
+                </MDBox>
+              </Card>
+            ))}
+            <Button
+              variant="text"
+              size="small"
+              startIcon={<Icon>add</Icon>}
+              onClick={() => addLinkToSection(sectionIndex)}
+            >
+              Add Link
+            </Button>
+          </Card>
+        ))}
+        <Button
+          variant="outlined"
+          size="small"
+          startIcon={<Icon>add</Icon>}
+          onClick={addSection}
+        >
+          Add Footer Section
+        </Button>
+      </MDBox>
+    );
+  };
+
+  // Render social links field
+  const renderSocialLinksField = (sectionId, field, socialLinks) => {
+    return (
+      <MDBox mb={2}>
+        <MDTypography variant="subtitle2" mb={1}>
+          Social Media Links
+        </MDTypography>
+        {socialLinks.map((social, index) => (
+          <Card key={index} sx={{ mb: 1, p: 2, bgcolor: "grey.50" }}>
+            <MDBox display="flex" justifyContent="space-between" alignItems="center" mb={1}>
+              <MDTypography variant="caption" fontWeight="medium">
+                Social Link {index + 1}
+              </MDTypography>
+              <IconButton
+                size="small"
+                color="error"
+                onClick={() => handleRemoveArrayItem(sectionId, field, index)}
+              >
+                <Icon>delete</Icon>
+              </IconButton>
+            </MDBox>
+            <TextField
+              fullWidth
+              size="small"
+              label="Platform Name (e.g., instagram, linkedin)"
+              value={social.platform || ""}
+              onChange={(e) => handleArrayItemChange(sectionId, field, index, "platform", e.target.value)}
+              sx={{ mb: 1 }}
+            />
+            <TextField
+              fullWidth
+              size="small"
+              label="URL"
+              value={social.url || ""}
+              onChange={(e) => handleArrayItemChange(sectionId, field, index, "url", e.target.value)}
+              sx={{ mb: 1 }}
+            />
+            <TextField
+              fullWidth
+              size="small"
+              label="Icon (e.g., 'fa-brands fa-instagram')"
+              value={social.icon || ""}
+              onChange={(e) => handleArrayItemChange(sectionId, field, index, "icon", e.target.value)}
+              helperText="Use Font Awesome format: 'fa-brands fa-instagram' for brands"
+            />
+          </Card>
+        ))}
+        <Button
+          variant="outlined"
+          size="small"
+          startIcon={<Icon>add</Icon>}
+          onClick={() => handleAddArrayItem(sectionId, field)}
+        >
+          Add Social Link
+        </Button>
       </MDBox>
     );
   };
