@@ -342,6 +342,27 @@ export interface LegalPageContent extends SiteContentBase {
   content: string; // HTML/Markdown content
 }
 
+// Cookie Consent configuration
+export interface CookieConsentConfig extends SiteContentBase {
+  // Consent Modal
+  consentTitle: string;
+  consentDescription: string;
+  acceptAllButtonText: string;
+  rejectAllButtonText: string;
+  managePreferencesButtonText: string;
+  // Preferences Modal
+  preferencesTitle: string;
+  preferencesDescription: string;
+  savePreferencesButtonText: string;
+  // Category descriptions
+  essentialTitle: string;
+  essentialDescription: string;
+  analyticsTitle: string;
+  analyticsDescription: string;
+  marketingTitle: string;
+  marketingDescription: string;
+}
+
 // Union type for all site content
 export type SiteContent =
   | AboutUsHero
@@ -377,6 +398,7 @@ export type SiteContent =
   | FooterContent
   | FAQPageContent
   | LegalPageContent
+  | CookieConsentConfig
   | PageMetadata;
 
 // Content section identifiers
@@ -418,6 +440,9 @@ export type SiteContentId =
   // Legal pages
   | "legal-privacy"
   | "legal-terms"
+  | "legal-cookies"
+  // Cookie consent
+  | "cookie-consent"
   // Page metadata
   | "meta-home"
   | "meta-about"

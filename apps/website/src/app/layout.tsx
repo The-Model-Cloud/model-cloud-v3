@@ -4,6 +4,7 @@ import { Toaster } from "@/components/ui/sonner";
 import { ThemeProvider } from "@/components/theme-provider";
 import { AuthProvider } from "@/contexts/AuthContext";
 import { SubscriptionProvider } from "@/contexts/SubscriptionContext";
+import CookieConsentBanner from "@/components/CookieConsent";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -68,6 +69,7 @@ export default function RootLayout({
             <SubscriptionProvider>
               {children}
               <Toaster position="top-right" />
+              <CookieConsentBanner />
             </SubscriptionProvider>
           </AuthProvider>
         </ThemeProvider>
