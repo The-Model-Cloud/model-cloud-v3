@@ -5,10 +5,12 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardFooter, CardHeader } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { PricingCard } from "@/components/pricing/PricingCard";
-import { Check, HelpCircle, Users, Camera, Star } from "lucide-react";
+import { FAIcon } from "@/components/ui/FAIcon";
+import { Check, HelpCircle } from "lucide-react";
 import { usePricingTiers } from "@/lib/hooks/usePricingTiers";
 import { usePricingContent } from "@/lib/hooks/usePricingContent";
 import { PLATFORM_URLS } from "@/lib/urls";
+import type { PricingComparisonRow } from "@/types/siteContent";
 
 // Fallback data
 const fallbackModelFeatures = [
@@ -48,6 +50,17 @@ const fallbackFaqs = [
     answer:
       "Yes, you can cancel your subscription at any time from your account settings. You'll continue to have access until the end of your billing period.",
   },
+];
+
+const fallbackComparisonRows: PricingComparisonRow[] = [
+  { feature: "Saved Favorites", starter: "10", professional: "Unlimited", enterprise: "Unlimited" },
+  { feature: "Team Members", starter: "1", professional: "5", enterprise: "Unlimited" },
+  { feature: "Advanced Search", starter: "-", professional: "check", enterprise: "check" },
+  { feature: "Direct Messaging", starter: "-", professional: "check", enterprise: "check" },
+  { feature: "Booking Analytics", starter: "-", professional: "check", enterprise: "check" },
+  { feature: "API Access", starter: "-", professional: "-", enterprise: "check" },
+  { feature: "Custom Branding", starter: "-", professional: "-", enterprise: "check" },
+  { feature: "Dedicated Account Manager", starter: "-", professional: "-", enterprise: "check" },
 ];
 
 // Fallback pricing tiers when Firestore is empty
@@ -137,14 +150,69 @@ export default function PricingContent() {
   // Use fallback tiers if Firestore returns empty
   const tiers = firestoreTiers.length > 0 ? firestoreTiers : fallbackTiers;
 
+  // Hero section
   const hero = content.hero ?? {
     title: "Simple, Transparent Pricing",
-    subtitle:
-      "Free for models. Flexible plans for clients looking to discover and book talent.",
+    subtitle: "Free for models. Flexible plans for clients looking to discover and book talent.",
+    modelButtonText: "I'm a Model",
+    clientButtonText: "I'm a Client",
+  };
+
+  // Models section
+  const modelsSection = content.modelsSection ?? {
+    title: "For Models",
+    subtitle: "Your talent deserves to be seen. Join for free.",
+    icon: "camera",
+  };
+
+  // Model card
+  const modelCard = content.modelCard ?? {
+    badge: "Always Free",
+    title: "Model Account",
+    description: "Everything you need to showcase your talent and get booked",
+    price: "£0",
+    priceSuffix: "/forever",
+    buttonText: "Create Your Free Profile",
+    buttonLink: PLATFORM_URLS.signUpModel,
+  };
+
+  // Clients section
+  const clientsSection = content.clientsSection ?? {
+    title: "For Clients",
+    subtitle: "Find and book the perfect talent for your projects",
+    icon: "users",
+  };
+
+  // Comparison
+  const comparison = content.comparison ?? {
+    title: "Compare Client Plans",
+    subtitle: "Choose the plan that fits your hiring needs",
+    rows: fallbackComparisonRows,
+  };
+
+  // CTA
+  const cta = content.cta ?? {
+    title: "Ready to Get Started?",
+    subtitle: "Join thousands of professionals already using The Model Cloud.",
+    modelButtonText: "Join as a Model",
+    modelButtonLink: PLATFORM_URLS.signUpModel,
+    clientButtonText: "Sign Up as a Client",
+    clientButtonLink: PLATFORM_URLS.signUpClient,
   };
 
   const modelFeatures = content.modelFeatures?.items ?? fallbackModelFeatures;
   const faqs = content.faqs?.items ?? fallbackFaqs;
+
+  // Helper to render comparison cell value
+  const renderComparisonValue = (value: string) => {
+    if (value === "check") {
+      return <Check className="h-5 w-5 text-primary mx-auto" />;
+    }
+    if (value === "-") {
+      return <span className="text-muted-foreground">-</span>;
+    }
+    return value;
+  };
 
   if (loading) {
     return (
@@ -182,10 +250,10 @@ export default function PricingContent() {
             <p className="text-xl text-muted-foreground mb-8">{hero.subtitle}</p>
             <div className="flex flex-wrap justify-center gap-4">
               <Button variant="outline" size="lg" asChild>
-                <a href="#models">I&apos;m a Model</a>
+                <a href="#models">{hero.modelButtonText || "I'm a Model"}</a>
               </Button>
               <Button size="lg" asChild>
-                <a href="#clients">I&apos;m a Client</a>
+                <a href="#clients">{hero.clientButtonText || "I'm a Client"}</a>
               </Button>
             </div>
           </div>
@@ -198,29 +266,25 @@ export default function PricingContent() {
           <div className="max-w-4xl mx-auto">
             <div className="text-center mb-12">
               <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-primary/10 mb-6">
-                <Camera className="h-8 w-8 text-primary" />
+                <FAIcon name={modelsSection.icon || "camera"} className="h-8 w-8 text-primary" />
               </div>
-              <h2 className="text-3xl font-bold mb-4">For Models</h2>
-              <p className="text-xl text-muted-foreground">
-                Your talent deserves to be seen. Join for free.
-              </p>
+              <h2 className="text-3xl font-bold mb-4">{modelsSection.title}</h2>
+              <p className="text-xl text-muted-foreground">{modelsSection.subtitle}</p>
             </div>
 
             <Card className="border-primary/50 shadow-lg">
               <CardHeader className="text-center pb-4">
                 <div className="flex items-center justify-center gap-2 mb-2">
-                  <Star className="h-5 w-5 text-yellow-500 fill-yellow-500" />
+                  <FAIcon name="star" className="h-5 w-5 text-yellow-500" />
                   <span className="text-sm font-medium text-muted-foreground">
-                    Always Free
+                    {modelCard.badge}
                   </span>
                 </div>
-                <h3 className="text-2xl font-bold">Model Account</h3>
-                <p className="text-muted-foreground">
-                  Everything you need to showcase your talent and get booked
-                </p>
+                <h3 className="text-2xl font-bold">{modelCard.title}</h3>
+                <p className="text-muted-foreground">{modelCard.description}</p>
                 <div className="mt-4">
-                  <span className="text-5xl font-bold">£0</span>
-                  <span className="text-muted-foreground">/forever</span>
+                  <span className="text-5xl font-bold">{modelCard.price}</span>
+                  <span className="text-muted-foreground">{modelCard.priceSuffix}</span>
                 </div>
               </CardHeader>
               <CardContent>
@@ -235,7 +299,7 @@ export default function PricingContent() {
               </CardContent>
               <CardFooter className="pt-4">
                 <Button className="w-full" size="lg" asChild>
-                  <a href={PLATFORM_URLS.signUpModel}>Create Your Free Profile</a>
+                  <a href={modelCard.buttonLink}>{modelCard.buttonText}</a>
                 </Button>
               </CardFooter>
             </Card>
@@ -248,12 +312,10 @@ export default function PricingContent() {
         <div className="container">
           <div className="text-center mb-12">
             <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-primary/10 mb-6">
-              <Users className="h-8 w-8 text-primary" />
+              <FAIcon name={clientsSection.icon || "users"} className="h-8 w-8 text-primary" />
             </div>
-            <h2 className="text-3xl font-bold mb-4">For Clients</h2>
-            <p className="text-xl text-muted-foreground">
-              Find and book the perfect talent for your projects
-            </p>
+            <h2 className="text-3xl font-bold mb-4">{clientsSection.title}</h2>
+            <p className="text-xl text-muted-foreground">{clientsSection.subtitle}</p>
           </div>
 
           <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-6 max-w-6xl mx-auto">
@@ -269,93 +331,29 @@ export default function PricingContent() {
       {/* Feature Comparison */}
       <section className="py-20">
         <div className="container">
-          <h2 className="text-3xl font-bold text-center mb-4">
-            Compare Client Plans
-          </h2>
-          <p className="text-center text-muted-foreground mb-12">
-            Choose the plan that fits your hiring needs
-          </p>
+          <h2 className="text-3xl font-bold text-center mb-4">{comparison.title}</h2>
+          <p className="text-center text-muted-foreground mb-12">{comparison.subtitle}</p>
           <div className="max-w-4xl mx-auto overflow-x-auto">
             <table className="w-full">
               <thead>
                 <tr className="border-b">
                   <th className="text-left py-4 px-4">Feature</th>
                   <th className="text-center py-4 px-4">Starter</th>
-                  <th className="text-center py-4 px-4 bg-primary/5">
-                    Professional
-                  </th>
+                  <th className="text-center py-4 px-4 bg-primary/5">Professional</th>
                   <th className="text-center py-4 px-4">Enterprise</th>
                 </tr>
               </thead>
               <tbody>
-                <tr className="border-b">
-                  <td className="py-4 px-4">Saved Favorites</td>
-                  <td className="text-center py-4 px-4">10</td>
-                  <td className="text-center py-4 px-4 bg-primary/5">
-                    Unlimited
-                  </td>
-                  <td className="text-center py-4 px-4">Unlimited</td>
-                </tr>
-                <tr className="border-b">
-                  <td className="py-4 px-4">Team Members</td>
-                  <td className="text-center py-4 px-4">1</td>
-                  <td className="text-center py-4 px-4 bg-primary/5">5</td>
-                  <td className="text-center py-4 px-4">Unlimited</td>
-                </tr>
-                <tr className="border-b">
-                  <td className="py-4 px-4">Advanced Search</td>
-                  <td className="text-center py-4 px-4">-</td>
-                  <td className="text-center py-4 px-4 bg-primary/5">
-                    <Check className="h-5 w-5 text-primary mx-auto" />
-                  </td>
-                  <td className="text-center py-4 px-4">
-                    <Check className="h-5 w-5 text-primary mx-auto" />
-                  </td>
-                </tr>
-                <tr className="border-b">
-                  <td className="py-4 px-4">Direct Messaging</td>
-                  <td className="text-center py-4 px-4">-</td>
-                  <td className="text-center py-4 px-4 bg-primary/5">
-                    <Check className="h-5 w-5 text-primary mx-auto" />
-                  </td>
-                  <td className="text-center py-4 px-4">
-                    <Check className="h-5 w-5 text-primary mx-auto" />
-                  </td>
-                </tr>
-                <tr className="border-b">
-                  <td className="py-4 px-4">Booking Analytics</td>
-                  <td className="text-center py-4 px-4">-</td>
-                  <td className="text-center py-4 px-4 bg-primary/5">
-                    <Check className="h-5 w-5 text-primary mx-auto" />
-                  </td>
-                  <td className="text-center py-4 px-4">
-                    <Check className="h-5 w-5 text-primary mx-auto" />
-                  </td>
-                </tr>
-                <tr className="border-b">
-                  <td className="py-4 px-4">API Access</td>
-                  <td className="text-center py-4 px-4">-</td>
-                  <td className="text-center py-4 px-4 bg-primary/5">-</td>
-                  <td className="text-center py-4 px-4">
-                    <Check className="h-5 w-5 text-primary mx-auto" />
-                  </td>
-                </tr>
-                <tr className="border-b">
-                  <td className="py-4 px-4">Custom Branding</td>
-                  <td className="text-center py-4 px-4">-</td>
-                  <td className="text-center py-4 px-4 bg-primary/5">-</td>
-                  <td className="text-center py-4 px-4">
-                    <Check className="h-5 w-5 text-primary mx-auto" />
-                  </td>
-                </tr>
-                <tr className="border-b">
-                  <td className="py-4 px-4">Dedicated Account Manager</td>
-                  <td className="text-center py-4 px-4">-</td>
-                  <td className="text-center py-4 px-4 bg-primary/5">-</td>
-                  <td className="text-center py-4 px-4">
-                    <Check className="h-5 w-5 text-primary mx-auto" />
-                  </td>
-                </tr>
+                {comparison.rows.map((row) => (
+                  <tr key={row.feature} className="border-b">
+                    <td className="py-4 px-4">{row.feature}</td>
+                    <td className="text-center py-4 px-4">{renderComparisonValue(row.starter)}</td>
+                    <td className="text-center py-4 px-4 bg-primary/5">
+                      {renderComparisonValue(row.professional)}
+                    </td>
+                    <td className="text-center py-4 px-4">{renderComparisonValue(row.enterprise)}</td>
+                  </tr>
+                ))}
               </tbody>
             </table>
           </div>
@@ -392,16 +390,14 @@ export default function PricingContent() {
       <section className="py-20">
         <div className="container">
           <div className="text-center max-w-2xl mx-auto">
-            <h2 className="text-3xl font-bold mb-4">Ready to Get Started?</h2>
-            <p className="text-muted-foreground mb-8">
-              Join thousands of professionals already using The Model Cloud.
-            </p>
+            <h2 className="text-3xl font-bold mb-4">{cta.title}</h2>
+            <p className="text-muted-foreground mb-8">{cta.subtitle}</p>
             <div className="flex flex-wrap justify-center gap-4">
               <Button variant="outline" size="lg" asChild>
-                <a href={PLATFORM_URLS.signUpModel}>Join as a Model</a>
+                <a href={cta.modelButtonLink}>{cta.modelButtonText}</a>
               </Button>
               <Button size="lg" asChild>
-                <a href={PLATFORM_URLS.signUpClient}>Sign Up as a Client</a>
+                <a href={cta.clientButtonLink}>{cta.clientButtonText}</a>
               </Button>
             </div>
           </div>

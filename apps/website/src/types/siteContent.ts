@@ -84,6 +84,52 @@ export interface AboutUsTeam extends SiteContentBase {
 export interface PricingHero extends SiteContentBase {
   title: string;
   subtitle: string;
+  modelButtonText?: string;
+  clientButtonText?: string;
+}
+
+export interface PricingModelsSection extends SiteContentBase {
+  title: string;
+  subtitle: string;
+  icon?: string; // Font Awesome icon name
+}
+
+export interface PricingModelCard extends SiteContentBase {
+  badge: string; // e.g., "Always Free"
+  title: string; // e.g., "Model Account"
+  description: string;
+  price: string; // e.g., "£0"
+  priceSuffix: string; // e.g., "/forever"
+  buttonText: string;
+  buttonLink: string;
+}
+
+export interface PricingClientsSection extends SiteContentBase {
+  title: string;
+  subtitle: string;
+  icon?: string; // Font Awesome icon name
+}
+
+export interface PricingComparisonRow {
+  feature: string;
+  starter: string;
+  professional: string;
+  enterprise: string;
+}
+
+export interface PricingComparison extends SiteContentBase {
+  title: string;
+  subtitle: string;
+  rows: PricingComparisonRow[];
+}
+
+export interface PricingCTA extends SiteContentBase {
+  title: string;
+  subtitle: string;
+  modelButtonText: string;
+  modelButtonLink: string;
+  clientButtonText: string;
+  clientButtonLink: string;
 }
 
 export interface PricingModelFeatures extends SiteContentBase {
@@ -252,6 +298,11 @@ export type SiteContent =
   | AboutUsStats
   | AboutUsTeam
   | PricingHero
+  | PricingModelsSection
+  | PricingModelCard
+  | PricingClientsSection
+  | PricingComparison
+  | PricingCTA
   | PricingModelFeatures
   | PricingFAQs
   | WhyUsHero
@@ -278,6 +329,11 @@ export type SiteContentId =
   | "aboutUs-stats"
   | "aboutUs-team"
   | "pricing-hero"
+  | "pricing-modelsSection"
+  | "pricing-modelCard"
+  | "pricing-clientsSection"
+  | "pricing-comparison"
+  | "pricing-cta"
   | "pricing-modelFeatures"
   | "pricing-faqs"
   | "whyUs-hero"
