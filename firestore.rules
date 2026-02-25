@@ -63,6 +63,11 @@ service cloud.firestore {
       }
     }
 
+    // Helper: Check if user is an account manager (any organisation)
+    function isAccountManager() {
+      return isAuthenticated() && getUserRole() == "account manager";
+    }
+
     // Jobs collection
     // Users can read jobs they own, applied to, are invited to, or belong to their organisation
     match /jobs/{jobId} {
@@ -71,6 +76,8 @@ service cloud.firestore {
         resource.data.userId == request.auth.uid ||
         // Organisation members can read organisation jobs
         isInJobOrganisation(resource.data) ||
+        // Account managers can read jobs from their organisation
+        (isAccountManager() && isInJobOrganisation(resource.data)) ||
         // Admins can read all
         isAdmin() ||
         // Public jobs (for browse page) - only open jobs
@@ -80,6 +87,8 @@ service cloud.firestore {
       allow update: if isAuthenticated() && (
         // Job owner can update
         resource.data.userId == request.auth.uid ||
+        // Account managers can update jobs from their organisation
+        (isAccountManager() && isInJobOrganisation(resource.data)) ||
         // Admins can update any
         isAdmin()
       );
