@@ -58,6 +58,8 @@ function getStepContent(stepIndex, formikProps, jobRef, user, modelToInvite, inv
       const modelName = modelToInvite
         ? `${modelToInvite.firstName || ""} ${modelToInvite.lastName || ""}`.trim()
         : null;
+      // Account managers should go to organisation jobs page
+      const jobsRoute = user?.role === "account manager" ? "/jobs/organisation" : "/jobs/my-jobs";
       return (
         <MDBox textAlign="center" mt={4}>
           <MDTypography variant="h4" color="success" gutterBottom>
@@ -78,7 +80,7 @@ function getStepContent(stepIndex, formikProps, jobRef, user, modelToInvite, inv
               variant="gradient"
               color="dark"
               component={Link}
-              to="/jobs/my-jobs"
+              to={jobsRoute}
             >
               View My Jobs
             </MDButton>

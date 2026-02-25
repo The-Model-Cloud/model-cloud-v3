@@ -63,10 +63,10 @@ function MyJobs() {
       ...invitedJobs.map(j => j.jobReference)
     ])];
 
+    // Don't return early if no personal jobs - still need to fetch org jobs for account managers
     if (allJobRefs.length === 0) {
       setAllJobs([]);
-      setLoading(false);
-      return;
+      // Continue to fetch organisation jobs below
     }
 
     // Firestore "in" queries are limited to 30 items, so we may need to batch
@@ -78,42 +78,47 @@ function MyJobs() {
 
     const jobs = [];
     for (const batch of batches) {
-      const jobsQuery = query(collection(db, "jobs"), where("reference", "in", batch));
-      const jobDocs = await getDocs(jobsQuery);
+      try {
+        const jobsQuery = query(collection(db, "jobs"), where("reference", "in", batch));
+        const jobDocs = await getDocs(jobsQuery);
 
-      jobDocs.forEach((docSnap) => {
-        const data = docSnap.data();
+        jobDocs.forEach((docSnap) => {
+          const data = docSnap.data();
 
-        // Check if this is a created job, applied job, or invited job
-        const isCreated = jobRefs.includes(data.reference);
-        const appliedJob = appliedJobs.find(aj => aj.jobReference === data.reference);
-        const isApplied = !!appliedJob;
-        const invitedJob = invitedJobs.find(ij => ij.jobReference === data.reference);
-        const isInvited = !!invitedJob && !isApplied; // Only show as invited if not already applied
+          // Check if this is a created job, applied job, or invited job
+          const isCreated = jobRefs.includes(data.reference);
+          const appliedJob = appliedJobs.find(aj => aj.jobReference === data.reference);
+          const isApplied = !!appliedJob;
+          const invitedJob = invitedJobs.find(ij => ij.jobReference === data.reference);
+          const isInvited = !!invitedJob && !isApplied; // Only show as invited if not already applied
 
-        // Determine application status
-        let applicationStatus;
-        if (isCreated) {
-          applicationStatus = "Owner";
-        } else if (isApplied) {
-          applicationStatus = appliedJob.status || "pending";
-        } else if (isInvited) {
-          applicationStatus = "Invited";
-        } else {
-          applicationStatus = "-";
-        }
+          // Determine application status
+          let applicationStatus;
+          if (isCreated) {
+            applicationStatus = "Owner";
+          } else if (isApplied) {
+            applicationStatus = appliedJob.status || "pending";
+          } else if (isInvited) {
+            applicationStatus = "Invited";
+          } else {
+            applicationStatus = "-";
+          }
 
-        jobs.push({
-          ...data, // Include all job data for the cards
-          applicationStatus,
-          appliedAt: appliedJob?.appliedAt,
-          invitedAt: invitedJob?.invitedAt,
-          invitedByName: invitedJob?.invitedByName,
-          isOwner: isCreated,
-          isApplied: isApplied,
-          isInvited: isInvited,
+          jobs.push({
+            ...data, // Include all job data for the cards
+            applicationStatus,
+            appliedAt: appliedJob?.appliedAt,
+            invitedAt: invitedJob?.invitedAt,
+            invitedByName: invitedJob?.invitedByName,
+            isOwner: isCreated,
+            isApplied: isApplied,
+            isInvited: isInvited,
+          });
         });
-      });
+      } catch (err) {
+        console.error("Error fetching jobs batch:", err);
+        // Continue with other batches even if one fails
+      }
     }
 
     // Sort: owned jobs first, then by date
