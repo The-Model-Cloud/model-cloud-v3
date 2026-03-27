@@ -194,6 +194,8 @@ function NewJob() {
         // Organisation context - captured from user at creation time
         organisationId: user.organisationId || null,
         teamId: user.teamId || null,
+        // Job status - open by default so it appears in search
+        status: "open",
       };
 
       console.log("📦 Job data to be saved:", jobData);

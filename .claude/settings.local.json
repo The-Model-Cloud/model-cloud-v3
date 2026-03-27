@@ -29,7 +29,8 @@
       "Bash(npm uninstall:*)",
       "Bash(unzip:*)",
       "Bash(npm run build:website:*)",
-      "Bash(npx tsc:*)"
+      "Bash(npx tsc:*)",
+      "Bash(npm run deploy:platform:*)"
     ]
   }
 }

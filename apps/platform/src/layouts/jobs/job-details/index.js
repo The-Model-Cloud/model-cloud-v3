@@ -423,32 +423,102 @@ function JobDetails() {
 
     useEffect(() => {
         const fetchJob = async () => {
-            const jobRef = collection(db, "jobs");
-            const q = query(jobRef, where("reference", "==", reference));
-            const querySnapshot = await getDocs(q);
-            if (!querySnapshot.empty) {
-                const docSnap = querySnapshot.docs[0];
-                const jobData = { id: docSnap.id, ...docSnap.data() };
-                setJob(jobData);
-
-                // Check if current user has already applied and their status
+            try {
                 const user = auth.currentUser;
-                if (user) {
-                    // Check from model's appliedJobs for accurate status
-                    const userRef = doc(db, "users", user.uid);
-                    const userSnap = await getDoc(userRef);
-                    if (userSnap.exists()) {
-                        const userData = userSnap.data();
-                        const appliedJob = (userData.appliedJobs || []).find(
-                            aj => aj.jobReference === jobData.reference
+                if (!user) return;
+
+                // First get user data to determine their role and application status
+                const userRef = doc(db, "users", user.uid);
+                const userSnap = await getDoc(userRef);
+
+                if (!userSnap.exists()) {
+                    console.log("User not found");
+                    return;
+                }
+
+                const userData = userSnap.data();
+                const userRole = userData.role;
+
+                const jobRef = collection(db, "jobs");
+                let jobData = null;
+
+                // Strategy: Try different query approaches based on user role
+                // Firestore security rules require:
+                // - Admins can read any job
+                // - Owners/org members can read their jobs
+                // - Everyone can read jobs with status="open"
+
+                if (userRole === "admin" || userRole === "super admin") {
+                    // Admins can query by reference alone
+                    const q = query(jobRef, where("reference", "==", reference));
+                    const querySnapshot = await getDocs(q);
+                    if (!querySnapshot.empty) {
+                        const docSnap = querySnapshot.docs[0];
+                        jobData = { id: docSnap.id, ...docSnap.data() };
+                    }
+                } else {
+                    // For all other users (models, clients, account managers):
+                    // Try the compound query first (requires composite index)
+                    // If index doesn't exist yet, fall back to querying all open jobs
+                    try {
+                        const q = query(
+                            jobRef,
+                            where("reference", "==", reference),
+                            where("status", "==", "open")
                         );
-                        if (appliedJob) {
-                            setApplicationStatus(appliedJob.status);
-                            // Only set hasApplied if not cancelled
-                            setHasApplied(appliedJob.status !== "cancelled");
+                        const querySnapshot = await getDocs(q);
+                        if (!querySnapshot.empty) {
+                            const docSnap = querySnapshot.docs[0];
+                            jobData = { id: docSnap.id, ...docSnap.data() };
+                        }
+                    } catch (indexError) {
+                        // Compound query failed (likely missing index), try fallback
+                        console.log("Compound query failed, using fallback:", indexError.message);
+
+                        // Fallback: query all open jobs and filter client-side
+                        const q = query(jobRef, where("status", "==", "open"));
+                        const querySnapshot = await getDocs(q);
+                        querySnapshot.forEach((docSnap) => {
+                            const data = docSnap.data();
+                            if (data.reference === reference) {
+                                jobData = { id: docSnap.id, ...data };
+                            }
+                        });
+                    }
+
+                    // If still not found and user is a client/account manager, they might own the job
+                    // Try querying without status filter (for non-open jobs they own)
+                    if (!jobData && userRole !== "model") {
+                        try {
+                            const q = query(jobRef, where("reference", "==", reference));
+                            const querySnapshot = await getDocs(q);
+                            if (!querySnapshot.empty) {
+                                const docSnap = querySnapshot.docs[0];
+                                jobData = { id: docSnap.id, ...docSnap.data() };
+                            }
+                        } catch (ownerError) {
+                            // User doesn't have permission to access this job
+                            console.log("User does not have access to this job");
                         }
                     }
                 }
+
+                if (jobData) {
+                    setJob(jobData);
+
+                    // Check if user has applied for this job
+                    const appliedJob = (userData.appliedJobs || []).find(
+                        aj => aj.jobReference === jobData.reference
+                    );
+                    if (appliedJob) {
+                        setApplicationStatus(appliedJob.status);
+                        setHasApplied(appliedJob.status !== "cancelled");
+                    }
+                } else {
+                    console.log("Job not found or not accessible with current permissions");
+                }
+            } catch (err) {
+                console.error("Error fetching job:", err);
             }
         };
         fetchJob();
@@ -460,10 +530,14 @@ function JobDetails() {
             const modelsData = [];
 
             for (let uid of applicants) {
-                const modelRef = doc(db, "users", uid);
-                const snap = await getDoc(modelRef);
-                if (snap.exists()) {
-                    modelsData.push({ uid, ...snap.data() });
+                try {
+                    const modelRef = doc(db, "users", uid);
+                    const snap = await getDoc(modelRef);
+                    if (snap.exists()) {
+                        modelsData.push({ uid, ...snap.data() });
+                    }
+                } catch (err) {
+                    console.warn(`Could not fetch applicant ${uid}:`, err.message);
                 }
             }
 
@@ -475,9 +549,10 @@ function JobDetails() {
         }
     }, [job]);
 
-    // Fetch linked shortlist for this job (for job owner)
+    // Fetch linked shortlist for this job (for job owner only)
     useEffect(() => {
         const fetchShortlist = async () => {
+            // Only fetch shortlist for job owner
             if (!job || !model || job.userId !== model.uid) return;
 
             try {
@@ -486,7 +561,8 @@ function JobDetails() {
                     setLinkedShortlist(lists[0]);
                 }
             } catch (error) {
-                console.error("Error fetching shortlist:", error);
+                // Silently fail - shortlist is optional
+                console.warn("Could not fetch shortlist:", error.message);
             }
         };
 

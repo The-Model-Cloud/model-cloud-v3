@@ -2,6 +2,7 @@ import { useEffect, useState, useMemo } from "react";
 import { auth, db } from "config/firebase";
 import { doc, getDoc, collection, query, where, getDocs } from "firebase/firestore";
 import { Link } from "react-router-dom";
+import { useAuth } from "context/AuthContext";
 
 // @mui components
 import Icon from "@mui/material/Icon";
@@ -21,6 +22,7 @@ import MyJobFilters from "./components/MyJobFilters";
 import MyJobResults from "./components/MyJobResults";
 
 function MyJobs() {
+  const { user } = useAuth();
   const [allJobs, setAllJobs] = useState([]);
   const [organisationJobs, setOrganisationJobs] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -30,6 +32,9 @@ function MyJobs() {
     jobStatus: "all",
     applicationStatus: "all",
   });
+
+  // Roles that can create jobs
+  const canCreateJobs = user?.role && ["client", "account manager", "admin", "super admin"].includes(user.role);
 
   const fetchJobsForCurrentUser = async () => {
     setLoading(true);
@@ -224,11 +229,13 @@ function MyJobs() {
             </MDTypography>
           </MDBox>
 
-          <Link to="/jobs/new">
-            <MDButton variant="gradient" color="info" startIcon={<Icon>add</Icon>}>
-              Post New Job
-            </MDButton>
-          </Link>
+          {canCreateJobs && (
+            <Link to="/jobs/new">
+              <MDButton variant="gradient" color="info" startIcon={<Icon>add</Icon>}>
+                Post New Job
+              </MDButton>
+            </Link>
+          )}
         </MDBox>
 
         {/* Filters */}
