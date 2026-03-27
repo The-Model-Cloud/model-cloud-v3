@@ -80,8 +80,8 @@ service cloud.firestore {
         (isAccountManager() && isInJobOrganisation(resource.data)) ||
         // Admins can read all
         isAdmin() ||
-        // Public jobs (for browse page) - only open jobs
-        (resource.data.status == null || resource.data.status == "open")
+        // Public/open jobs are browseable by models
+        resource.data.status == "open"
       );
       allow create: if isAuthenticated();
       allow update: if isAuthenticated() && (

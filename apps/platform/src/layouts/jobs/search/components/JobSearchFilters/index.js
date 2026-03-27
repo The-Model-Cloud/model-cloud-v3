@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { collection, query, getDocs, getDoc, doc } from "firebase/firestore";
+import { collection, query, getDocs, getDoc, doc, where } from "firebase/firestore";
 import { auth, db } from "config/firebase";
 import Card from "@mui/material/Card";
 import Grid from "@mui/material/Grid";
@@ -119,108 +119,111 @@ function JobSearchFilters({ setFilters, setResults, setLoading }) {
             country, county, state, city, gender, categories, matchOnly
         }));
 
-        const user = auth.currentUser;
-        const userSnap = await getDoc(doc(db, "users", user.uid));
-        const model = userSnap.exists() ? userSnap.data() : null;
+        try {
+            const user = auth.currentUser;
+            const userSnap = await getDoc(doc(db, "users", user.uid));
+            const model = userSnap.exists() ? userSnap.data() : null;
 
-        const jobRef = collection(db, "jobs");
-        const q = query(jobRef);
+            const jobRef = collection(db, "jobs");
+            // Only query open jobs - this is required for Firestore security rules
+            // Jobs with status "open" are publicly browseable by models
+            const q = query(jobRef, where("status", "==", "open"));
 
-        const snapshot = await getDocs(q);
-        const jobs = [];
+            const snapshot = await getDocs(q);
+            const jobs = [];
 
-        // Get user's applied jobs to check application status
-        const appliedJobs = model?.appliedJobs || [];
-        const appliedJobRefs = appliedJobs.map(aj => aj.jobReference);
+            // Get user's applied jobs to check application status
+            const appliedJobs = model?.appliedJobs || [];
+            const appliedJobRefs = appliedJobs.map(aj => aj.jobReference);
 
-        // Filter jobs first, then check invitations for qualifying jobs
-        const qualifyingJobs = [];
+            // Filter jobs first, then check invitations for qualifying jobs
+            const qualifyingJobs = [];
 
-        snapshot.forEach((docSnap) => {
-            const job = docSnap.data();
+            snapshot.forEach((docSnap) => {
+                const job = docSnap.data();
 
-            // Filter out closed jobs - they shouldn't appear in search
-            if (job.status?.toLowerCase() === "closed") {
-                return;
-            }
-
-            // Location filtering
-            if (country) {
-                // Check if job's country matches
-                if (job.country !== country) {
-                    return;
-                }
-
-                // If UK, check county
-                if (country === "United Kingdom" && county) {
-                    if (job.county !== county) {
+                // Location filtering
+                if (country) {
+                    // Check if job's country matches
+                    if (job.country !== country) {
                         return;
+                    }
+
+                    // If UK, check county
+                    if (country === "United Kingdom" && county) {
+                        if (job.county !== county) {
+                            return;
+                        }
+                    }
+
+                    // If US, check state
+                    if (country === "United States" && state) {
+                        if (job.state !== state) {
+                            return;
+                        }
+                    }
+
+                    // Check city/town
+                    if (city) {
+                        if (job.city !== city) {
+                            return;
+                        }
                     }
                 }
 
-                // If US, check state
-                if (country === "United States" && state) {
-                    if (job.state !== state) {
-                        return;
+                const genderMatch =
+                    gender.length === 0 || gender.some((g) => job.gender?.includes(g));
+
+                const categoryMatch =
+                    categories.length === 0 || categories.some((c) => job.categories?.includes(c));
+
+                if (genderMatch && categoryMatch) {
+                    // Calculate if model matches this job using the algorithm
+                    const isMatch = doesModelMatchJob(model, job);
+
+                    if (!matchOnly || (matchOnly && isMatch)) {
+                        qualifyingJobs.push({ docSnap, job, isMatch });
                     }
                 }
+            });
 
-                // Check city/town
-                if (city) {
-                    if (job.city !== city) {
-                        return;
-                    }
-                }
-            }
+            // Check invitation status for all qualifying jobs in parallel
+            const invitationChecks = await Promise.all(
+                qualifyingJobs.map(async ({ docSnap, job, isMatch }) => {
+                    // Check if this model has been invited to this job
+                    const invitationRef = doc(db, "jobs", docSnap.id, "invitations", user.uid);
+                    const invitationSnap = await getDoc(invitationRef);
+                    const isInvited = invitationSnap.exists();
 
-            const genderMatch =
-                gender.length === 0 || gender.some((g) => job.gender?.includes(g));
+                    // Determine application status for the model
+                    const hasApplied = appliedJobRefs.includes(job.reference);
 
-            const categoryMatch =
-                categories.length === 0 || categories.some((c) => job.categories?.includes(c));
+                    return {
+                        ...job,
+                        applicationStatus: hasApplied ? "Applied" : "Not Applied",
+                        isMatch: isMatch,
+                        isInvited: isInvited,
+                    };
+                })
+            );
 
-            if (genderMatch && categoryMatch) {
-                // Calculate if model matches this job using the algorithm
-                const isMatch = doesModelMatchJob(model, job);
+            jobs.push(...invitationChecks);
 
-                if (!matchOnly || (matchOnly && isMatch)) {
-                    qualifyingJobs.push({ docSnap, job, isMatch });
-                }
-            }
-        });
+            // Sort jobs: matches first, then by creation date
+            jobs.sort((a, b) => {
+                if (a.isMatch && !b.isMatch) return -1;
+                if (!a.isMatch && b.isMatch) return 1;
+                return (b.createdAt || 0) - (a.createdAt || 0);
+            });
 
-        // Check invitation status for all qualifying jobs in parallel
-        const invitationChecks = await Promise.all(
-            qualifyingJobs.map(async ({ docSnap, job, isMatch }) => {
-                // Check if this model has been invited to this job
-                const invitationRef = doc(db, "jobs", docSnap.id, "invitations", user.uid);
-                const invitationSnap = await getDoc(invitationRef);
-                const isInvited = invitationSnap.exists();
-
-                // Determine application status for the model
-                const hasApplied = appliedJobRefs.includes(job.reference);
-
-                return {
-                    ...job,
-                    applicationStatus: hasApplied ? "Applied" : "Not Applied",
-                    isMatch: isMatch,
-                    isInvited: isInvited,
-                };
-            })
-        );
-
-        jobs.push(...invitationChecks);
-
-        // Sort jobs: matches first, then by creation date
-        jobs.sort((a, b) => {
-            if (a.isMatch && !b.isMatch) return -1;
-            if (!a.isMatch && b.isMatch) return 1;
-            return (b.createdAt || 0) - (a.createdAt || 0);
-        });
-
-        setResults(jobs);
-        setFilters({ country, county, state, city, gender, categories });
-        setLoading(false);
+            setResults(jobs);
+            setFilters({ country, county, state, city, gender, categories });
+        } catch (err) {
+            console.error("Error searching jobs:", err);
+            setResults([]);
+        } finally {
+            setLoading(false);
+        }
     };
 
     const handleClearFilters = () => {
