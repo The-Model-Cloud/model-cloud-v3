@@ -10,6 +10,7 @@ Work in progress in the working copy, not yet committed.
 
 ### Security
 
+- Google detected an exposed Firebase Admin SDK service account key committed to the repository. The key was deleted in Google Cloud, `functions/service-account.json` was removed from git history (history rewritten and force-pushed), and service account key files are now gitignored
 - New clients and models are locked to the Dashboard and Edit Profile pages until an admin verifies them
 - Fixed the `verifyEmail` bug in the auth-action handler
 
