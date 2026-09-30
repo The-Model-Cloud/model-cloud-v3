@@ -20,6 +20,11 @@ export const useDeleteModel = () => {
         return { success: false, error: "User not authenticated" };
       }
 
+      if (modelUid === user.uid) {
+        setError("You cannot delete your own account");
+        return { success: false, error: "Cannot delete own account" };
+      }
+
       setDeleting(true);
       setError(null);
 

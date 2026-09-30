@@ -1013,6 +1013,124 @@ MAILCHIMP_SERVER_PREFIX=us21
 
 ---
 
+---
+
+## Phase 3: SEO & Technical Requirements
+
+These items improve discoverability and search engine indexing.
+
+---
+
+### 3.1 Dynamic Sitemap Generation
+
+**Problem:** No sitemap.xml exists. Public model profiles are not indexed by search engines.
+
+**Current State:**
+- `robots.txt` allows crawling of public profiles (root-level slugs like `/model-name`)
+- No sitemap.xml file exists
+- Direct URL access to `/sitemap.xml` loads the React app (blank page)
+
+**Implementation:**
+
+**Option A: Static Sitemap via Cloud Function (Recommended)**
+
+Create a Cloud Function that generates sitemap.xml dynamically from verified model profiles.
+
+```
+functions/index.js
+└── generateSitemap() - HTTPS callable function
+    └── Query verified, public models from Firestore
+    └── Generate XML sitemap with model profile URLs
+    └── Return XML with correct content-type
+    └── Cache for 24 hours
+
+Sitemap URL: https://us-central1-model-cloud.cloudfunctions.net/generateSitemap
+└── robots.txt points to this URL
+```
+
+**Sitemap Contents:**
+```xml
+<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+  <url>
+    <loc>https://app.themodel.cloud/</loc>
+    <changefreq>daily</changefreq>
+    <priority>1.0</priority>
+  </url>
+  <url>
+    <loc>https://app.themodel.cloud/model-slug-1</loc>
+    <lastmod>2026-03-15</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <!-- ... more model profiles -->
+</urlset>
+```
+
+**Option B: Static File Generation (Alternative)**
+
+Scheduled Cloud Function that generates sitemap.xml and uploads to Firebase Storage/hosting.
+
+```
+functions/index.js
+└── generateSitemapScheduled() - Runs daily via Cloud Scheduler
+    └── Query all verified, public models
+    └── Generate sitemap.xml content
+    └── Upload to public storage bucket
+    └── CDN serves static file
+```
+
+**Files to Create:**
+```
+functions/index.js
+└── generateSitemap() - HTTPS function returning XML
+└── OR generateSitemapScheduled() - Scheduled generation
+
+apps/platform/public/robots.txt
+└── Update Sitemap: line to point to Cloud Function URL
+```
+
+**Acceptance Criteria:**
+- [ ] Sitemap includes all verified, public model profiles
+- [ ] Sitemap accessible via URL in robots.txt
+- [ ] Sitemap updates automatically when new models are verified
+- [ ] Sitemap includes lastmod dates from profile updates
+- [ ] Google Search Console can fetch and parse sitemap
+
+**Priority:** MEDIUM - Important for SEO and discoverability
+
+---
+
+### 3.2 Meta Tags for Public Profiles
+
+**Problem:** Public model profiles lack proper meta tags for social sharing and SEO.
+
+**Implementation:**
+
+Since React is client-rendered, implement meta tags via:
+1. React Helmet for dynamic updates
+2. Cloud Function for server-side rendering of meta tags (for crawlers)
+
+```
+Files to modify:
+├── src/layouts/pages/profile/public-profile/index.jsx
+│   └── Add React Helmet with dynamic meta tags
+│   └── og:title, og:description, og:image, twitter:card
+│
+├── functions/index.js (optional)
+│   └── renderPublicProfile() - Returns HTML with meta tags for crawlers
+```
+
+**Acceptance Criteria:**
+- [ ] Public profiles have unique title tags
+- [ ] Open Graph meta tags for social sharing
+- [ ] Twitter card meta tags
+- [ ] Profile image as og:image
+
+**Priority:** LOW - Nice to have for social sharing
+
+---
+
 ## Dependencies
 
 | Feature | Depends On |
@@ -1025,3 +1143,188 @@ MAILCHIMP_SERVER_PREFIX=us21
 | Self-Service Upgrade | Stripe Connect, Organisation tiers |
 | Email Notifications | SendGrid configured, user preferences |
 | Mailchimp Marketing | Mailchimp API credentials |
+| Email Newsletters | SendGrid, Admin role access |
+
+---
+
+### 2.7 Email Newsletter System
+
+**Problem:** Admins need to send email newsletters to segmented user groups (models, clients, etc.) without relying on external email marketing platforms.
+
+**Implementation:**
+
+**Data Model - Firestore Collections:**
+
+```javascript
+// Collection: emailTemplates
+{
+  id: string,
+  name: string,                  // "Monthly Newsletter"
+  subject: string,               // Email subject line
+  content: string,               // HTML from TipTap editor
+  previewText: string,           // Preview text (optional)
+  category: string,              // "newsletter" | "announcement" | "promotional"
+  isActive: boolean,
+  createdAt: Timestamp,
+  createdBy: string,
+  updatedAt: Timestamp,
+  updatedBy: string,
+}
+
+// Collection: emailCampaigns
+{
+  id: string,
+  name: string,                  // Campaign name
+  subject: string,
+  content: string,               // HTML content
+  previewText: string,
+  templateId: string | null,
+  audience: {
+    type: string,                // "all_models" | "all_clients" | "both" | "verified_models" | "active_subscribers"
+    recipientCount: number,
+  },
+  status: string,                // "draft" | "scheduled" | "sending" | "sent" | "failed" | "cancelled"
+  scheduledFor: Timestamp | null,
+  sentAt: Timestamp | null,
+  stats: {
+    totalRecipients: number,
+    sent: number,
+    failed: number,
+  },
+  createdAt: Timestamp,
+  createdBy: string,
+  updatedAt: Timestamp,
+  updatedBy: string,
+}
+
+// Subcollection: emailCampaigns/{campaignId}/recipients
+{
+  id: string,
+  userId: string,
+  email: string,
+  name: string,
+  role: string,
+  status: string,                // "pending" | "sent" | "failed"
+  sentAt: Timestamp | null,
+  error: string | null,
+}
+
+// Collection: scheduledEmails
+{
+  id: string,
+  campaignId: string,
+  scheduledFor: Timestamp,
+  status: string,                // "pending" | "processing" | "completed" | "failed"
+  processedAt: Timestamp | null,
+  error: string | null,
+}
+```
+
+**Files to Create:**
+
+```
+apps/platform/src/layouts/admin/newsletters/
+├── index.js                           # Campaign list page
+├── components/
+│   ├── CampaignList/index.js          # DataTable for campaigns
+│   ├── CampaignStats/index.js         # Stats cards
+│   ├── RecipientPreview/index.js      # Preview dialog
+│   ├── ScheduleDialog/index.js        # Date/time picker
+│   └── AudienceSelector/index.js      # Audience radio buttons
+├── create/index.js                    # Create campaign
+├── edit/index.js                      # Edit draft campaign
+├── detail/index.js                    # View campaign stats
+└── templates/
+    ├── index.js                       # Templates list
+    ├── create/index.js                # Create template
+    └── edit/index.js                  # Edit template
+
+apps/platform/src/utils/
+└── newsletterFirestore.js             # Firestore CRUD operations
+```
+
+**Files to Modify:**
+
+```
+apps/platform/src/routes.js
+└── Add newsletter routes under Tools with ADMIN_ROLES
+
+functions/index.js
+└── Add getNewsletterRecipientCount() - onCall
+└── Add sendNewsletterCampaign() - onCall, 540s timeout
+└── Add processScheduledNewsletters() - onSchedule, every 5 minutes
+└── Add cancelScheduledCampaign() - onCall
+
+firestore.rules
+└── Add rules for emailTemplates, emailCampaigns, scheduledEmails collections
+```
+
+**Cloud Functions:**
+
+| Function | Type | Purpose |
+|----------|------|---------|
+| `getNewsletterRecipientCount` | onCall | Returns count and sample emails for audience type |
+| `sendNewsletterCampaign` | onCall (540s) | Validates admin, creates recipients, sends via SendGrid in batches |
+| `processScheduledNewsletters` | onSchedule | Runs every 5 min, triggers due campaigns |
+| `cancelScheduledCampaign` | onCall | Cancels scheduled campaign, updates status |
+
+**Audience Segmentation:**
+
+| Type | Query | Description |
+|------|-------|-------------|
+| `all_models` | `role == "model"` | All registered models |
+| `all_clients` | `role == "client"` | All registered clients |
+| `both` | `role in ["model", "client"]` | Models and clients |
+| `verified_models` | `role == "model" && verified == true` | Only verified models |
+| `active_subscribers` | `role == "client" && subscription.status == "active"` | Clients with paid subscriptions |
+
+**Routes to Add:**
+
+```javascript
+// In routes.js under Tools section
+{
+  type: "collapse",
+  name: "Email Newsletters",
+  key: "newsletters",
+  icon: <Icon fontSize="small">email</Icon>,
+  roles: ADMIN_ROLES,
+  collapse: [
+    { name: "Campaigns", key: "newsletter-campaigns", route: "/admin/newsletters", component: <Newsletters /> },
+    { name: "Templates", key: "newsletter-templates", route: "/admin/newsletters/templates", component: <NewsletterTemplates /> },
+    { name: "Create Campaign", key: "newsletter-create", route: "/admin/newsletters/create", component: <NewsletterCreate /> },
+  ],
+},
+```
+
+**Implementation Phases:**
+
+| Phase | Deliverables |
+|-------|--------------|
+| Phase 1: MVP | Campaign list, create page with TipTap, audience selector with live count, immediate send |
+| Phase 2: Templates | Templates CRUD, template selection in campaign creation |
+| Phase 3: Scheduling | Schedule dialog, scheduled function, cancel functionality |
+| Phase 4: Tracking | Campaign detail page with stats, recipient-level tracking |
+| Phase 5: Polish | Email preview, test send, variable insertion ({{firstName}}) |
+
+**Acceptance Criteria:**
+- [ ] Admin/Super Admin only access to /admin/newsletters
+- [ ] Create campaign with TipTap rich text editor
+- [ ] Audience selector shows live recipient count
+- [ ] Save campaigns as drafts
+- [ ] Send immediately via SendGrid (batches of 100)
+- [ ] Schedule campaigns for future delivery
+- [ ] Cancel scheduled campaigns
+- [ ] View campaign stats after sending
+- [ ] Reusable email templates
+- [ ] All sends logged to adminLogs collection
+
+**Security Considerations:**
+- Cloud Functions validate admin/super admin role
+- Firestore rules restrict email collections to admins
+- SendGrid API key in environment variables
+- Rate limiting: 100 emails per batch with delays
+- All newsletter sends logged to adminLogs
+
+**Priority:** MEDIUM - Admin productivity feature
+
+**Status:** PLANNED

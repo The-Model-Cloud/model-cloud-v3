@@ -13,7 +13,7 @@ import { createJobApplicationNotification, createJobApplicationConfirmationNotif
 import { logModelApplied, logApplicationCancelled } from "utils/activityLog";
 
 // API utilities
-import { sendApplicationEmail, sendModelApplicationConfirmation, createThread } from "utils/api";
+import { sendApplicationEmail, sendModelApplicationConfirmation, createThread, sendJobMatchEmails } from "utils/api";
 
 // Invitations
 import { markInvitationAsApplied, getInvitationStatus, sendInvitationAcceptedMessage, declineJobInvitation } from "utils/invitations";
@@ -30,6 +30,7 @@ import Backdrop from "@mui/material/Backdrop";
 import Icon from "@mui/material/Icon";
 import Chip from "@mui/material/Chip";
 import Alert from "@mui/material/Alert";
+import CircularProgress from "@mui/material/CircularProgress";
 
 
 import MDBox from "components/MDBox";
@@ -46,6 +47,8 @@ import JobImages from "./components/JobImages";
 import JobInfo from "./components/JobInfo";
 import JobApplicants from "./components/JobApplicants";
 import MatchingModels from "./components/MatchingModels";
+import ListModels from "./components/ListModels";
+import FavouriteModels from "./components/FavouriteModels";
 import ShortlistForJobModal from "components/Favourites/ShortlistForJobModal";
 import AwardJobModal from "./components/AwardJobModal";
 import JobPaymentSection from "./components/JobPaymentSection";
@@ -94,6 +97,9 @@ function JobDetails() {
     const [showDeclineModal, setShowDeclineModal] = useState(false);
     const [isDeclining, setIsDeclining] = useState(false);
     const [hasDeclined, setHasDeclined] = useState(false);
+    const [isSendingNotifications, setIsSendingNotifications] = useState(false);
+    const [notificationResult, setNotificationResult] = useState(null);
+    const [showNotifyConfirm, setShowNotifyConfirm] = useState(false);
 
     // Check if current user is job owner
     const isJobOwner = model && job && job.userId === model.uid;
@@ -418,6 +424,20 @@ function JobDetails() {
             setSnackOpen(true);
         } finally {
             setIsDeclining(false);
+        }
+    };
+
+    const handleSendNotifications = async () => {
+        setShowNotifyConfirm(false);
+        setIsSendingNotifications(true);
+        setNotificationResult(null);
+        try {
+            const result = await sendJobMatchEmails(job.id);
+            setNotificationResult(result);
+        } catch (err) {
+            setNotificationResult({ success: false, error: err.message });
+        } finally {
+            setIsSendingNotifications(false);
         }
     };
 
@@ -832,6 +852,8 @@ function JobDetails() {
                         )}
 
                         {/* Matching Models Section - for job owner (only show if not awarded) */}
+                        {!job.awardedTo && <FavouriteModels job={job} />}
+                        {!job.awardedTo && <ListModels job={job} />}
                         {!job.awardedTo && <MatchingModels job={job} />}
 
                         {/* Job Actions Section - for job owner */}
@@ -844,6 +866,65 @@ function JobDetails() {
 
                         {/* Activity Log - admin only */}
                         <JobActivityLog jobId={job.id} isAdmin={isAdmin} />
+
+                        {/* Notify Matching Models - super admin only */}
+                        {model?.role === "super admin" && (
+                            <Card sx={{ mt: 3, p: 3 }}>
+                                <MDTypography variant="h6" fontWeight="medium" mb={1}>
+                                    Notify Matching Models
+                                </MDTypography>
+                                <MDTypography variant="body2" color="text" mb={2}>
+                                    Manually send job match emails to all verified models whose profile matches this job. Models who have already applied will be skipped.
+                                </MDTypography>
+
+                                {notificationResult && (
+                                    <Alert
+                                        severity={notificationResult.success ? "success" : "error"}
+                                        sx={{ mb: 2 }}
+                                        onClose={() => setNotificationResult(null)}
+                                    >
+                                        {notificationResult.success
+                                            ? `Done — ${notificationResult.matchingModels} matching model${notificationResult.matchingModels !== 1 ? "s" : ""} found, ${notificationResult.modelEmailsSent} email${notificationResult.modelEmailsSent !== 1 ? "s" : ""} sent.${notificationResult.clientEmailSent ? " Client notified." : ""}`
+                                            : `Failed: ${notificationResult.reason || notificationResult.error || "Unknown error"}`
+                                        }
+                                    </Alert>
+                                )}
+
+                                {!showNotifyConfirm ? (
+                                    <MDButton
+                                        variant="outlined"
+                                        color="info"
+                                        onClick={() => setShowNotifyConfirm(true)}
+                                        disabled={isSendingNotifications}
+                                        startIcon={isSendingNotifications ? <CircularProgress size={16} color="inherit" /> : null}
+                                    >
+                                        {isSendingNotifications ? "Sending..." : "Send Match Notifications"}
+                                    </MDButton>
+                                ) : (
+                                    <MDBox display="flex" alignItems="center" gap={1}>
+                                        <MDTypography variant="body2" color="text">
+                                            This will email all matching models. Continue?
+                                        </MDTypography>
+                                        <MDButton
+                                            variant="gradient"
+                                            color="info"
+                                            size="small"
+                                            onClick={handleSendNotifications}
+                                        >
+                                            Yes, Send
+                                        </MDButton>
+                                        <MDButton
+                                            variant="outlined"
+                                            color="secondary"
+                                            size="small"
+                                            onClick={() => setShowNotifyConfirm(false)}
+                                        >
+                                            Cancel
+                                        </MDButton>
+                                    </MDBox>
+                                )}
+                            </Card>
+                        )}
 
                         <Snackbar
                             open={snackOpen}
@@ -882,15 +963,9 @@ function JobDetails() {
                                 color="info"
                                 onClick={handleConfirmApply}
                                 disabled={isApplying}
+                                startIcon={isApplying ? <CircularProgress size={16} color="inherit" /> : null}
                             >
-                                {isApplying ? (
-                                    <span style={{ display: "flex", alignItems: "center" }}>
-                                        <span className="spinner-border spinner-border-sm" role="status" aria-hidden="true" style={{ marginRight: 8 }} />
-                                        Applying...
-                                    </span>
-                                ) : (
-                                    "Confirm"
-                                )}
+                                {isApplying ? "Applying..." : "Confirm"}
                             </MDButton>
                         </MDBox>
                     </Box>

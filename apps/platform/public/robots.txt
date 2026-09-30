@@ -1,3 +1,33 @@
 # https://www.robotstxt.org/robotstxt.html
 User-agent: *
-Disallow:
+
+# Allow public model profiles (root-level slugs)
+Allow: /
+
+# Block authenticated/admin areas
+Disallow: /dashboard
+Disallow: /edit-profile
+Disallow: /admin
+Disallow: /jobs
+Disallow: /messages
+Disallow: /favourites
+Disallow: /payouts
+Disallow: /payments
+Disallow: /notifications
+Disallow: /invoices
+Disallow: /account
+Disallow: /briefs
+Disallow: /organisations
+Disallow: /castings
+Disallow: /organisation
+Disallow: /zcard
+Disallow: /models
+Disallow: /pages
+Disallow: /applications
+Disallow: /dashboards
+
+# Block auth pages
+Disallow: /sign-in
+Disallow: /sign-up
+Disallow: /reset-password
+Disallow: /auth

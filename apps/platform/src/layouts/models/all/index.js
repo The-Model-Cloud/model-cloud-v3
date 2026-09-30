@@ -589,6 +589,7 @@ function AllModels() {
           width: "20%",
           Cell: ({ row }) => {
             const model = row.original;
+            const isCurrentUser = model.uid === currentUser?.uid;
             return (
               <MDBox display="flex" gap={0.5}>
                 <Tooltip title={model.verified ? "Unverify Model" : "Verify Model"}>
@@ -636,15 +637,17 @@ function AllModels() {
                     <Icon fontSize="small">location_on</Icon>
                   </IconButton>
                 </Tooltip>
-                <Tooltip title="Delete Model">
-                  <IconButton
-                    size="small"
-                    onClick={() => handleDeleteClick(model)}
-                    sx={{ color: "#d32f2f" }}
-                  >
-                    <Icon fontSize="small">delete</Icon>
-                  </IconButton>
-                </Tooltip>
+                {!isCurrentUser && (
+                  <Tooltip title="Delete Model">
+                    <IconButton
+                      size="small"
+                      onClick={() => handleDeleteClick(model)}
+                      sx={{ color: "#d32f2f" }}
+                    >
+                      <Icon fontSize="small">delete</Icon>
+                    </IconButton>
+                  </Tooltip>
+                )}
               </MDBox>
             );
           },

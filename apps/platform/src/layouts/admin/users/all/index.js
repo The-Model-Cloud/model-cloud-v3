@@ -766,7 +766,7 @@ function AllUsers() {
           width: "8%",
           Cell: ({ row }) => {
             const { role, verified } = row.original;
-            if (role !== "model") return "—";
+            if (role !== "model" && role !== "client") return "—";
             return (
               <Chip
                 label={verified ? "Verified" : "Unverified"}
@@ -806,13 +806,14 @@ function AllUsers() {
             const isTargetSuperAdmin = user.role === "super admin";
             const isCurrentUser = user.uid === currentUser?.uid;
             const isModel = user.role === "model";
+            const isClient = user.role === "client";
             // Only super admins can edit other super admin details
             const canEdit = isSuperAdmin || !isTargetSuperAdmin;
 
             return (
               <MDBox display="flex" gap={0.5}>
-                {isModel && canEdit && (
-                  <Tooltip title={user.verified ? "Unverify Model" : "Verify Model"}>
+                {(isModel || isClient) && canEdit && (
+                  <Tooltip title={user.verified ? `Unverify ${isClient ? "Client" : "Model"}` : `Verify ${isClient ? "Client" : "Model"}`}>
                     <IconButton
                       size="small"
                       onClick={() => handleToggleVerification(user)}

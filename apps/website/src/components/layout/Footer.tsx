@@ -55,13 +55,22 @@ export function Footer() {
   const { content } = useLayoutContent();
 
   // Use CMS content or fallbacks
+  // Reject any CMS image URL that isn't from an approved host to prevent
+  // stale Firestore data (e.g. sandbox.themodel.cloud) triggering auth prompts.
+  const safeImageUrl = (url: string | undefined, fallback: string): string => {
+    if (!url || url.includes("sandbox.themodel.cloud") || url.includes("v4.themodel.cloud")) {
+      return fallback;
+    }
+    return url;
+  };
+
   const footerContent = content.footer;
   const sections = footerContent?.sections ?? fallbackSections;
   const socialLinks = footerContent?.socialLinks ?? fallbackSocialLinks;
   const tagline = footerContent?.tagline ?? fallbackTagline;
   const copyrightText = footerContent?.copyrightText ?? fallbackCopyrightText;
-  const logoLightUrl = footerContent?.logoLightUrl || "/assets/logo-light.png";
-  const logoDarkUrl = footerContent?.logoDarkUrl || "/assets/logo-dark.png";
+  const logoLightUrl = safeImageUrl(footerContent?.logoLightUrl, "/assets/logo-light.png");
+  const logoDarkUrl = safeImageUrl(footerContent?.logoDarkUrl, "/assets/logo-dark.png");
 
   return (
     <footer className="border-t bg-muted/30">

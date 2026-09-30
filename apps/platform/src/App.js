@@ -29,7 +29,7 @@ import routes from "routes";
 
 import { hasAccess } from "routes";
 import { useAuth } from "context/AuthContext"; // Adjust if stored elsewhere
-import { isUnverifiedModel } from "utils/verification";
+import { isUnverifiedUser } from "utils/verification";
 
 // Model public profile page
 import PublicProfile from "layouts/pages/profile/public-profile";
@@ -63,6 +63,16 @@ function DefaultRedirect() {
   return <Navigate to={isLoggedIn ? "/dashboard" : "/sign-in"} replace />;
 }
 
+// Guard that redirects unauthenticated users to sign-in, preserving the intended URL
+function RequireAuth({ children }) {
+  const isLoggedIn = localStorage.getItem("isLoggedIn") === "true";
+  const location = useLocation();
+  if (!isLoggedIn) {
+    return <Navigate to={`/sign-in?redirect=${encodeURIComponent(location.pathname)}`} replace />;
+  }
+  return children;
+}
+
 export default function App() {
   const [controller, dispatch] = useMaterialUIController();
   const {
@@ -80,10 +90,10 @@ export default function App() {
 
   useEffect(() => {
     // Check if it's an authentication route (should use page layout, no sidenav)
-    const isAuthRoute = pathname.startsWith('/authentication') || pathname === '/sign-in' || pathname === '/sign-up';
+    const isAuthRoute = pathname.startsWith('/authentication') || pathname === '/sign-in' || pathname === '/sign-up' || pathname === '/reset-password' || pathname.startsWith('/auth/');
 
     // Exclude app routes from public profile detection
-    const appRoutes = ['/dashboard', '/edit-profile', '/jobs', '/models', '/admin', '/dashboards', '/pages', '/applications', '/ecommerce', '/authentication', '/sign-in', '/sign-up', '/messages', '/favourites', '/shared', '/zcard', '/payouts', '/payments', '/notifications', '/invoices', '/account', '/briefs', '/organisations', '/castings', '/organisation'];
+    const appRoutes = ['/dashboard', '/edit-profile', '/jobs', '/models', '/admin', '/dashboards', '/pages', '/applications', '/ecommerce', '/authentication', '/auth', '/sign-in', '/sign-up', '/reset-password', '/messages', '/favourites', '/shared', '/zcard', '/payouts', '/payments', '/notifications', '/invoices', '/account', '/briefs', '/organisations', '/castings', '/organisation'];
     const isAppRoute = appRoutes.some(route => pathname.startsWith(route));
 
     // Check if it's a public profile (single segment slug, not an app route)
@@ -173,8 +183,10 @@ export default function App() {
     "/pages/account/settings",
     "/pages/profile/profile-overview",
     "/authentication",
+    "/auth",
     "/sign-in",
     "/sign-up",
+    "/reset-password",
   ];
 
   const isRouteAllowedForUnverified = (routePath) => {
@@ -189,7 +201,7 @@ export default function App() {
 
       if (route.route && (!route.roles || hasAccess(user?.role, route.roles))) {
         // Check if user is unverified model and route is restricted
-        if (isUnverifiedModel(user) && !isRouteAllowedForUnverified(route.route)) {
+        if (isUnverifiedUser(user) && !isRouteAllowedForUnverified(route.route)) {
           // Return a redirect to dashboard for restricted routes
           return (
             <Route
@@ -246,8 +258,8 @@ export default function App() {
 
 
 
-          <Route path="/jobs/:reference" element={<JobDetails />} />
-          <Route path="/jobs/edit/:reference" element={<EditJob />} />
+          <Route path="/jobs/:reference" element={<RequireAuth><JobDetails /></RequireAuth>} />
+          <Route path="/jobs/edit/:reference" element={<RequireAuth><EditJob /></RequireAuth>} />
           {/* Messaging routes */}
           <Route path="/messages/:threadId" element={<MessagesInbox />} />
           {/* Public-facing profile route based on slug */}

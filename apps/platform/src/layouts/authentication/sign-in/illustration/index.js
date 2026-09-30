@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { useNavigate, Link } from "react-router-dom";
+import { useNavigate, useSearchParams, Link } from "react-router-dom";
 
 // @mui components
 import Switch from "@mui/material/Switch";
@@ -23,9 +23,12 @@ import fallbackImage from "assets/images/illustrations/signup-image-1.png";
 import { signInWithEmailAndPassword } from "firebase/auth";
 import { doc, getDoc, setDoc } from "firebase/firestore";
 import { auth, db } from "config/firebase";
+import { createSession } from "utils/sessionManager";
 
 function Illustration() {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const redirectTo = searchParams.get("redirect") || null;
   const [rememberMe, setRememberMe] = useState(false);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -115,6 +118,9 @@ function Illustration() {
       // Set logged in flag to remember login status
       localStorage.setItem("isLoggedIn", "true");
 
+      // Record session for admin visibility
+      createSession(user.uid, user.email);
+
       const userRef = doc(db, "users", user.uid);
       const userSnap = await getDoc(userRef);
 
@@ -129,10 +135,10 @@ function Illustration() {
         });
 
         // 🔁 Send to account setup
-        navigate("/edit-profile");
+        navigate(redirectTo || "/edit-profile");
       } else {
-        // 👤 Existing user — go to profile overview
-        navigate("/dashboard");
+        // 👤 Existing user — go to intended page or dashboard
+        navigate(redirectTo || "/dashboard");
       }
 
     } catch (err) {
@@ -177,6 +183,17 @@ function Illustration() {
             value={password}
             onChange={(e) => setPassword(e.target.value)}
           />
+        </MDBox>
+        <MDBox textAlign="right" mb={1}>
+          <MDTypography
+            component={Link}
+            to="/reset-password"
+            variant="button"
+            color="info"
+            fontWeight="regular"
+          >
+            Forgot password?
+          </MDTypography>
         </MDBox>
         <MDBox display="flex" alignItems="center" ml={-1}>
           <Switch checked={rememberMe} onChange={handleSetRememberMe} />

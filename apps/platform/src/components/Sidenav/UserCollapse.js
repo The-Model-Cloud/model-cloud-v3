@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { NavLink, useLocation, useNavigate } from "react-router-dom";
 import { auth, db } from "config/firebase";
 import { signOut } from "firebase/auth";
+import { endSession } from "utils/sessionManager";
 import { doc, getDoc } from "firebase/firestore";
 import MDAvatar from "components/MDAvatar";
 import MDTypography from "components/MDTypography";
@@ -20,6 +21,7 @@ function UserCollapse() {
 
   const handleLogout = async () => {
     try {
+      await endSession();
       await signOut(auth);
       localStorage.removeItem("isLoggedIn");
       navigate("/sign-in");

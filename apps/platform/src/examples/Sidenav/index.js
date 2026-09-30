@@ -52,6 +52,7 @@ import {
 // Firebase imports
 import { auth, db } from "config/firebase";
 import { signOut } from "firebase/auth";
+import { endSession } from "utils/sessionManager";
 import { doc, getDoc } from "firebase/firestore";
 import ProfileAvatar from "components/Profile/ProfileAvatar";
 
@@ -76,6 +77,7 @@ function Sidenav({ color, brand, brandName, routes, ...rest }) {
   // Handle logout - clear localStorage and sign out from Firebase
   const handleLogout = async () => {
     try {
+      await endSession();
       await signOut(auth);
       localStorage.removeItem("isLoggedIn");
       navigate("/sign-in");
@@ -104,7 +106,7 @@ function Sidenav({ color, brand, brandName, routes, ...rest }) {
 
   // ✅ Filter routes based on user role and verification status
   const filteredRoutes = useMemo(() => {
-    if (!userRole) return routes; // Show all routes if no role (should not happen when authenticated)
+    if (!userRole) return []; // Show nothing while role is loading (prevents race condition showing all routes)
     let filtered = filterRoutesByRole(routes, userRole);
     // Apply additional filtering for unverified models
     filtered = filterRoutesForUnverifiedModel(filtered, user);

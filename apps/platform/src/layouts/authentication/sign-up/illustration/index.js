@@ -177,7 +177,7 @@ function SignUpIllustration() {
                 profileAvatar,
                 companyName,
                 createdAt: new Date().toISOString(),
-                ...(role === "model" && { verified: false }),
+                verified: false, // All new users require admin verification before full access
             });
 
             // Set logged in flag to remember login status

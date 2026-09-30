@@ -21,6 +21,7 @@ import { useLocation, useNavigate } from "react-router-dom";
 // Firebase
 import { signOut } from "firebase/auth";
 import { auth } from "config/firebase";
+import { endSession } from "utils/sessionManager";
 
 // prop-types is a library for typechecking of props.
 import PropTypes from "prop-types";
@@ -166,6 +167,7 @@ function DashboardNavbar({ absolute, light, isMini }) {
 
   const handleLogout = async () => {
     try {
+      await endSession();
       await signOut(auth);
       localStorage.removeItem("isLoggedIn");
       navigate("/sign-in");

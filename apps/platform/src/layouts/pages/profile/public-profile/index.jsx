@@ -24,6 +24,7 @@ import { useAuth } from "context/AuthContext";
 import { useMaterialUIController } from "context";
 import AddToListModal from "components/Favourites/AddToListModal";
 import BookModelModal from "components/BookModelModal";
+import { fetchLiveJobs } from "utils/liveJobs";
 
 // API functions
 import { sendVerificationEmail, sendUnverificationEmail } from "utils/api";
@@ -75,6 +76,8 @@ function PublicProfile() {
   const [profileUid, setProfileUid] = useState(null);
   const [addToListModalOpen, setAddToListModalOpen] = useState(false);
   const [bookModelModalOpen, setBookModelModalOpen] = useState(false);
+  const [inviteModalOpen, setInviteModalOpen] = useState(false);
+  const [hasLiveJob, setHasLiveJob] = useState(false);
   const [lightboxOpen, setLightboxOpen] = useState(false);
   const [lightboxIndex, setLightboxIndex] = useState(0);
   const [loaded, setLoaded] = useState(false);
@@ -100,6 +103,24 @@ function PublicProfile() {
 
   // Check if current user can book models (clients, account managers, admins - not models)
   const canBookModels = user && ["client", "account manager", "admin", "super admin"].includes(user.role);
+
+  // Only offer "Invite to Job" when the client already has a live job
+  useEffect(() => {
+    let cancelled = false;
+    if (!canBookModels || !user?.uid) {
+      setHasLiveJob(false);
+      return undefined;
+    }
+    fetchLiveJobs(user.uid)
+      .then((jobs) => !cancelled && setHasLiveJob(jobs.length > 0))
+      .catch((err) => {
+        console.warn("Could not check for live jobs:", err.message);
+        if (!cancelled) setHasLiveJob(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [canBookModels, user?.uid]);
 
   // Check if current user can toggle visibility (admin, super admin, or profile owner)
   const isAdmin = user && ["admin", "super admin"].includes(user.role);
@@ -395,6 +416,19 @@ function PublicProfile() {
                           }}
                         >
                           Book Model
+                        </MDButton>
+                      )}
+                      {hasLiveJob && profile?.role === "model" && (
+                        <MDButton
+                          variant="outlined"
+                          color="dark"
+                          size="large"
+                          fullWidth
+                          onClick={() => setInviteModalOpen(true)}
+                          startIcon={<Icon>send</Icon>}
+                          sx={{ py: 1.5, letterSpacing: "2px", fontWeight: 500, mb: 2 }}
+                        >
+                          Invite to Job
                         </MDButton>
                       )}
                       {canFavourite && user.uid !== profileUid && (
@@ -798,6 +832,17 @@ function PublicProfile() {
         <BookModelModal
           open={bookModelModalOpen}
           onClose={() => setBookModelModalOpen(false)}
+          model={profile}
+          currentUser={user}
+        />
+      )}
+
+      {/* Invite to Job Modal */}
+      {canBookModels && hasLiveJob && profile && (
+        <BookModelModal
+          mode="invite"
+          open={inviteModalOpen}
+          onClose={() => setInviteModalOpen(false)}
           model={profile}
           currentUser={user}
         />

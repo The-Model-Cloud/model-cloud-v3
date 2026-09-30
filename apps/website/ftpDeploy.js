@@ -12,7 +12,7 @@ const config = {
   localRoot: path.join(__dirname, "out"),
   remoteRoot: process.env.FTP_REMOTE_ROOT || "/",
   include: ["*", "**/*", ".htaccess"],  // Include dotfiles like .htaccess
-  deleteRemote: false,
+  deleteRemote: true,
   forcePasv: true,
 };
 

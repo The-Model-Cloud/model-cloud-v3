@@ -9,7 +9,7 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import PropTypes from "prop-types";
-import { collection, query, where, getDocs, doc, getDoc } from "firebase/firestore";
+import { doc, getDoc } from "firebase/firestore";
 import { db } from "config/firebase";
 
 // MUI components
@@ -37,8 +37,9 @@ import MDTypography from "components/MDTypography";
 
 // Utils
 import { sendJobInvitation } from "utils/invitations";
+import { fetchLiveJobs } from "utils/liveJobs";
 
-function BookModelModal({ open, onClose, model, currentUser }) {
+function BookModelModal({ open, onClose, model, currentUser, mode }) {
   const navigate = useNavigate();
   const [jobs, setJobs] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -68,56 +69,13 @@ function BookModelModal({ open, onClose, model, currentUser }) {
     setError(null);
 
     try {
-      // Get user's job references from their profile
-      const userRef = doc(db, "users", currentUser.uid);
-      const userSnap = await getDoc(userRef);
+      const allJobs = await fetchLiveJobs(currentUser.uid);
 
-      if (!userSnap.exists()) {
+      if (allJobs.length === 0) {
         setJobs([]);
         setLoading(false);
         return;
       }
-
-      const userData = userSnap.data();
-      const jobRefs = userData.jobs || [];
-
-      if (jobRefs.length === 0) {
-        setJobs([]);
-        setLoading(false);
-        return;
-      }
-
-      // Fetch jobs by reference - batch if more than 30
-      const batchSize = 30;
-      const batches = [];
-      for (let i = 0; i < jobRefs.length; i += batchSize) {
-        batches.push(jobRefs.slice(i, i + batchSize));
-      }
-
-      const allJobs = [];
-      for (const batch of batches) {
-        const jobsQuery = query(collection(db, "jobs"), where("reference", "in", batch));
-        const jobDocs = await getDocs(jobsQuery);
-
-        jobDocs.forEach((docSnap) => {
-          const data = docSnap.data();
-          // Only include open jobs (not completed, not cancelled)
-          const status = (data.status || "open").toLowerCase();
-          if (status !== "completed" && status !== "cancelled") {
-            allJobs.push({
-              id: docSnap.id,
-              ...data,
-            });
-          }
-        });
-      }
-
-      // Sort by creation date (newest first)
-      allJobs.sort((a, b) => {
-        const dateA = a.createdAt ? new Date(a.createdAt) : new Date(0);
-        const dateB = b.createdAt ? new Date(b.createdAt) : new Date(0);
-        return dateB - dateA;
-      });
 
       // Check which jobs this model has already been invited to
       const jobsWithInviteStatus = await Promise.all(
@@ -218,7 +176,7 @@ function BookModelModal({ open, onClose, model, currentUser }) {
           )}
           <MDBox>
             <MDTypography variant="h6" fontWeight="medium">
-              Book {modelName}
+              {mode === "invite" ? `Invite ${modelName} to a Job` : `Book ${modelName}`}
             </MDTypography>
             <MDTypography variant="caption" color="text">
               Select a job to invite this model to
@@ -408,6 +366,7 @@ function BookModelModal({ open, onClose, model, currentUser }) {
 }
 
 BookModelModal.defaultProps = {
+  mode: "book",
   model: null,
   currentUser: null,
 };
@@ -415,6 +374,7 @@ BookModelModal.defaultProps = {
 BookModelModal.propTypes = {
   open: PropTypes.bool.isRequired,
   onClose: PropTypes.func.isRequired,
+  mode: PropTypes.oneOf(["book", "invite"]),
   model: PropTypes.shape({
     uid: PropTypes.string.isRequired,
     firstName: PropTypes.string,

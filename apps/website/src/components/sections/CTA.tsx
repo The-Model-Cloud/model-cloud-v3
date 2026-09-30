@@ -59,10 +59,10 @@ export function CTA() {
                 asChild
                 className="text-lg px-8 bg-white text-primary hover:bg-white/90"
               >
-                <Link href={cta.primaryCta.href}>
+                <a href={PLATFORM_URLS.signUp}>
                   {cta.primaryCta.text}
                   <ArrowRight className="ml-2 h-5 w-5" />
-                </Link>
+                </a>
               </Button>
               <Button
                 size="lg"

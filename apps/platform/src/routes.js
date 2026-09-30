@@ -35,7 +35,8 @@ import MessagesInbox from "layouts/messages";
 import Calendar from "layouts/applications/calendar";
 import SignInIllustration from "layouts/authentication/sign-in/illustration";
 import SignUpIllustration from "layouts/authentication/sign-up/illustration";
-import ResetCover from "layouts/authentication/reset-password/cover";
+import ResetPasswordIllustration from "layouts/authentication/reset-password/illustration";
+import AuthAction from "layouts/authentication/auth-action";
 import TermsAndConditions from "layouts/pages/terms";
 import NewJob from "layouts/jobs/new-job";
 import MyJobs from "layouts/jobs/my-jobs";
@@ -55,6 +56,7 @@ import CleanupCloudinary from "layouts/admin/delete-data/CleanupCloudinary";
 import OptimizeImages from "layouts/admin/optimize-images";
 import ModelData from "layouts/admin/model-data";
 import AdminLogs from "layouts/admin/logs";
+import LoggedInUsers from "layouts/admin/logged-in-users";
 import AllModels from "layouts/models/all";
 import BrowseModels from "layouts/models/browse";
 import ModelSettingsProxy from "layouts/pages/account/settings/ModelSettingsProxy";
@@ -65,6 +67,7 @@ import AllAccountManagers from "layouts/admin/users/account-managers";
 import Organisations from "layouts/admin/organisations";
 import OrganisationDetail from "layouts/admin/organisations/detail";
 import AdminDashboard from "layouts/admin/dashboard";
+import NotifyModels from "layouts/admin/notify-models";
 
 // CMS management layouts (for super admin)
 import { CMSSiteContent, CMSPricing, CMSContactSubmissions, CMSPageMetadata } from "layouts/admin/cms";
@@ -535,12 +538,28 @@ const routes = [
         icon: <Icon fontSize="small">analytics</Icon>,
       },
       {
+        name: "Notify Models of Matching Jobs",
+        key: "notify-models",
+        route: "/admin/notify-models",
+        component: <NotifyModels />,
+        roles: ["super admin"],
+        icon: <Icon fontSize="small">campaign</Icon>,
+      },
+      {
         name: "Admin Logs",
         key: "admin-logs",
         route: "/admin/logs",
         component: <AdminLogs />,
         roles: ["super admin"],
         icon: <Icon fontSize="small">history</Icon>,
+      },
+      {
+        name: "Logged In Users",
+        key: "logged-in-users",
+        route: "/admin/logged-in-users",
+        component: <LoggedInUsers />,
+        roles: ["super admin"],
+        icon: <Icon fontSize="small">manage_accounts</Icon>,
       },
     ],
   },
@@ -837,8 +856,14 @@ const routes = [
       {
         name: "Reset Password",
         key: "reset-password",
-        route: "/authentication/reset-password/cover",
-        component: <ResetCover />,
+        route: "/reset-password",
+        component: <ResetPasswordIllustration />,
+      },
+      {
+        name: "Auth Action",
+        key: "auth-action",
+        route: "/auth/action",
+        component: <AuthAction />,
       },
       {
         name: "Terms and Conditions",
@@ -939,7 +964,11 @@ export const cleanRoutes = (routes) => {
   });
 };
 
-// Routes that unverified models ARE allowed to access (keys)
+// Roles that bypass verification and always have full access (staff roles)
+const STAFF_ROLES = ["admin", "super admin", "account manager"];
+
+// Routes that unverified clients/models ARE allowed to access (keys)
+// All other routes are hidden until admin approves the account
 const UNVERIFIED_ALLOWED_KEYS = [
   "dashboard",
   "profile-overview",
@@ -949,19 +978,24 @@ const UNVERIFIED_ALLOWED_KEYS = [
   "sign-up",
   "logout",
   "my-profile",
+  "account",   // Account collapse parent - must be visible so its allowed children show
 ];
 
 /**
- * Filter routes for unverified models
+ * Filter routes for unverified users (models and clients).
+ * Restricts access to Dashboard and Edit Profile until an admin verifies the account.
+ * Staff roles (admin, super admin, account manager) are never restricted.
  * @param {Array} routes - Array of route objects
  * @param {Object} user - The user object from auth context
- * @returns {Array} - Filtered routes the unverified model can access
+ * @returns {Array} - Filtered routes the unverified user can access
  */
 export const filterRoutesForUnverifiedModel = (routes, user) => {
-  // Only apply this filter for unverified models
-  if (!user || user.role !== "model" || user.verified === true) {
+  // Skip filter for staff roles or already verified users
+  if (!user || STAFF_ROLES.includes(user.role) || user.verified === true) {
     return routes;
   }
+
+  // Apply restriction for any unverified model or client
 
   return routes
     .filter((route) => {

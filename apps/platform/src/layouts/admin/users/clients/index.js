@@ -3,6 +3,7 @@ import { collection, getDocs, getFirestore, query, where, doc, updateDoc } from 
 
 // MUI and MD components
 import Card from "@mui/material/Card";
+import Chip from "@mui/material/Chip";
 import Icon from "@mui/material/Icon";
 import IconButton from "@mui/material/IconButton";
 import Tooltip from "@mui/material/Tooltip";
@@ -60,6 +61,21 @@ function AllClients() {
   const [changeLocationLoading, setChangeLocationLoading] = useState(false);
   const [changeLocationError, setChangeLocationError] = useState(null);
   const [successMessage, setSuccessMessage] = useState("");
+
+  // Verify / unverify a client account
+  const handleToggleVerification = useCallback(async (user) => {
+    const newVerified = !user.verified;
+    try {
+      const db = getFirestore();
+      await updateDoc(doc(db, "users", user.uid), { verified: newVerified });
+      setRawClients((prev) =>
+        prev.map((u) => (u.uid === user.uid ? { ...u, verified: newVerified } : u))
+      );
+      setSuccessMessage(`${user.name || "Client"} ${newVerified ? "verified" : "unverified"} successfully`);
+    } catch (err) {
+      console.error("Error toggling client verification:", err);
+    }
+  }, []);
 
   // Action handlers
   const handleDeleteClick = useCallback((user) => {
@@ -260,6 +276,7 @@ function AllClients() {
           state: data.state || "",
           country: data.country || "",
           status: data.status || "",
+          verified: data.verified === true,
           profileAvatar: data.profileAvatar || "",
           createdAt: data.createdAt || null,
         };
@@ -302,6 +319,22 @@ function AllClients() {
         { Header: "Location", accessor: "city", Cell: ({ value }) => value || "—" },
         { Header: "Status", accessor: "status", width: "8%" },
         {
+          Header: "Verified",
+          accessor: "verified",
+          width: "10%",
+          Cell: ({ row }) => {
+            const { verified } = row.original;
+            return (
+              <Chip
+                label={verified ? "Verified" : "Unverified"}
+                color={verified ? "success" : "warning"}
+                size="small"
+                icon={<Icon sx={{ fontSize: "16px !important" }}>{verified ? "verified_user" : "gpp_maybe"}</Icon>}
+              />
+            );
+          },
+        },
+        {
           Header: "Created",
           accessor: "createdAt",
           sortType: (rowA, rowB) => {
@@ -325,8 +358,18 @@ function AllClients() {
           width: "18%",
           Cell: ({ row }) => {
             const user = row.original;
+            const isCurrentUser = user.uid === currentUser?.uid;
             return (
               <MDBox display="flex" gap={0.5}>
+                <Tooltip title={user.verified ? "Unverify Client" : "Verify Client"}>
+                  <IconButton
+                    size="small"
+                    onClick={() => handleToggleVerification(user)}
+                    sx={{ color: user.verified ? "#ed6c02" : "#2e7d32" }}
+                  >
+                    <Icon fontSize="small">{user.verified ? "gpp_maybe" : "verified_user"}</Icon>
+                  </IconButton>
+                </Tooltip>
                 <Tooltip title="Reset Password">
                   <IconButton size="small" onClick={() => handleResetPasswordClick(user)} sx={{ color: "#1976d2" }}>
                     <Icon fontSize="small">lock_reset</Icon>
@@ -347,11 +390,13 @@ function AllClients() {
                     <Icon fontSize="small">location_on</Icon>
                   </IconButton>
                 </Tooltip>
-                <Tooltip title="Delete Client">
-                  <IconButton size="small" onClick={() => handleDeleteClick(user)} sx={{ color: "#d32f2f" }}>
-                    <Icon fontSize="small">delete</Icon>
-                  </IconButton>
-                </Tooltip>
+                {!isCurrentUser && (
+                  <Tooltip title="Delete Client">
+                    <IconButton size="small" onClick={() => handleDeleteClick(user)} sx={{ color: "#d32f2f" }}>
+                      <Icon fontSize="small">delete</Icon>
+                    </IconButton>
+                  </Tooltip>
+                )}
               </MDBox>
             );
           },
@@ -359,7 +404,7 @@ function AllClients() {
       ],
       rows: rawClients,
     });
-  }, [rawClients, handleDeleteClick, handleResetPasswordClick, handleChangeEmailClick, handleChangeNameClick, handleChangeLocationClick, navigate]);
+  }, [rawClients, handleDeleteClick, handleToggleVerification, handleResetPasswordClick, handleChangeEmailClick, handleChangeNameClick, handleChangeLocationClick, navigate]);
 
   return (
     <DashboardLayout>

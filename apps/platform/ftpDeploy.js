@@ -12,8 +12,8 @@ const config = {
   port: parseInt(process.env.FTP_PORT, 10) || 21,
   localRoot: path.join(__dirname, "build"),
   remoteRoot: process.env.FTP_REMOTE_ROOT || "/",
-  include: ["*", "**/*"],
-  deleteRemote: false,
+  include: ["*", "**/*", ".*", "**/.*"],
+  deleteRemote: true,
   forcePasv: true,
 };
 

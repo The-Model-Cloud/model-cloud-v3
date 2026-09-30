@@ -282,6 +282,15 @@ export interface HomeCTA extends SiteContentBase {
   secondaryCta: CTAButton;
 }
 
+export interface HeroModelImage {
+  url: string; // Cloudinary URL
+  alt?: string;
+}
+
+export interface HomeHeroModels extends SiteContentBase {
+  images: HeroModelImage[];
+}
+
 // Navigation link type
 export interface NavLink {
   href: string;
@@ -390,6 +399,7 @@ export type SiteContent =
   | ContactFAQTeaser
   | FAQContactCTA
   | HomeHero
+  | HomeHeroModels
   | HomeFeatures
   | HomeHowItWorks
   | HomeTestimonials
@@ -428,6 +438,7 @@ export type SiteContentId =
   | "contact-faqTeaser"
   | "faq-cta"
   | "home-hero"
+  | "home-heroModels"
   | "home-features"
   | "home-howItWorks"
   | "home-testimonials"

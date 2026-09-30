@@ -1163,7 +1163,7 @@ exports.sendModelApplicationConfirmation = onCall(async (request) => {
       <p>Hi ${modelName},</p>
       <p>Your application for <strong>${jobTitle}</strong> has been submitted.</p>
       <p>Reference: ${jobReference}</p>
-      <p><a href="https://themodel.cloud/jobs/${jobReference}">View job</a></p>
+      <p><a href="https://app.themodel.cloud/jobs/${jobReference}">View job</a></p>
     `
   };
 
@@ -1203,7 +1203,7 @@ exports.sendJobInvitationEmail = onCall(async (request) => {
     to,
     from: sendgridFromEmail,
     subject: `You've Been Invited to Apply – ${jobTitle}`,
-    text: `Hi ${modelName},\n\n${senderName} has invited you to apply for the job "${jobTitle}".\n\nView the job and apply here: https://themodel.cloud/jobs/${jobReference}\n\nGood luck!\n\nThe Model Cloud Team`,
+    text: `Hi ${modelName},\n\n${senderName} has invited you to apply for the job "${jobTitle}".\n\nView the job and apply here: https://app.themodel.cloud/jobs/${jobReference}\n\nGood luck!\n\nThe Model Cloud Team`,
     html: `
       <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
         <h2 style="color: #1976d2;">You've Been Invited!</h2>
@@ -1215,7 +1215,7 @@ exports.sendJobInvitationEmail = onCall(async (request) => {
         </div>
         <p>This invitation means the client thinks you'd be a great fit for this job. Don't miss this opportunity!</p>
         <p style="margin: 30px 0;">
-          <a href="https://themodel.cloud/jobs/${jobReference}" style="background-color: #1976d2; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; font-weight: bold;">View Job & Apply</a>
+          <a href="https://app.themodel.cloud/jobs/${jobReference}" style="background-color: #1976d2; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; font-weight: bold;">View Job & Apply</a>
         </p>
         <p style="color: #666; font-size: 14px;">Good luck!</p>
         <p style="color: #666; font-size: 14px;">The Model Cloud Team</p>
@@ -1442,7 +1442,8 @@ exports.sendWelcomeEmail = onCall(async (request) => {
 
 // Admin notification emails - add more recipients here as needed
 const ADMIN_NOTIFICATION_EMAILS = [
-  "russell@themodel.cloud"
+  "info@themodel.cloud",
+  "russell@themodel.cloud",
 ];
 
 // Firestore trigger: Send admin notification when a new user signs up
@@ -1633,7 +1634,7 @@ exports.onJobCreated = onDocumentCreated("jobs/{jobId}", async (event) => {
       }
 
       const modelName = model.firstName || "there";
-      const jobUrl = `https://themodel.cloud/jobs/${jobData.reference || jobId}`;
+      const jobUrl = `https://app.themodel.cloud/jobs/${jobData.reference || jobId}`;
 
       const msg = {
         to: model.email,
@@ -1680,7 +1681,7 @@ exports.onJobCreated = onDocumentCreated("jobs/{jobId}", async (event) => {
     // 5. Email the client with matching models (if they have emailOnModelMatch enabled)
     if (clientNotificationSettings.emailOnModelMatch !== false && matchingModels.length > 0) {
       const clientName = clientData.firstName || "there";
-      const jobUrl = `https://themodel.cloud/jobs/${jobData.reference || jobId}`;
+      const jobUrl = `https://app.themodel.cloud/jobs/${jobData.reference || jobId}`;
 
       // Build model list HTML (limit to first 10 for email)
       const displayModels = matchingModels.slice(0, 10);
@@ -1763,6 +1764,222 @@ exports.onJobCreated = onDocumentCreated("jobs/{jobId}", async (event) => {
   } catch (error) {
     console.error("Error processing job matching notifications:", error);
     return { success: false, error: error.message };
+  }
+});
+
+
+// ============================================================================
+// MANUAL JOB MATCH NOTIFICATIONS (Super Admin only)
+// ============================================================================
+
+/**
+ * Manually trigger job match emails for a specific job (Super Admin only)
+ * Reuses the same matching logic and email templates as onJobCreated
+ */
+exports.sendJobMatchEmailsManual = onCall({ region: "europe-west1" }, async (request) => {
+  if (!request.auth) {
+    throw new HttpsError("unauthenticated", "User must be logged in");
+  }
+
+  // Super admin only
+  const callerDoc = await db.collection("users").doc(request.auth.uid).get();
+  if (!callerDoc.exists || callerDoc.data().role !== "super admin") {
+    throw new HttpsError("permission-denied", "Only super admins can send manual notifications");
+  }
+
+  const { jobId, skipApplicants = true } = request.data;
+  if (!jobId) {
+    throw new HttpsError("invalid-argument", "jobId is required");
+  }
+
+  const jobDoc = await db.collection("jobs").doc(jobId).get();
+  if (!jobDoc.exists) {
+    throw new HttpsError("not-found", "Job not found");
+  }
+
+  const jobData = jobDoc.data();
+
+  // Check if emails are enabled in system settings
+  const emailEnabled = await isEmailEnabled();
+  if (!emailEnabled) {
+    return { success: false, reason: "Emails disabled by system settings", matchingModels: 0, modelEmailsSent: 0, clientEmailSent: false };
+  }
+
+  if (!sendgridApiKey) {
+    return { success: false, reason: "SendGrid not configured", matchingModels: 0, modelEmailsSent: 0, clientEmailSent: false };
+  }
+
+  try {
+    // Get the job creator (client)
+    const clientDoc = await db.collection("users").doc(jobData.userId).get();
+    if (!clientDoc.exists) {
+      throw new HttpsError("not-found", `Job creator not found: ${jobData.userId}`);
+    }
+    const clientData = clientDoc.data();
+    const clientNotificationSettings = clientData.notificationSettings || {};
+
+    // Find all verified models
+    const modelsSnapshot = await db.collection("users")
+      .where("role", "==", "model")
+      .where("isVerified", "==", true)
+      .get();
+
+    console.log(`[Manual] Found ${modelsSnapshot.size} verified models to check`);
+
+    // Filter models that match the job
+    const existingApplicants = skipApplicants ? (jobData.applicants || []) : [];
+    const matchingModels = [];
+    for (const modelDoc of modelsSnapshot.docs) {
+      const modelData = modelDoc.data();
+      if (skipApplicants && existingApplicants.includes(modelDoc.id)) {
+        continue; // Skip models who already applied
+      }
+      if (doesModelMatchJob(modelData, jobData)) {
+        matchingModels.push({ uid: modelDoc.id, ...modelData });
+      }
+    }
+
+    console.log(`[Manual] Found ${matchingModels.length} matching models for job: ${jobData.title}`);
+
+    let modelEmailsSent = 0;
+    let clientEmailSent = false;
+
+    // Email each matching model
+    for (const model of matchingModels) {
+      const modelNotificationSettings = model.notificationSettings || {};
+      if (modelNotificationSettings.emailOnJobMatch === false) continue;
+      if (!model.email) continue;
+
+      const modelName = model.firstName || "there";
+      const jobUrl = `https://app.themodel.cloud/jobs/${jobData.reference || jobId}`;
+
+      const msg = {
+        to: model.email,
+        from: sendgridFromEmail,
+        subject: `New Job Match: ${jobData.title}`,
+        html: `
+          <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+            <h2 style="color: #333;">New Job Matching Your Profile!</h2>
+            <p>Hi ${modelName},</p>
+            <p>Great news! A new job has been posted that matches your profile:</p>
+
+            <div style="background: #f8f9fa; padding: 20px; border-radius: 8px; margin: 20px 0;">
+              <h3 style="margin: 0 0 10px 0; color: #333;">${jobData.title}</h3>
+              ${jobData.location ? `<p style="margin: 5px 0; color: #666;"><strong>Location:</strong> ${jobData.location}</p>` : ""}
+              ${jobData.dateFrom ? `<p style="margin: 5px 0; color: #666;"><strong>Date:</strong> ${jobData.dateFrom}${jobData.dateTo ? ` - ${jobData.dateTo}` : ""}</p>` : ""}
+              ${jobData.rate ? `<p style="margin: 5px 0; color: #666;"><strong>Rate:</strong> ${jobData.currency || "£"}${jobData.rate}</p>` : ""}
+            </div>
+
+            <p>
+              <a href="${jobUrl}"
+                 style="background-color: #667eea; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; display: inline-block; font-weight: bold;">
+                View Job & Apply
+              </a>
+            </p>
+
+            <p style="color: #999; font-size: 12px; margin-top: 32px; border-top: 1px solid #eee; padding-top: 16px;">
+              You received this email because a job matching your profile was posted on The Model Cloud.
+              <br>
+              <a href="https://app.themodel.cloud/pages/account/settings" style="color: #667eea;">Manage your notification preferences</a>
+            </p>
+          </div>
+        `
+      };
+
+      try {
+        await sgMail.send(msg);
+        modelEmailsSent++;
+        console.log(`[Manual] ✅ Job match email sent to: ${model.email}`);
+      } catch (err) {
+        console.error(`[Manual] Failed to send to ${model.email}:`, err.message);
+      }
+    }
+
+    // Email the client with the matching model summary
+    if (clientNotificationSettings.emailOnModelMatch !== false && matchingModels.length > 0) {
+      const clientName = clientData.firstName || "there";
+      const jobUrl = `https://app.themodel.cloud/jobs/${jobData.reference || jobId}`;
+
+      const displayModels = matchingModels.slice(0, 10);
+      const modelListHtml = displayModels.map(model => {
+        const modelUrl = `https://app.themodel.cloud/${model.publicSlug || model.uid}`;
+        const modelName = `${model.firstName || ""} ${model.lastName || ""}`.trim() || "Model";
+        const avatarUrl = model.profileAvatar || "https://themodel.cloud/default-avatar.png";
+        return `
+          <tr>
+            <td style="padding: 10px; border-bottom: 1px solid #eee;">
+              <a href="${modelUrl}" style="display: flex; align-items: center; text-decoration: none; color: #333;">
+                <img src="${avatarUrl}" alt="${modelName}" style="width: 50px; height: 50px; border-radius: 50%; object-fit: cover; margin-right: 12px;">
+                <div>
+                  <strong>${modelName}</strong>
+                  ${model.city ? `<br><span style="color: #666; font-size: 12px;">${model.city}${model.country ? `, ${model.country}` : ""}</span>` : ""}
+                </div>
+              </a>
+            </td>
+            <td style="padding: 10px; border-bottom: 1px solid #eee; text-align: right;">
+              <a href="${modelUrl}" style="background-color: #28a745; color: white; padding: 6px 12px; text-decoration: none; border-radius: 4px; font-size: 12px;">View Profile</a>
+            </td>
+          </tr>
+        `;
+      }).join("");
+
+      const msg = {
+        to: clientData.email,
+        from: sendgridFromEmail,
+        subject: `${matchingModels.length} Models Match Your Job: ${jobData.title}`,
+        html: `
+          <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+            <h2 style="color: #333;">Models Matching Your Job Listing</h2>
+            <p>Hi ${clientName},</p>
+            <p>Great news! We found <strong>${matchingModels.length} models</strong> that match your job posting:</p>
+
+            <div style="background: #f8f9fa; padding: 15px; border-radius: 8px; margin: 15px 0;">
+              <strong>${jobData.title}</strong>
+            </div>
+
+            <table style="width: 100%; border-collapse: collapse; margin: 20px 0;">
+              ${modelListHtml}
+            </table>
+
+            ${matchingModels.length > 10 ? `<p style="color: #666; text-align: center;">...and ${matchingModels.length - 10} more</p>` : ""}
+
+            <p style="text-align: center;">
+              <a href="${jobUrl}"
+                 style="background-color: #667eea; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; display: inline-block; font-weight: bold;">
+                View All Matching Models
+              </a>
+            </p>
+
+            <p style="color: #999; font-size: 12px; margin-top: 32px; border-top: 1px solid #eee; padding-top: 16px;">
+              You received this email because you posted a job on The Model Cloud.
+              <br>
+              <a href="https://app.themodel.cloud/pages/account/settings" style="color: #667eea;">Manage your notification preferences</a>
+            </p>
+          </div>
+        `
+      };
+
+      try {
+        await sgMail.send(msg);
+        clientEmailSent = true;
+        console.log(`[Manual] ✅ Client match summary sent to: ${clientData.email}`);
+      } catch (err) {
+        console.error(`[Manual] Failed to send client email to ${clientData.email}:`, err.message);
+      }
+    }
+
+    console.log(`[Manual] Done: ${modelEmailsSent} model emails, client: ${clientEmailSent}`);
+
+    return {
+      success: true,
+      matchingModels: matchingModels.length,
+      modelEmailsSent,
+      clientEmailSent,
+      skippedApplicants: skipApplicants,
+    };
+  } catch (error) {
+    console.error("[Manual] Error sending job match emails:", error);
+    throw new HttpsError("internal", error.message);
   }
 });
 
@@ -8256,3 +8473,90 @@ exports.updateMailchimpSubscription = onCall(async (request) => {
     };
   }
 });
+
+// ============================================================================
+// PUBLIC HERO MODELS ENDPOINT
+// Returns random model profile images for the website hero section
+// ============================================================================
+
+exports.getHeroModels = onRequest(
+  { cors: true, region: "europe-west2" },
+  async (req, res) => {
+    try {
+      const count = Math.min(parseInt(req.query.count) || 6, 100); // Max 100 images
+
+      // Query models only by role, filter profileAvatar in code to avoid composite index
+      const usersRef = admin.firestore().collection("users");
+      const snapshot = await usersRef.where("role", "==", "model").get();
+
+      // Extract profile avatars (filter for those with profileAvatar)
+      const avatars = [];
+      snapshot.forEach((doc) => {
+        const data = doc.data();
+        if (data.profileAvatar && typeof data.profileAvatar === "string") {
+          avatars.push({
+            url: data.profileAvatar,
+            id: doc.id,
+          });
+        }
+      });
+
+      // Shuffle randomly
+      const shuffled = avatars.sort(() => Math.random() - 0.5);
+
+      // Return requested count
+      res.json({
+        success: true,
+        images: shuffled.slice(0, count),
+      });
+    } catch (error) {
+      console.error("Error fetching hero models:", error);
+      res.status(500).json({
+        success: false,
+        error: "Failed to fetch hero models",
+      });
+    }
+  }
+);
+
+/**
+ * Generate sitemap.xml for the platform, including all public model profiles.
+ * Served at https://app.themodel.cloud/sitemap.xml via Firebase Hosting rewrite.
+ */
+exports.platformSitemap = onRequest(
+  { region: "europe-west1", cors: false },
+  async (req, res) => {
+    try {
+      const snapshot = await db
+        .collection("users")
+        .where("role", "==", "model")
+        .where("hideFromSearch", "==", false)
+        .get();
+
+      const urls = [];
+
+      snapshot.forEach((doc) => {
+        const data = doc.data();
+        if (data.publicSlug) {
+          urls.push(`  <url>
+    <loc>https://app.themodel.cloud/${data.publicSlug}</loc>
+    <changefreq>weekly</changefreq>
+    <priority>0.6</priority>
+  </url>`);
+        }
+      });
+
+      const xml = `<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+${urls.join("\n")}
+</urlset>`;
+
+      res.set("Content-Type", "application/xml");
+      res.set("Cache-Control", "public, max-age=3600");
+      res.status(200).send(xml);
+    } catch (error) {
+      console.error("Error generating platform sitemap:", error);
+      res.status(500).send("Error generating sitemap");
+    }
+  }
+);

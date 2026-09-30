@@ -45,12 +45,21 @@ export function Header() {
   const dashboardUrl = platformUrl("/dashboard");
 
   // Use CMS content or fallbacks
+  // Reject any CMS image URL that isn't from an approved host to prevent
+  // stale Firestore data (e.g. sandbox.themodel.cloud) triggering auth prompts.
+  const safeImageUrl = (url: string | undefined, fallback: string): string => {
+    if (!url || url.includes("sandbox.themodel.cloud") || url.includes("v4.themodel.cloud")) {
+      return fallback;
+    }
+    return url;
+  };
+
   const headerContent = content.header;
   const navLinks = headerContent?.navLinks ?? fallbackNavLinks;
   const signInButtonText = headerContent?.signInButtonText ?? fallbackSignInText;
   const signUpButtonText = headerContent?.signUpButtonText ?? fallbackSignUpText;
-  const logoLightUrl = headerContent?.logoLightUrl || "/assets/logo-light.png";
-  const logoDarkUrl = headerContent?.logoDarkUrl || "/assets/logo-dark.png";
+  const logoLightUrl = safeImageUrl(headerContent?.logoLightUrl, "/assets/logo-light.png");
+  const logoDarkUrl = safeImageUrl(headerContent?.logoDarkUrl, "/assets/logo-dark.png");
 
   return (
     <header className="sticky top-0 z-50 w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
