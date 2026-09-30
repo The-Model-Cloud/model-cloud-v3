@@ -46,3 +46,9 @@ serviceAccountKey.json
 nul
 commit.sh
 /.claude
+
+# Service account keys - NEVER commit
+service-account*.json
+**/service-account*.json
+*-adminsdk-*.json
+serviceAccountKey*.json
