@@ -38,6 +38,7 @@ import SignUpIllustration from "layouts/authentication/sign-up/illustration";
 import ResetPasswordIllustration from "layouts/authentication/reset-password/illustration";
 import AuthAction from "layouts/authentication/auth-action";
 import TermsAndConditions from "layouts/pages/terms";
+import EmailPreferences from "layouts/pages/email-preferences";
 import NewJob from "layouts/jobs/new-job";
 import MyJobs from "layouts/jobs/my-jobs";
 import JobSearch from "layouts/jobs/search";
@@ -68,6 +69,7 @@ import Organisations from "layouts/admin/organisations";
 import OrganisationDetail from "layouts/admin/organisations/detail";
 import AdminDashboard from "layouts/admin/dashboard";
 import NotifyModels from "layouts/admin/notify-models";
+import EmailMigration from "layouts/admin/email-migration";
 
 // CMS management layouts (for super admin)
 import { CMSSiteContent, CMSPricing, CMSContactSubmissions, CMSPageMetadata } from "layouts/admin/cms";
@@ -546,6 +548,14 @@ const routes = [
         icon: <Icon fontSize="small">campaign</Icon>,
       },
       {
+        name: "Email Migration",
+        key: "email-migration",
+        route: "/admin/email-migration",
+        component: <EmailMigration />,
+        roles: ["super admin"],
+        icon: <Icon fontSize="small">forward_to_inbox</Icon>,
+      },
+      {
         name: "Admin Logs",
         key: "admin-logs",
         route: "/admin/logs",
@@ -870,6 +880,12 @@ const routes = [
         key: "terms",
         route: "/terms",
         component: <TermsAndConditions />,
+      },
+      {
+        name: "Email Preferences",
+        key: "email-preferences",
+        route: "/email-preferences",
+        component: <EmailPreferences />,
       },
     ],
   },

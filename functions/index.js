@@ -8560,3 +8560,9 @@ ${urls.join("\n")}
     }
   }
 );
+
+// ============================================================================
+// EMAIL PLATFORM (consent, preferences, migration opt-in) - see ./email
+// ============================================================================
+Object.assign(exports, require("./email"));
+Object.assign(exports, require("./accountDeletion"));

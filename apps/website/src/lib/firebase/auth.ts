@@ -11,6 +11,26 @@ import { auth, db } from "./config";
 import type { User, UserRole } from "@/types/user";
 import type { SubscriptionTier } from "@/types/subscription";
 
+/**
+ * Marketing consent recorded at sign-up. Must mirror the platform sign-up form and the
+ * server-side model in functions/email/consent.js. The checkbox is unticked by default,
+ * so "not_opted_in" is the norm and only an explicit tick produces "opted_in".
+ */
+function marketingConsentFields(marketingOptIn: boolean) {
+  return {
+    marketingConsent: {
+      status: marketingOptIn ? "opted_in" : "not_opted_in",
+      source: "signup",
+      date: serverTimestamp(),
+    },
+    marketingPreferences: {
+      newLaunches: marketingOptIn,
+      productUpdates: marketingOptIn,
+      newsletter: marketingOptIn,
+    },
+  };
+}
+
 export async function signIn(email: string, password: string) {
   const userCredential = await signInWithEmailAndPassword(auth, email, password);
   return userCredential.user;
@@ -21,7 +41,8 @@ export async function signUp(
   password: string,
   firstName: string,
   lastName: string,
-  role: UserRole
+  role: UserRole,
+  marketingOptIn = false
 ) {
   const userCredential = await createUserWithEmailAndPassword(auth, email, password);
   const user = userCredential.user;
@@ -34,6 +55,7 @@ export async function signUp(
     lastName,
     role,
     verified: false,
+    ...marketingConsentFields(marketingOptIn),
     createdAt: serverTimestamp(),
     updatedAt: serverTimestamp(),
   });
@@ -47,7 +69,8 @@ export async function signUpClient(
   firstName: string,
   lastName: string,
   companyName: string,
-  selectedTier: SubscriptionTier
+  selectedTier: SubscriptionTier,
+  marketingOptIn = false
 ) {
   const userCredential = await createUserWithEmailAndPassword(auth, email, password);
   const user = userCredential.user;
@@ -66,6 +89,7 @@ export async function signUpClient(
       intendedTier: selectedTier,
       status: selectedTier === "free" ? "active" : "pending_payment",
     },
+    ...marketingConsentFields(marketingOptIn),
     createdAt: serverTimestamp(),
     updatedAt: serverTimestamp(),
   });

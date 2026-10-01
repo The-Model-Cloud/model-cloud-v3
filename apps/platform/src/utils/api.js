@@ -1180,3 +1180,34 @@ export const getTransactionHistory = async (limit = 50) => {
     throw error;
   }
 };
+
+/**
+ * Call a Cloud Function that does not require a signed-in user (token-authenticated links,
+ * e.g. the public email preferences page). Unlike callCloudFunction this throws on failure
+ * so the caller can show the error.
+ */
+export const callPublicCloudFunction = async (functionName, data) => {
+  const callable = httpsCallable(getFirebaseFunctions(), functionName);
+  const result = await callable(data);
+  return result.data;
+};
+
+/**
+ * Permanently delete the signed-in user's own account (server-side, GDPR erasure).
+ * Throws on failure so the UI can show the reason.
+ */
+export const deleteMyAccount = async () => {
+  const callable = httpsCallable(getFirebaseFunctions(), "deleteMyAccount");
+  const result = await callable();
+  return result.data;
+};
+
+/**
+ * Call a Cloud Function as the signed-in user and throw on failure (callCloudFunction swallows
+ * errors and returns {success:false}, which is wrong for admin tools that must show the real result).
+ */
+export const callCloudFunctionStrict = async (functionName, data) => {
+  const callable = httpsCallable(getFirebaseFunctions(), functionName);
+  const result = await callable(data);
+  return result.data;
+};

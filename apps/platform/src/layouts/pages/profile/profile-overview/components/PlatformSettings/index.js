@@ -57,7 +57,10 @@ import { doc, getDoc, updateDoc } from "firebase/firestore";
 import { db } from "config/firebase";
 
 // API
-import { getSystemSettings, updateSystemSettings, callCloudFunction } from "utils/api";
+import { getSystemSettings, updateSystemSettings, callCloudFunction, callCloudFunctionStrict } from "utils/api";
+
+// MD button
+import MDButton from "components/MDButton";
 
 function PlatformSettings() {
   const { user } = useAuth();
@@ -74,6 +77,11 @@ function PlatformSettings() {
   const [newLaunches, setNewLaunches] = useState(false);
   const [productUpdates, setProductUpdates] = useState(false);
   const [newsletter, setNewsletter] = useState(false);
+
+  // Overall marketing consent: "opted_out" means the user unsubscribed from all emails
+  const [consentStatus, setConsentStatus] = useState(null);
+  const [bulkSaving, setBulkSaving] = useState(false);
+  const [bulkError, setBulkError] = useState("");
 
   // Super Admin email toggle state
   const [emailEnabled, setEmailEnabled] = useState(true);
@@ -111,6 +119,7 @@ function PlatformSettings() {
           setNewLaunches(marketingPreferences.newLaunches === true);
           setProductUpdates(marketingPreferences.productUpdates === true);
           setNewsletter(marketingPreferences.newsletter === true);
+          setConsentStatus(data.marketingConsent?.status || null);
         }
       } catch (err) {
         console.error("Failed to fetch user settings:", err);
@@ -165,7 +174,22 @@ function PlatformSettings() {
     }
   };
 
-  // Handler for marketing preferences (with Mailchimp sync)
+  // Apply the server's view of the user's preferences to local state
+  const applyServerPreferences = (result) => {
+    const n = result.notificationSettings || {};
+    const m = result.marketingPreferences || {};
+    setEmailOnMessage(n.emailOnMessage !== false);
+    setEmailOnJobMatch(n.emailOnJobMatch !== false);
+    setEmailOnModelMatch(n.emailOnModelMatch !== false);
+    setEmailOnJobApplication(n.emailOnJobApplication !== false);
+    setNewLaunches(m.newLaunches === true);
+    setProductUpdates(m.productUpdates === true);
+    setNewsletter(m.newsletter === true);
+    setConsentStatus(result.consentStatus || null);
+  };
+
+  // Handler for a single marketing category (soft opt-in/out). Done server-side so that turning a
+  // category on also records consent and lifts any earlier unsubscribe.
   const handleMarketingToggle = async (preferenceKey, currentValue, setter) => {
     if (!user?.uid || saving[preferenceKey]) return;
 
@@ -173,13 +197,15 @@ function PlatformSettings() {
     setSaving((prev) => ({ ...prev, [preferenceKey]: true }));
 
     try {
-      // Update Firestore
-      const userRef = doc(db, "users", user.uid);
-      await updateDoc(userRef, {
-        [`marketingPreferences.${preferenceKey}`]: newValue,
+      const result = await callCloudFunctionStrict("updateMyEmailPreferences", {
+        action: "set_marketing_pref",
+        key: preferenceKey,
+        value: newValue,
       });
+      setter(newValue);
+      setConsentStatus(result.consentStatus || null);
 
-      // Sync with Mailchimp via Cloud Function
+      // Legacy Mailchimp sync (to be retired once Mailchimp is replaced)
       try {
         await callCloudFunction("updateMailchimpSubscription", {
           email: user.email,
@@ -191,12 +217,34 @@ function PlatformSettings() {
       } catch (mailchimpErr) {
         console.warn("Mailchimp sync failed (continuing anyway):", mailchimpErr);
       }
-
-      setter(newValue);
     } catch (err) {
       console.error(`Failed to update ${preferenceKey}:`, err);
     } finally {
       setSaving((prev) => ({ ...prev, [preferenceKey]: false }));
+    }
+  };
+
+  // Full unsubscribe / re-subscribe
+  const handleBulk = async (action) => {
+    if (bulkSaving) return;
+    if (
+      action === "unsubscribe_all" &&
+      !window.confirm(
+        "Unsubscribe from all emails? You'll stop receiving marketing emails and notification emails. We'll still send essential account emails such as password resets and payment receipts."
+      )
+    ) {
+      return;
+    }
+
+    setBulkSaving(true);
+    setBulkError("");
+    try {
+      applyServerPreferences(await callCloudFunctionStrict("updateMyEmailPreferences", { action }));
+    } catch (err) {
+      console.error(`Failed to ${action}:`, err);
+      setBulkError("Something went wrong. Please try again.");
+    } finally {
+      setBulkSaving(false);
     }
   };
 
@@ -348,6 +396,42 @@ function PlatformSettings() {
           "newsletter",
           "General news and industry insights"
         )}
+
+        {/* Hard opt-out / opt-in for everything */}
+        <MDBox mt={3}>
+          {consentStatus === "opted_out" ? (
+            <>
+              <MDTypography variant="caption" color="text" display="block" mb={1}>
+                You&apos;re unsubscribed from all emails. We still send essential account emails
+                (password resets, payments).
+              </MDTypography>
+              <MDButton
+                variant="gradient"
+                color="info"
+                size="small"
+                disabled={bulkSaving}
+                onClick={() => handleBulk("subscribe_all")}
+              >
+                {bulkSaving ? "Saving..." : "Subscribe to all emails"}
+              </MDButton>
+            </>
+          ) : (
+            <MDButton
+              variant="outlined"
+              color="error"
+              size="small"
+              disabled={bulkSaving}
+              onClick={() => handleBulk("unsubscribe_all")}
+            >
+              {bulkSaving ? "Saving..." : "Unsubscribe from all emails"}
+            </MDButton>
+          )}
+          {bulkError && (
+            <MDTypography variant="caption" color="error" display="block" mt={1}>
+              {bulkError}
+            </MDTypography>
+          )}
+        </MDBox>
 
         {/* Super Admin Section - Only visible to super admins */}
         {isSuperAdmin && (

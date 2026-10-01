@@ -8,6 +8,7 @@ import { z } from "zod";
 import { signUp } from "@/lib/firebase/auth";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Card,
   CardContent,
@@ -43,6 +44,7 @@ const signUpSchema = z
     password: z.string().min(6, "Password must be at least 6 characters"),
     confirmPassword: z.string(),
     role: z.enum(["model", "client"]),
+    marketingOptIn: z.boolean(),
   })
   .refine((data) => data.password === data.confirmPassword, {
     message: "Passwords don't match",
@@ -63,6 +65,7 @@ export default function SignUpContent() {
       email: "",
       password: "",
       confirmPassword: "",
+      marketingOptIn: false,
     },
   });
 
@@ -74,7 +77,8 @@ export default function SignUpContent() {
         data.password,
         data.firstName,
         data.lastName,
-        data.role as UserRole
+        data.role as UserRole,
+        data.marketingOptIn
       );
       toast.success("Account created successfully!");
 
@@ -234,7 +238,27 @@ export default function SignUpContent() {
                 )}
               />
 
-              <Button type="submit" className="w-full" disabled={isLoading}>
+            <FormField
+              control={form.control}
+              name="marketingOptIn"
+              render={({ field }) => (
+                <FormItem className="flex flex-row items-start space-x-3 space-y-0">
+                  <FormControl>
+                    <Checkbox
+                      checked={field.value}
+                      onCheckedChange={(checked) => field.onChange(checked === true)}
+                      disabled={isLoading}
+                    />
+                  </FormControl>
+                  <FormLabel className="text-sm font-normal leading-snug text-muted-foreground">
+                    Keep me updated with news, launches and product updates by email
+                    (optional). You can unsubscribe at any time.
+                  </FormLabel>
+                </FormItem>
+              )}
+            />
+
+            <Button type="submit" className="w-full" disabled={isLoading}>
                 {isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                 Create Account
               </Button>

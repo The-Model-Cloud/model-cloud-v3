@@ -67,7 +67,8 @@ function ClientSignUpForm() {
         formData.firstName,
         formData.lastName,
         formData.companyName,
-        "free"
+        "free",
+        formData.marketingOptIn
       );
 
       // Brief delay for auth state to propagate
@@ -108,7 +109,8 @@ function ClientSignUpForm() {
         formData.firstName,
         formData.lastName,
         formData.companyName,
-        selectedTier
+        selectedTier,
+        formData.marketingOptIn
       );
 
       // Brief delay for auth state to propagate

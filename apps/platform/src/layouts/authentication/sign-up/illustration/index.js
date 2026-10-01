@@ -32,7 +32,7 @@ import fallbackImage from "assets/images/illustrations/signup-image-1.png";
 import { createUserWithEmailAndPassword, updateProfile, sendEmailVerification } from "firebase/auth";
 import { auth } from "config/firebase";
 import { db } from "config/firebase";
-import { doc, setDoc } from "firebase/firestore";
+import { doc, setDoc, serverTimestamp } from "firebase/firestore";
 
 function SignUpIllustration() {
 
@@ -47,6 +47,8 @@ function SignUpIllustration() {
     const [password, setPassword] = useState("");
     const [role, setRole] = useState("model");
     const [agree, setAgree] = useState(false);
+    // Marketing consent must be a separate, unticked-by-default choice (not bundled with the terms)
+    const [marketingOptIn, setMarketingOptIn] = useState(false);
     const [error, setError] = useState("");
     const [companyName, setCompanyName] = useState("");
 
@@ -178,6 +180,16 @@ function SignUpIllustration() {
                 companyName,
                 createdAt: new Date().toISOString(),
                 verified: false, // All new users require admin verification before full access
+                marketingConsent: {
+                    status: marketingOptIn ? "opted_in" : "not_opted_in",
+                    source: "signup",
+                    date: serverTimestamp(),
+                },
+                marketingPreferences: {
+                    newLaunches: marketingOptIn,
+                    productUpdates: marketingOptIn,
+                    newsletter: marketingOptIn,
+                },
             });
 
             // Set logged in flag to remember login status
@@ -319,6 +331,20 @@ function SignUpIllustration() {
                         textGradient
                     >
                         Terms and Conditions
+                    </MDTypography>
+                </MDBox>
+
+                <MDBox display="flex" alignItems="flex-start" ml={-1}>
+                    <Checkbox checked={marketingOptIn} onChange={() => setMarketingOptIn(!marketingOptIn)} />
+                    <MDTypography
+                        variant="button"
+                        fontWeight="regular"
+                        color="text"
+                        sx={{ cursor: "pointer", userSelect: "none", ml: -1, mt: 1 }}
+                        onClick={() => setMarketingOptIn(!marketingOptIn)}
+                    >
+                        &nbsp;&nbsp;Keep me updated with news, launches and product updates by email (optional).
+                        You can unsubscribe at any time.
                     </MDTypography>
                 </MDBox>
 

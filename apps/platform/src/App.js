@@ -187,6 +187,7 @@ export default function App() {
     "/sign-in",
     "/sign-up",
     "/reset-password",
+    "/email-preferences",
   ];
 
   const isRouteAllowedForUnverified = (routePath) => {
