@@ -70,6 +70,7 @@ import OrganisationDetail from "layouts/admin/organisations/detail";
 import AdminDashboard from "layouts/admin/dashboard";
 import NotifyModels from "layouts/admin/notify-models";
 import EmailMigration from "layouts/admin/email-migration";
+import EmailConsent from "layouts/admin/email-consent";
 
 // CMS management layouts (for super admin)
 import { CMSSiteContent, CMSPricing, CMSContactSubmissions, CMSPageMetadata } from "layouts/admin/cms";
@@ -556,6 +557,14 @@ const routes = [
         icon: <Icon fontSize="small">forward_to_inbox</Icon>,
       },
       {
+        name: "Email Consent",
+        key: "email-consent",
+        route: "/admin/email-consent",
+        component: <EmailConsent />,
+        roles: ["super admin"],
+        icon: <Icon fontSize="small">how_to_reg</Icon>,
+      },
+      {
         name: "Admin Logs",
         key: "admin-logs",
         route: "/admin/logs",
@@ -740,6 +749,7 @@ const routes = [
         route: "/account/documents",
         component: <Invoice />, // Placeholder
         roles: ["model"], // Only models have documents
+        invisible: true, // Hidden from the menu for now (placeholder page). Remove to restore.
         icon: <Icon fontSize="small">folder</Icon>,
       },
       {
@@ -755,7 +765,7 @@ const routes = [
         key: "security",
         route: "/account/security",
         component: <Settings />, // Will need security component
-        roles: ["model", "account manager"],
+        roles: ["account manager"], // Hidden from models for now (placeholder page). Add "model" back to restore.
         icon: <Icon fontSize="small">security</Icon>,
       },
     ],
