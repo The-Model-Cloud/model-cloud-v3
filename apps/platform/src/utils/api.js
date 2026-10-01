@@ -1213,3 +1213,15 @@ export const callCloudFunctionStrict = async (functionName, data, options) => {
   const result = await callable(data);
   return result.data;
 };
+
+/**
+ * Cancel the booking on a job that has not been paid for (server-side).
+ * @param {string} jobId - Job ID
+ */
+export const cancelJobBooking = async (jobId) => {
+  const result = await callCloudFunction("cancelJobBooking", { jobId });
+  if (result.error && !result.success) {
+    throw new Error(result.error);
+  }
+  return result;
+};

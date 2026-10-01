@@ -25,7 +25,8 @@ import MDTypography from "components/MDTypography";
 import MDButton from "components/MDButton";
 
 // Notifications
-import { createNotification } from "utils/notifications";
+import { cancelJobBooking } from "utils/api";
+import { isPaymentPaid } from "utils/paymentStatus";
 
 function JobActionsSection({ job, isOwner, isAdmin, onActionComplete }) {
   const [closeDialogOpen, setCloseDialogOpen] = useState(false);
@@ -39,7 +40,7 @@ function JobActionsSection({ job, isOwner, isAdmin, onActionComplete }) {
 
   const jobStatus = (job.status || "open").toLowerCase();
   const isAwarded = !!job.awardedTo;
-  const isPaid = job.payment?.status === "authorized" || job.payment?.status === "captured";
+  const isPaid = isPaymentPaid(job.payment?.status) || job.payment?.status === "processing";
   const isCompleted = job.completion?.status === "completed";
 
   // Handle closing a job
@@ -92,38 +93,15 @@ function JobActionsSection({ job, isOwner, isAdmin, onActionComplete }) {
     setError(null);
 
     try {
-      const jobRef = doc(db, "jobs", job.id);
-
-      // Store who was awarded for notification
-      const awardedModelId = job.awardedTo.modelId;
-      const awardedModelName = job.awardedTo.modelName;
-
-      // Remove the award
-      await updateDoc(jobRef, {
-        awardedTo: deleteField(),
-        awardCancelledAt: new Date().toISOString(),
-        status: "open", // Reopen for new applications
-      });
-
-      // Notify the model that the award was cancelled
-      await createNotification(
-        awardedModelId,
-        "job_award_cancelled",
-        "Job Award Cancelled",
-        `The booking for "${job.title}" has been cancelled by the client.`,
-        {
-          jobId: job.id,
-          jobReference: job.reference,
-          jobTitle: job.title,
-          link: `/jobs/${job.reference}`,
-        }
-      ).catch(err => console.warn("Notification failed:", err));
+      // Done on the server: it cancels any unfinished payment, removes the award and notifies the model.
+      // (Paid bookings are refused and must be cancelled by support.)
+      await cancelJobBooking(job.id);
 
       setCancelAwardDialogOpen(false);
       onActionComplete?.();
     } catch (err) {
       console.error("Error cancelling award:", err);
-      setError("Failed to cancel booking. Please try again.");
+      setError(err?.message || "Failed to cancel booking. Please try again.");
     } finally {
       setProcessing(false);
     }

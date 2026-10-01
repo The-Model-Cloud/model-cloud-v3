@@ -80,6 +80,12 @@ if (stripe) {
 }
 
 // Stripe fee configuration
+const paymentHandlers = require("./payments/handlers");
+
+// Limits on what a client can agree for a job (GBP)
+const MIN_JOB_AMOUNT = parseFloat(process.env.MIN_JOB_AMOUNT || "5");
+const MAX_JOB_AMOUNT = parseFloat(process.env.MAX_JOB_AMOUNT || "100000");
+
 const PLATFORM_FEE_PERCENT = parseFloat(process.env.STRIPE_PLATFORM_FEE_PERCENT || "0.05"); // 5%
 const WITHDRAWAL_FEE_PERCENT = parseFloat(process.env.STRIPE_WITHDRAWAL_FEE_PERCENT || "0.015"); // 1.5%
 
@@ -5536,10 +5542,14 @@ exports.deletePaymentMethod = onCall(async (request) => {
   }
 
   try {
+    const userData = userDoc.data();
+    const existing = await stripe.paymentMethods.retrieve(paymentMethodId);
+    if (!userData.stripeCustomerId || existing.customer !== userData.stripeCustomerId) {
+      throw new HttpsError("permission-denied", "That payment method does not belong to you");
+    }
     await stripe.paymentMethods.detach(paymentMethodId);
 
     // Update user's saved payment methods list
-    const userData = userDoc.data();
     const updatedMethods = (userData.savedPaymentMethods || []).filter(
       (id) => id !== paymentMethodId
     );
@@ -5553,6 +5563,7 @@ exports.deletePaymentMethod = onCall(async (request) => {
 
     return { success: true };
   } catch (error) {
+    if (error instanceof HttpsError) throw error;
     console.error("Error deleting payment method:", error);
     throw new HttpsError("internal", error.message);
   }
@@ -5574,12 +5585,19 @@ exports.setDefaultPaymentMethod = onCall(async (request) => {
   const uid = request.auth.uid;
 
   try {
+    const userData = (await db.collection("users").doc(uid).get()).data() || {};
+    const existing = await stripe.paymentMethods.retrieve(paymentMethodId);
+    if (!userData.stripeCustomerId || existing.customer !== userData.stripeCustomerId) {
+      throw new HttpsError("permission-denied", "That payment method does not belong to you");
+    }
+
     await db.collection("users").doc(uid).update({
       defaultPaymentMethod: paymentMethodId,
     });
 
     return { success: true };
   } catch (error) {
+    if (error instanceof HttpsError) throw error;
     console.error("Error setting default payment method:", error);
     throw new HttpsError("internal", error.message);
   }
@@ -5599,10 +5617,18 @@ exports.awardJobToModel = onCall(async (request) => {
     throw new HttpsError("unauthenticated", "User must be logged in");
   }
 
-  const { jobId, modelId, agreedAmount, currency = "GBP" } = request.data;
+  const { jobId, modelId, agreedAmount: rawAmount, currency: rawCurrency } = request.data || {};
+  const agreedAmount = Number(rawAmount);
+  const currency = String(rawCurrency || "GBP").toUpperCase();
 
   if (!jobId || !modelId || !agreedAmount) {
     throw new HttpsError("invalid-argument", "Job ID, model ID, and agreed amount are required");
+  }
+  if (!Number.isFinite(agreedAmount) || agreedAmount < MIN_JOB_AMOUNT || agreedAmount > MAX_JOB_AMOUNT) {
+    throw new HttpsError("invalid-argument", `The agreed amount must be between ${MIN_JOB_AMOUNT} and ${MAX_JOB_AMOUNT}`);
+  }
+  if (currency !== "GBP") {
+    throw new HttpsError("invalid-argument", "Only GBP payments are supported at the moment");
   }
 
   const uid = request.auth.uid;
@@ -5623,6 +5649,9 @@ exports.awardJobToModel = onCall(async (request) => {
   // Verify job is not already awarded
   if (jobData.awardedTo) {
     throw new HttpsError("already-exists", "Job has already been awarded");
+  }
+  if ((jobData.status || "open") !== "open") {
+    throw new HttpsError("failed-precondition", "Only open jobs can be awarded");
   }
 
   // Verify model exists and has Stripe account
@@ -5659,9 +5688,10 @@ exports.awardJobToModel = onCall(async (request) => {
       payment: {
         status: "pending",
         paymentIntentId: null,
-        clientAmount: Math.round(agreedAmount * 100 * (1 + PLATFORM_FEE_PERCENT)),
+        // clientAmount is always exactly modelAmount + platformFee, so rounding can never make them disagree
+        clientAmount: Math.round(agreedAmount * 100) + Math.round(Math.round(agreedAmount * 100) * PLATFORM_FEE_PERCENT),
         modelAmount: Math.round(agreedAmount * 100),
-        platformFee: Math.round(agreedAmount * 100 * PLATFORM_FEE_PERCENT),
+        platformFee: Math.round(Math.round(agreedAmount * 100) * PLATFORM_FEE_PERCENT),
         currency: currency,
         authorizedAt: null,
         capturedAt: null,
@@ -5762,7 +5792,7 @@ exports.awardJobToModel = onCall(async (request) => {
             <h2>Congratulations!</h2>
             <p>You have been awarded the job "${jobData.title}" (${jobData.reference}).</p>
             <p><strong>Agreed Amount:</strong> ${currency} ${agreedAmount.toFixed(2)}</p>
-            <p>The client will now proceed with payment. Once payment is authorized, you can begin work on the job.</p>
+            <p>The client will now proceed with payment. Once payment is received (it is held securely until the job is complete), you can begin work on the job.</p>
             <p>Log in to The Model Cloud to view the job details.</p>
           `,
         });
@@ -5776,266 +5806,13 @@ exports.awardJobToModel = onCall(async (request) => {
       modelHasStripeAccount: hasStripeAccount,
       message: hasStripeAccount
         ? "Job awarded successfully. Proceed to payment."
-        : "Job awarded. Note: Model needs to set up their payout account before funds can be released.",
+        : "Job awarded. The model hasn't linked a bank account yet, but your payment is still held securely and will be sent to them once they do.",
     };
   } catch (error) {
     console.error("Error awarding job:", error);
     throw new HttpsError("internal", error.message);
   }
 });
-
-/**
- * Create PaymentIntent with manual capture (hold funds)
- * Called when client confirms payment for awarded job
- */
-exports.createJobPaymentIntent = onCall(async (request) => {
-  if (!request.auth) {
-    throw new HttpsError("unauthenticated", "User must be logged in");
-  }
-
-  if (!stripe) {
-    throw new HttpsError("unavailable", "Stripe is not configured");
-  }
-
-  const { jobId, paymentMethodId } = request.data;
-
-  if (!jobId) {
-    throw new HttpsError("invalid-argument", "Job ID is required");
-  }
-
-  const uid = request.auth.uid;
-
-  // Get job document
-  const jobDoc = await db.collection("jobs").doc(jobId).get();
-  if (!jobDoc.exists) {
-    throw new HttpsError("not-found", "Job not found");
-  }
-
-  const jobData = jobDoc.data();
-
-  // Verify caller is the job owner
-  if (jobData.userId !== uid) {
-    throw new HttpsError("permission-denied", "Only the job owner can pay for the job");
-  }
-
-  // Verify job is awarded
-  if (!jobData.awardedTo) {
-    throw new HttpsError("failed-precondition", "Job must be awarded before payment");
-  }
-
-  // Check if payment already exists
-  if (jobData.payment && jobData.payment.status !== "pending") {
-    // If payment is already authorized or captured, don't allow new payment
-    if (jobData.payment.status === "authorized" || jobData.payment.status === "captured") {
-      throw new HttpsError("already-exists", "Payment has already been completed");
-    }
-
-    // If payment intent exists but is in processing state, return existing client secret
-    // This allows retrying the payment if the user cancelled the modal
-    if (jobData.payment.paymentIntentId && jobData.payment.status === "processing") {
-      try {
-        const existingIntent = await stripe.paymentIntents.retrieve(jobData.payment.paymentIntentId);
-        // If intent is still valid and requires action, return it
-        if (existingIntent.status === "requires_payment_method" || existingIntent.status === "requires_confirmation") {
-          return {
-            success: true,
-            paymentIntentId: existingIntent.id,
-            clientSecret: existingIntent.client_secret,
-            status: existingIntent.status,
-            existing: true,
-          };
-        }
-        // If intent is already requires_capture, it was authorized
-        if (existingIntent.status === "requires_capture") {
-          throw new HttpsError("already-exists", "Payment has already been authorised");
-        }
-      } catch (retrieveError) {
-        if (retrieveError.code) throw retrieveError; // Re-throw HttpsError
-        // If we can't retrieve from Stripe, continue to create new intent
-        console.log("Could not retrieve existing payment intent, creating new one");
-      }
-    }
-  }
-
-  // Get client's Stripe customer ID
-  const clientDoc = await db.collection("users").doc(uid).get();
-  const clientData = clientDoc.data();
-
-  if (!clientData.stripeCustomerId) {
-    throw new HttpsError("failed-precondition", "Please add a payment method first");
-  }
-
-  // Get model's Stripe account (optional - payment can proceed without it)
-  const modelDoc = await db.collection("users").doc(jobData.awardedTo.modelId).get();
-  const modelData = modelDoc.data();
-  const modelHasStripeAccount = !!modelData.stripeAccountId;
-
-  try {
-    const amountInCents = jobData.payment.clientAmount;
-    const platformFeeInCents = jobData.payment.platformFee;
-    const currency = jobData.payment.currency.toLowerCase();
-
-    // Create PaymentIntent with manual capture
-    const paymentIntentParams = {
-      amount: amountInCents,
-      currency: currency,
-      customer: clientData.stripeCustomerId,
-      capture_method: "manual", // This holds the funds without capturing
-      metadata: {
-        jobId: jobId,
-        jobReference: jobData.reference,
-        clientId: uid,
-        modelId: jobData.awardedTo.modelId,
-        platform: "model-cloud",
-        modelHasStripeAccount: modelHasStripeAccount.toString(),
-      },
-      description: `Payment for job ${jobData.reference}: ${jobData.title}`,
-    };
-
-    // Only include transfer_data and application_fee if model has a Stripe account
-    // If no account, funds are held and will be transferred when model sets up their account
-    if (modelHasStripeAccount) {
-      paymentIntentParams.application_fee_amount = platformFeeInCents;
-      paymentIntentParams.transfer_data = {
-        destination: modelData.stripeAccountId,
-      };
-    }
-
-    // Add payment method if provided
-    if (paymentMethodId) {
-      paymentIntentParams.payment_method = paymentMethodId;
-      paymentIntentParams.confirm = true;
-      paymentIntentParams.return_url = `${process.env.FRONTEND_URL || "https://v4.themodel.cloud"}/jobs/${jobId}?payment=success`;
-    }
-
-    const paymentIntent = await stripe.paymentIntents.create(paymentIntentParams);
-
-    // Update job with payment intent ID
-    await db.collection("jobs").doc(jobId).update({
-      "payment.paymentIntentId": paymentIntent.id,
-      "payment.status": paymentIntent.status === "requires_capture" ? "authorized" : "processing",
-      "payment.modelHasStripeAccount": modelHasStripeAccount,
-      "payment.requiresManualTransfer": !modelHasStripeAccount,
-    });
-
-    return {
-      success: true,
-      paymentIntentId: paymentIntent.id,
-      clientSecret: paymentIntent.client_secret,
-      status: paymentIntent.status,
-      requiresAction: paymentIntent.status === "requires_action",
-      modelHasStripeAccount: modelHasStripeAccount,
-    };
-  } catch (error) {
-    console.error("Error creating payment intent:", error);
-    throw new HttpsError("internal", error.message);
-  }
-});
-
-/**
- * Confirm payment was authorized successfully
- * Called after frontend confirms PaymentIntent
- */
-exports.confirmJobPaymentAuthorized = onCall(async (request) => {
-  if (!request.auth) {
-    throw new HttpsError("unauthenticated", "User must be logged in");
-  }
-
-  if (!stripe) {
-    throw new HttpsError("unavailable", "Stripe is not configured");
-  }
-
-  const { jobId, paymentIntentId } = request.data;
-
-  if (!jobId || !paymentIntentId) {
-    throw new HttpsError("invalid-argument", "Job ID and Payment Intent ID are required");
-  }
-
-  const uid = request.auth.uid;
-
-  // Get job document
-  const jobDoc = await db.collection("jobs").doc(jobId).get();
-  if (!jobDoc.exists) {
-    throw new HttpsError("not-found", "Job not found");
-  }
-
-  const jobData = jobDoc.data();
-
-  // Verify caller is the job owner
-  if (jobData.userId !== uid) {
-    throw new HttpsError("permission-denied", "Only the job owner can confirm payment");
-  }
-
-  try {
-    // Verify PaymentIntent status
-    const paymentIntent = await stripe.paymentIntents.retrieve(paymentIntentId);
-
-    if (paymentIntent.status !== "requires_capture") {
-      throw new HttpsError(
-        "failed-precondition",
-        `Payment is not in correct state: ${paymentIntent.status}`
-      );
-    }
-
-    // Update job status
-    await db.collection("jobs").doc(jobId).update({
-      status: "in_progress",
-      "payment.status": "authorized",
-      "payment.authorizedAt": admin.firestore.FieldValue.serverTimestamp(),
-    });
-
-    // Update model's pending balance
-    const modelId = jobData.awardedTo.modelId;
-    const modelAmount = jobData.payment.modelAmount;
-
-    await db.collection("users").doc(modelId).update({
-      "balance.pending": admin.firestore.FieldValue.increment(modelAmount),
-      "balance.lastUpdated": admin.firestore.FieldValue.serverTimestamp(),
-    });
-
-    // Create transaction record
-    await db.collection("transactions").add({
-      type: "job_payment_authorized",
-      jobId: jobId,
-      jobReference: jobData.reference,
-      clientId: uid,
-      modelId: modelId,
-      amount: jobData.payment.modelAmount,
-      clientAmount: jobData.payment.clientAmount,
-      platformFee: jobData.payment.platformFee,
-      currency: jobData.payment.currency,
-      status: "authorized",
-      stripePaymentIntentId: paymentIntentId,
-      createdAt: admin.firestore.FieldValue.serverTimestamp(),
-    });
-
-    // Notify model
-    await db.collection("users").doc(modelId).collection("notifications").add({
-      type: "payment_authorised",
-      title: "Payment Authorised",
-      message: `Payment for job "${jobData.title}" has been authorised. You can now start working on the job.`,
-      data: {
-        jobId: jobId,
-        jobReference: jobData.reference,
-        jobTitle: jobData.title,
-        amount: modelAmount,
-        currency: jobData.payment.currency,
-        link: `/jobs/${jobData.reference}`,
-      },
-      read: false,
-      createdAt: admin.firestore.FieldValue.serverTimestamp(),
-    });
-
-    return {
-      success: true,
-      message: "Payment authorised. Funds are held until job completion.",
-    };
-  } catch (error) {
-    console.error("Error confirming payment authorization:", error);
-    throw new HttpsError("internal", error.message);
-  }
-});
-
 
 // ============================================================================
 // JOB COMPLETION & FUND RELEASE
@@ -6076,8 +5853,8 @@ exports.modelMarkJobComplete = onCall(async (request) => {
   }
 
   // Verify payment was authorized
-  if (jobData.payment.status !== "authorized") {
-    throw new HttpsError("failed-precondition", "Payment must be authorized before marking complete");
+  if (!["held", "authorized"].includes(jobData.payment?.status)) {
+    throw new HttpsError("failed-precondition", "Payment must be received before marking complete");
   }
 
   try {
@@ -6183,333 +5960,6 @@ exports.modelMarkJobComplete = onCall(async (request) => {
     throw new HttpsError("internal", error.message);
   }
 });
-
-/**
- * Client confirms job completion (releases funds)
- */
-exports.clientConfirmJobComplete = onCall(async (request) => {
-  if (!request.auth) {
-    throw new HttpsError("unauthenticated", "User must be logged in");
-  }
-
-  if (!stripe) {
-    throw new HttpsError("unavailable", "Stripe is not configured");
-  }
-
-  const { jobId } = request.data;
-
-  if (!jobId) {
-    throw new HttpsError("invalid-argument", "Job ID is required");
-  }
-
-  const uid = request.auth.uid;
-
-  // Get job document
-  const jobDoc = await db.collection("jobs").doc(jobId).get();
-  if (!jobDoc.exists) {
-    throw new HttpsError("not-found", "Job not found");
-  }
-
-  const jobData = jobDoc.data();
-
-  // Verify caller is the job owner
-  if (jobData.userId !== uid) {
-    throw new HttpsError("permission-denied", "Only the job owner can confirm completion");
-  }
-
-  // Verify model has marked complete
-  if (!jobData.completion.modelMarkedComplete) {
-    throw new HttpsError("failed-precondition", "Model must mark the job as complete first");
-  }
-
-  // Verify payment is authorized
-  if (jobData.payment.status !== "authorized") {
-    throw new HttpsError("failed-precondition", "Payment must be authorized");
-  }
-
-  try {
-    // Capture the PaymentIntent
-    const paymentIntent = await stripe.paymentIntents.capture(jobData.payment.paymentIntentId);
-
-    if (paymentIntent.status !== "succeeded") {
-      throw new Error(`Payment capture failed: ${paymentIntent.status}`);
-    }
-
-    const modelId = jobData.awardedTo.modelId;
-    const modelAmount = jobData.payment.modelAmount;
-
-    // Get model's Stripe connected account
-    const modelDoc = await db.collection("users").doc(modelId).get();
-    const modelData = modelDoc.data();
-
-    // Transfer funds to model's connected account (if they have one)
-    let transferId = null;
-    if (modelData.stripeAccountId) {
-      try {
-        const transfer = await stripe.transfers.create({
-          amount: modelAmount,
-          currency: jobData.payment.currency.toLowerCase(),
-          destination: modelData.stripeAccountId,
-          transfer_group: `job_${jobId}`,
-          metadata: {
-            jobId: jobId,
-            jobReference: jobData.reference,
-            modelId: modelId,
-            platform: "model-cloud",
-          },
-        });
-        transferId = transfer.id;
-        console.log(`Transfer created: ${transfer.id} for ${modelAmount} to ${modelData.stripeAccountId}`);
-      } catch (transferError) {
-        console.error("Failed to transfer to connected account:", transferError);
-        // Continue anyway - funds are captured, we can manually reconcile
-      }
-    }
-
-    // Update job status
-    await db.collection("jobs").doc(jobId).update({
-      status: "completed",
-      "payment.status": "captured",
-      "payment.capturedAt": admin.firestore.FieldValue.serverTimestamp(),
-      "payment.stripeTransferId": transferId,
-      "completion.clientConfirmed": true,
-      "completion.clientConfirmedAt": admin.firestore.FieldValue.serverTimestamp(),
-      "completion.fundsReleasedAt": admin.firestore.FieldValue.serverTimestamp(),
-    });
-
-    // Update model's balance (move from pending to available)
-    await db.collection("users").doc(modelId).update({
-      "balance.pending": admin.firestore.FieldValue.increment(-modelAmount),
-      "balance.available": admin.firestore.FieldValue.increment(modelAmount),
-      "balance.lastUpdated": admin.firestore.FieldValue.serverTimestamp(),
-    });
-
-    // Update transaction record
-    const transactionQuery = await db
-      .collection("transactions")
-      .where("jobId", "==", jobId)
-      .where("type", "==", "job_payment_authorized")
-      .limit(1)
-      .get();
-
-    if (!transactionQuery.empty) {
-      await transactionQuery.docs[0].ref.update({
-        status: "completed",
-        type: "job_payment_completed",
-        completedAt: admin.firestore.FieldValue.serverTimestamp(),
-      });
-    }
-
-    // Notify model
-    await db.collection("users").doc(modelId).collection("notifications").add({
-      type: "funds_released",
-      title: "Funds Released!",
-      message: `Payment of ${jobData.payment.currency} ${(modelAmount / 100).toFixed(2)} for job "${jobData.title}" has been released to your account.`,
-      data: {
-        jobId: jobId,
-        jobReference: jobData.reference,
-        jobTitle: jobData.title,
-        amount: modelAmount,
-        currency: jobData.payment.currency,
-        link: `/jobs/${jobData.reference}`,
-      },
-      read: false,
-      createdAt: admin.firestore.FieldValue.serverTimestamp(),
-    });
-
-    // Send email to model
-    if (await isEmailEnabled()) {
-      try {
-        await sgMail.send({
-          to: modelData.email,
-          from: sendgridFromEmail,
-          subject: `Payment Released: ${jobData.title}`,
-          html: `
-            <h2>Payment Released!</h2>
-            <p>The client has confirmed completion of job "${jobData.title}" (${jobData.reference}).</p>
-            <p><strong>Amount:</strong> ${jobData.payment.currency} ${(modelAmount / 100).toFixed(2)}</p>
-            <p>The funds are now available in your Model Cloud balance and can be withdrawn to your bank account.</p>
-            <p>Log in to The Model Cloud to view your balance and request a withdrawal.</p>
-          `,
-        });
-      } catch (emailError) {
-        console.error("Failed to send funds released email:", emailError);
-      }
-    }
-
-    return {
-      success: true,
-      message: "Payment released successfully. The model has been notified.",
-    };
-  } catch (error) {
-    console.error("Error releasing funds:", error);
-    throw new HttpsError("internal", error.message);
-  }
-});
-
-/**
- * Admin force release or cancel funds (dispute resolution)
- */
-exports.adminManageJobPayment = onCall(async (request) => {
-  if (!request.auth) {
-    throw new HttpsError("unauthenticated", "User must be logged in");
-  }
-
-  if (!stripe) {
-    throw new HttpsError("unavailable", "Stripe is not configured");
-  }
-
-  const { jobId, action, refundPercentage = 100 } = request.data;
-
-  if (!jobId || !action) {
-    throw new HttpsError("invalid-argument", "Job ID and action are required");
-  }
-
-  if (!["release", "cancel", "partial_refund"].includes(action)) {
-    throw new HttpsError("invalid-argument", "Invalid action. Must be: release, cancel, or partial_refund");
-  }
-
-  const uid = request.auth.uid;
-
-  // Verify admin role
-  const adminDoc = await db.collection("users").doc(uid).get();
-  if (!adminDoc.exists) {
-    throw new HttpsError("not-found", "User not found");
-  }
-
-  const adminData = adminDoc.data();
-  if (!["admin", "super admin"].includes(adminData.role)) {
-    throw new HttpsError("permission-denied", "Only admins can manage job payments");
-  }
-
-  // Get job document
-  const jobDoc = await db.collection("jobs").doc(jobId).get();
-  if (!jobDoc.exists) {
-    throw new HttpsError("not-found", "Job not found");
-  }
-
-  const jobData = jobDoc.data();
-
-  if (!jobData.payment || !jobData.payment.paymentIntentId) {
-    throw new HttpsError("failed-precondition", "No payment found for this job");
-  }
-
-  try {
-    const paymentIntentId = jobData.payment.paymentIntentId;
-    const modelId = jobData.awardedTo.modelId;
-    const modelAmount = jobData.payment.modelAmount;
-
-    if (action === "release") {
-      // Capture the payment and release to model
-      const paymentIntent = await stripe.paymentIntents.capture(paymentIntentId);
-
-      await db.collection("jobs").doc(jobId).update({
-        status: "completed",
-        "payment.status": "captured",
-        "payment.capturedAt": admin.firestore.FieldValue.serverTimestamp(),
-        "completion.fundsReleasedAt": admin.firestore.FieldValue.serverTimestamp(),
-        "completion.releasedByAdmin": uid,
-      });
-
-      await db.collection("users").doc(modelId).update({
-        "balance.pending": admin.firestore.FieldValue.increment(-modelAmount),
-        "balance.available": admin.firestore.FieldValue.increment(modelAmount),
-        "balance.lastUpdated": admin.firestore.FieldValue.serverTimestamp(),
-      });
-
-      // Log admin action
-      await db.collection("adminLogs").add({
-        action: "force_release_payment",
-        adminUid: uid,
-        adminEmail: adminData.email,
-        adminName: `${adminData.firstName} ${adminData.lastName}`,
-        jobId: jobId,
-        jobReference: jobData.reference,
-        amount: modelAmount,
-        timestamp: admin.firestore.FieldValue.serverTimestamp(),
-      });
-
-      return { success: true, message: "Funds released to model" };
-
-    } else if (action === "cancel") {
-      // Cancel the payment intent and refund client
-      await stripe.paymentIntents.cancel(paymentIntentId);
-
-      await db.collection("jobs").doc(jobId).update({
-        status: "cancelled",
-        "payment.status": "cancelled",
-        "payment.cancelledAt": admin.firestore.FieldValue.serverTimestamp(),
-        "payment.cancelledByAdmin": uid,
-      });
-
-      await db.collection("users").doc(modelId).update({
-        "balance.pending": admin.firestore.FieldValue.increment(-modelAmount),
-        "balance.lastUpdated": admin.firestore.FieldValue.serverTimestamp(),
-      });
-
-      // Log admin action
-      await db.collection("adminLogs").add({
-        action: "cancel_payment",
-        adminUid: uid,
-        adminEmail: adminData.email,
-        adminName: `${adminData.firstName} ${adminData.lastName}`,
-        jobId: jobId,
-        jobReference: jobData.reference,
-        amount: modelAmount,
-        timestamp: admin.firestore.FieldValue.serverTimestamp(),
-      });
-
-      return { success: true, message: "Payment cancelled and client refunded" };
-
-    } else if (action === "partial_refund") {
-      // Capture with partial amount
-      const captureAmount = Math.round(jobData.payment.clientAmount * (refundPercentage / 100));
-      const modelReceives = Math.round(modelAmount * (refundPercentage / 100));
-
-      const paymentIntent = await stripe.paymentIntents.capture(paymentIntentId, {
-        amount_to_capture: captureAmount,
-      });
-
-      await db.collection("jobs").doc(jobId).update({
-        status: "completed",
-        "payment.status": "partial_captured",
-        "payment.capturedAmount": captureAmount,
-        "payment.refundedAmount": jobData.payment.clientAmount - captureAmount,
-        "payment.capturedAt": admin.firestore.FieldValue.serverTimestamp(),
-        "payment.partialRefundByAdmin": uid,
-      });
-
-      await db.collection("users").doc(modelId).update({
-        "balance.pending": admin.firestore.FieldValue.increment(-modelAmount),
-        "balance.available": admin.firestore.FieldValue.increment(modelReceives),
-        "balance.lastUpdated": admin.firestore.FieldValue.serverTimestamp(),
-      });
-
-      // Log admin action
-      await db.collection("adminLogs").add({
-        action: "partial_refund",
-        adminUid: uid,
-        adminEmail: adminData.email,
-        adminName: `${adminData.firstName} ${adminData.lastName}`,
-        jobId: jobId,
-        jobReference: jobData.reference,
-        originalAmount: modelAmount,
-        refundPercentage: refundPercentage,
-        modelReceives: modelReceives,
-        timestamp: admin.firestore.FieldValue.serverTimestamp(),
-      });
-
-      return {
-        success: true,
-        message: `Partial payment processed. Model receives ${refundPercentage}% (${modelReceives / 100})`,
-      };
-    }
-  } catch (error) {
-    console.error("Error managing job payment:", error);
-    throw new HttpsError("internal", error.message);
-  }
-});
-
 
 // ============================================================================
 // WITHDRAWALS
@@ -6943,13 +6393,24 @@ exports.stripeWebhook = onRequest(
       return;
     }
 
+    // STRIPE_WEBHOOK_SECRET may hold several signing secrets, comma separated: every Stripe webhook
+    // endpoint has its own secret, and more than one endpoint can point at this function.
+    const secrets = webhookSecret.split(",").map((value) => value.trim()).filter(Boolean);
     let event;
+    let lastError = null;
 
-    try {
-      event = stripe.webhooks.constructEvent(req.rawBody, sig, webhookSecret);
-    } catch (err) {
-      console.error("Webhook signature verification failed:", err.message);
-      res.status(400).send(`Webhook Error: ${err.message}`);
+    for (const secret of secrets) {
+      try {
+        event = stripe.webhooks.constructEvent(req.rawBody, sig, secret);
+        break;
+      } catch (err) {
+        lastError = err;
+      }
+    }
+
+    if (!event) {
+      console.error("Webhook signature verification failed:", lastError?.message);
+      res.status(400).send(`Webhook Error: ${lastError?.message}`);
       return;
     }
 
@@ -6976,15 +6437,27 @@ exports.stripeWebhook = onRequest(
       // Handle different event types
       switch (event.type) {
         case "payment_intent.succeeded":
-          await handlePaymentIntentSucceeded(event.data.object);
+          await paymentHandlers.handlePaymentIntentSucceeded(event.data.object);
           break;
 
         case "payment_intent.payment_failed":
-          await handlePaymentIntentFailed(event.data.object);
+          await paymentHandlers.handlePaymentIntentFailed(event.data.object);
           break;
 
         case "payment_intent.canceled":
-          await handlePaymentIntentCanceled(event.data.object);
+          await paymentHandlers.handlePaymentIntentCanceled(event.data.object);
+          break;
+
+        case "charge.refunded":
+          await paymentHandlers.handleChargeRefunded(event.data.object);
+          break;
+
+        case "charge.dispute.created":
+          await paymentHandlers.handleDispute(event.data.object);
+          break;
+
+        case "charge.dispute.closed":
+          await paymentHandlers.handleDispute(event.data.object, true);
           break;
 
         case "account.updated":
@@ -7047,53 +6520,6 @@ exports.stripeWebhook = onRequest(
 );
 
 // Webhook helper functions
-async function handlePaymentIntentSucceeded(paymentIntent) {
-  console.log("PaymentIntent succeeded:", paymentIntent.id);
-  // This is called when a payment is captured
-  // Most of our logic is in the clientConfirmJobComplete function
-  // This webhook can be used for additional verification or logging
-}
-
-async function handlePaymentIntentFailed(paymentIntent) {
-  console.log("PaymentIntent failed:", paymentIntent.id);
-
-  const jobId = paymentIntent.metadata?.jobId;
-  if (!jobId) return;
-
-  await db.collection("jobs").doc(jobId).update({
-    "payment.status": "failed",
-    "payment.failedAt": admin.firestore.FieldValue.serverTimestamp(),
-    "payment.failureMessage": paymentIntent.last_payment_error?.message || "Payment failed",
-  });
-}
-
-async function handlePaymentIntentCanceled(paymentIntent) {
-  console.log("PaymentIntent canceled:", paymentIntent.id);
-
-  const jobId = paymentIntent.metadata?.jobId;
-  if (!jobId) return;
-
-  const jobDoc = await db.collection("jobs").doc(jobId).get();
-  if (!jobDoc.exists) return;
-
-  const jobData = jobDoc.data();
-
-  // Update job status
-  await db.collection("jobs").doc(jobId).update({
-    status: "awarded", // Revert to awarded state
-    "payment.status": "cancelled",
-    "payment.cancelledAt": admin.firestore.FieldValue.serverTimestamp(),
-  });
-
-  // Remove from model's pending balance if applicable
-  if (jobData.awardedTo && jobData.payment?.status === "authorized") {
-    await db.collection("users").doc(jobData.awardedTo.modelId).update({
-      "balance.pending": admin.firestore.FieldValue.increment(-jobData.payment.modelAmount),
-      "balance.lastUpdated": admin.firestore.FieldValue.serverTimestamp(),
-    });
-  }
-}
-
 async function handleAccountUpdated(account) {
   console.log("Account updated:", account.id);
 
@@ -7115,6 +6541,9 @@ async function handleAccountUpdated(account) {
     stripePayoutsEnabled: account.payouts_enabled,
     stripeChargesEnabled: account.charges_enabled,
   });
+
+  // Money released to this model while they had no bank account is sent now
+  await paymentHandlers.handleModelAccountReady(userDoc.id, account);
 }
 
 async function handlePayoutPaid(payout) {
@@ -7471,173 +6900,6 @@ async function handleInvoicePaymentFailed(invoice) {
 // ============================================================================
 // SCHEDULED FUNCTIONS
 // ============================================================================
-
-/**
- * Auto-release funds for jobs where model marked complete 14+ days ago
- * Runs daily at midnight
- */
-exports.autoReleaseFunds = onSchedule(
-  {
-    schedule: "0 0 * * *", // Every day at midnight
-    timeZone: "Europe/London",
-    retryCount: 3,
-  },
-  async (event) => {
-    if (!stripe) {
-      console.log("Stripe not configured, skipping auto-release");
-      return;
-    }
-
-    console.log("Running auto-release check...");
-
-    // Find jobs that are:
-    // 1. In progress
-    // 2. Payment authorized
-    // 3. Model marked complete 14+ days ago
-    // 4. Client hasn't confirmed
-    const fourteenDaysAgo = new Date();
-    fourteenDaysAgo.setDate(fourteenDaysAgo.getDate() - 14);
-
-    try {
-      const jobsSnapshot = await db
-        .collection("jobs")
-        .where("status", "==", "in_progress")
-        .where("payment.status", "==", "authorized")
-        .where("completion.modelMarkedComplete", "==", true)
-        .where("completion.clientConfirmed", "==", false)
-        .get();
-
-      let releasedCount = 0;
-
-      for (const jobDoc of jobsSnapshot.docs) {
-        const jobData = jobDoc.data();
-        const modelMarkedAt = jobData.completion.modelMarkedAt?.toDate?.();
-
-        if (!modelMarkedAt || modelMarkedAt > fourteenDaysAgo) {
-          continue; // Not yet 14 days
-        }
-
-        console.log(`Auto-releasing funds for job ${jobDoc.id} (${jobData.reference})`);
-
-        try {
-          // Capture the PaymentIntent
-          const paymentIntent = await stripe.paymentIntents.capture(
-            jobData.payment.paymentIntentId
-          );
-
-          if (paymentIntent.status !== "succeeded") {
-            console.error(`Failed to capture payment for job ${jobDoc.id}: ${paymentIntent.status}`);
-            continue;
-          }
-
-          const modelId = jobData.awardedTo.modelId;
-          const modelAmount = jobData.payment.modelAmount;
-
-          // Get model's Stripe connected account and transfer funds
-          const modelDoc = await db.collection("users").doc(modelId).get();
-          const modelData = modelDoc.data();
-
-          let transferId = null;
-          if (modelData.stripeAccountId) {
-            try {
-              const transfer = await stripe.transfers.create({
-                amount: modelAmount,
-                currency: jobData.payment.currency.toLowerCase(),
-                destination: modelData.stripeAccountId,
-                transfer_group: `job_${jobDoc.id}`,
-                metadata: {
-                  jobId: jobDoc.id,
-                  jobReference: jobData.reference,
-                  modelId: modelId,
-                  autoReleased: "true",
-                  platform: "model-cloud",
-                },
-              });
-              transferId = transfer.id;
-              console.log(`Auto-release transfer created: ${transfer.id}`);
-            } catch (transferError) {
-              console.error("Failed to auto-transfer to connected account:", transferError);
-            }
-          }
-
-          // Update job status
-          await jobDoc.ref.update({
-            status: "completed",
-            "payment.status": "captured",
-            "payment.capturedAt": admin.firestore.FieldValue.serverTimestamp(),
-            "payment.stripeTransferId": transferId,
-            "completion.fundsReleasedAt": admin.firestore.FieldValue.serverTimestamp(),
-            "completion.autoReleased": true,
-          });
-
-          // Update model's balance
-          await db.collection("users").doc(modelId).update({
-            "balance.pending": admin.firestore.FieldValue.increment(-modelAmount),
-            "balance.available": admin.firestore.FieldValue.increment(modelAmount),
-            "balance.lastUpdated": admin.firestore.FieldValue.serverTimestamp(),
-          });
-
-          // Update transaction record
-          const transactionQuery = await db
-            .collection("transactions")
-            .where("jobId", "==", jobDoc.id)
-            .where("type", "==", "job_payment_authorized")
-            .limit(1)
-            .get();
-
-          if (!transactionQuery.empty) {
-            await transactionQuery.docs[0].ref.update({
-              status: "completed",
-              type: "job_payment_completed",
-              completedAt: admin.firestore.FieldValue.serverTimestamp(),
-              autoReleased: true,
-            });
-          }
-
-          // Notify model
-          await db.collection("users").doc(modelId).collection("notifications").add({
-            type: "funds_auto_released",
-            title: "Funds Auto-Released!",
-            message: `Payment for job "${jobData.title}" has been automatically released after 14 days.`,
-            data: {
-              jobId: jobDoc.id,
-              jobReference: jobData.reference,
-              jobTitle: jobData.title,
-              amount: modelAmount,
-              currency: jobData.payment.currency,
-              link: `/jobs/${jobData.reference}`,
-            },
-            read: false,
-            createdAt: admin.firestore.FieldValue.serverTimestamp(),
-          });
-
-          // Notify client
-          await db.collection("users").doc(jobData.userId).collection("notifications").add({
-            type: "funds_auto_released",
-            title: "Payment Auto-Released",
-            message: `Payment for job "${jobData.title}" was automatically released after 14 days without response.`,
-            data: {
-              jobId: jobDoc.id,
-              jobReference: jobData.reference,
-              jobTitle: jobData.title,
-              link: `/jobs/${jobData.reference}`,
-            },
-            read: false,
-            createdAt: admin.firestore.FieldValue.serverTimestamp(),
-          });
-
-          releasedCount++;
-        } catch (err) {
-          console.error(`Error auto-releasing job ${jobDoc.id}:`, err);
-        }
-      }
-
-      console.log(`Auto-release complete. Released funds for ${releasedCount} jobs.`);
-    } catch (error) {
-      console.error("Error in auto-release scheduled function:", error);
-    }
-  }
-);
 
 /**
  * Check for expired subscriptions and mark them as expired
@@ -8566,3 +7828,8 @@ ${urls.join("\n")}
 // ============================================================================
 Object.assign(exports, require("./email"));
 Object.assign(exports, require("./accountDeletion"));
+
+// ============================================================================
+// JOB PAYMENTS (separate charges and transfers) - see ./payments
+// ============================================================================
+Object.assign(exports, require("./payments"));

@@ -76,22 +76,43 @@ service cloud.firestore {
       // My Jobs uses where("reference", "in", batch) without a userId/status constraint.
       // Write rules below remain strict.
       allow read: if isAuthenticated();
-      allow create: if isAuthenticated();
-      allow update: if isAuthenticated() && (
-        // Job owner can update
-        resource.data.userId == request.auth.uid ||
-        // Account managers can update jobs from their organisation
-        (isAccountManager() && isInJobOrganisation(resource.data)) ||
-        // Admins can update any
+
+      // PAYMENTS: the fields below describe who was booked and what has been paid. They are written ONLY by
+      // Cloud Functions (which bypass these rules), never by a browser, so nobody can mark their own job as paid.
+      function jobServerOnlyFieldsUntouched() {
+        return !request.resource.data.diff(resource.data).affectedKeys()
+          .hasAny(['payment', 'completion', 'awardedTo', 'awardCancelledAt']);
+      }
+
+      // Clients may only open or close a job; moving it into or out of awarded / in progress / completed /
+      // cancelled happens server-side as part of awarding and paying.
+      function jobStatusChangeAllowed() {
+        return !request.resource.data.diff(resource.data).affectedKeys().hasAny(['status']) ||
+          (resource.data.get('status', 'open') in ['open', 'closed'] &&
+           request.resource.data.status in ['open', 'closed']);
+      }
+
+      // A new job cannot arrive already awarded or paid
+      allow create: if isAuthenticated() &&
+        !request.resource.data.keys().hasAny(['payment', 'completion', 'awardedTo', 'awardCancelledAt']) &&
+        request.resource.data.get('status', 'open') in ['open', 'draft'];
+
+      allow update: if isAuthenticated() && jobServerOnlyFieldsUntouched() && (
+        // Job owner can update (but not payment data, and only open/close the job)
+        (resource.data.userId == request.auth.uid && jobStatusChangeAllowed()) ||
+        // Account managers can update jobs from their organisation (same limits)
+        (isAccountManager() && isInJobOrganisation(resource.data) && jobStatusChangeAllowed()) ||
+        // Admins can update any job's details (payment data is still server-only)
         isAdmin() ||
         // Models can apply to open jobs — only allowed to touch applicant fields
         (isModel() && resource.data.status == "open" &&
          request.resource.data.diff(resource.data).affectedKeys()
            .hasOnly(['applicants', 'appliedTimestamps', 'updatedAt']))
       );
+
       allow delete: if isAuthenticated() && (
-        // Job owner can delete
-        resource.data.userId == request.auth.uid ||
+        // The owner cannot delete a job once money is involved; cancel the booking first
+        (resource.data.userId == request.auth.uid && !('payment' in resource.data)) ||
         // Admins can delete any
         isAdmin()
       );
@@ -393,6 +414,13 @@ service cloud.firestore {
 
     // Withdrawals - Models can only read their own, admins can read all
     // Only Cloud Functions can write
+    // Invoices are created by Cloud Functions when a payment is taken. Clients can read their own.
+    match /invoices/{invoiceId} {
+      allow read: if isAuthenticated() &&
+        (resource.data.clientId == request.auth.uid || isAdmin());
+      allow write: if false;
+    }
+
     match /withdrawals/{withdrawalId} {
       allow read: if isAuthenticated() &&
         (resource.data.modelId == request.auth.uid || isAdmin());

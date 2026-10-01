@@ -24,6 +24,7 @@ import MDButton from "components/MDButton";
 
 // API
 import { modelMarkJobComplete, clientConfirmJobComplete } from "utils/api";
+import { isPaymentHeld, isPaymentPaid } from "utils/paymentStatus";
 
 function JobCompletionSection({ job, isOwner, isAwardedModel, onCompletionUpdate }) {
   const [loading, setLoading] = useState(false);
@@ -89,7 +90,7 @@ function JobCompletionSection({ job, isOwner, isAwardedModel, onCompletionUpdate
   };
 
   // Don't show if payment not authorized
-  if (payment?.status !== "authorized" && payment?.status !== "captured") {
+  if (!isPaymentPaid(payment?.status)) {
     return null;
   }
 
@@ -226,7 +227,7 @@ function JobCompletionSection({ job, isOwner, isAwardedModel, onCompletionUpdate
           </MDBox>
 
           {/* Action Buttons */}
-          {isAwardedModel && !modelMarkedComplete && payment?.status === "authorized" && (
+          {isAwardedModel && !modelMarkedComplete && isPaymentHeld(payment?.status) && (
             <MDButton
               variant="gradient"
               color="info"

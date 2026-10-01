@@ -1,3 +1,4 @@
+import { isPaymentHeld } from "utils/paymentStatus";
 import { useParams, useNavigate } from "react-router-dom";
 import { useEffect, useState } from "react";
 import { doc, getDoc, setDoc, updateDoc, arrayUnion, arrayRemove, collection, query, where, getDocs } from "firebase/firestore";
@@ -832,7 +833,7 @@ function JobDetails() {
                         )}
 
                         {/* Completion Section - show if payment is authorized */}
-                        {job.awardedTo && job.payment?.status === "authorized" && (
+                        {job.awardedTo && isPaymentHeld(job.payment?.status) && (
                             <JobCompletionSection
                                 job={job}
                                 isOwner={isJobOwner}

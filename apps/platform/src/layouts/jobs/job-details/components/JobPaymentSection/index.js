@@ -28,6 +28,8 @@ import MDButton from "components/MDButton";
 import { loadStripe } from "@stripe/stripe-js";
 import { Elements, PaymentElement, useStripe, useElements } from "@stripe/react-stripe-js";
 
+import { isPaymentHeld, isPaymentReleased, isPaymentDue } from "utils/paymentStatus";
+
 // API
 import {
   createJobPaymentIntent,
@@ -39,7 +41,7 @@ import {
 const stripePromise = loadStripe(process.env.REACT_APP_STRIPE_PUBLISHABLE_KEY);
 
 // Payment Form Component (for new card)
-function PaymentForm({ jobId, clientSecret, onSuccess, onError, onCancel }) {
+function PaymentForm({ jobId, jobReference, amountLabel, onSuccess, onError, onCancel }) {
   const stripe = useStripe();
   const elements = useElements();
   const [processing, setProcessing] = useState(false);
@@ -55,7 +57,7 @@ function PaymentForm({ jobId, clientSecret, onSuccess, onError, onCancel }) {
       const { error, paymentIntent } = await stripe.confirmPayment({
         elements,
         confirmParams: {
-          return_url: `${window.location.origin}/jobs/${jobId}?payment=success`,
+          return_url: `${window.location.origin}/jobs/${jobReference}?payment=return`,
         },
         redirect: "if_required",
       });
@@ -63,14 +65,18 @@ function PaymentForm({ jobId, clientSecret, onSuccess, onError, onCancel }) {
       if (error) {
         onError(error.message);
         setProcessing(false);
-      } else if (paymentIntent.status === "requires_capture") {
-        // Payment authorised successfully - confirm with backend
+      } else if (paymentIntent.status === "succeeded") {
+        // Money taken. The server re-checks with Stripe (the webhook does too) and marks the job paid.
         const result = await confirmJobPaymentAuthorized(jobId, paymentIntent.id);
         if (result.success) {
           onSuccess();
         } else {
-          onError("Payment authorised but confirmation failed. Please contact support.");
+          onError("Your payment went through but we couldn't update the job yet. It will update shortly; please contact support if it doesn't.");
         }
+        setProcessing(false);
+      } else if (paymentIntent.status === "processing") {
+        // Bank payments can take a moment to clear; the job updates itself when they do
+        onSuccess();
         setProcessing(false);
       } else {
         onError(`Unexpected payment status: ${paymentIntent.status}`);
@@ -97,7 +103,7 @@ function PaymentForm({ jobId, clientSecret, onSuccess, onError, onCancel }) {
           color="success"
           disabled={!stripe || processing}
         >
-          {processing ? <CircularProgress size={20} color="inherit" /> : "Pay & Hold Funds"}
+          {processing ? <CircularProgress size={20} color="inherit" /> : `Pay ${amountLabel}`}
         </MDButton>
       </MDBox>
     </form>
@@ -106,14 +112,16 @@ function PaymentForm({ jobId, clientSecret, onSuccess, onError, onCancel }) {
 
 PaymentForm.propTypes = {
   jobId: PropTypes.string.isRequired,
-  clientSecret: PropTypes.string.isRequired,
+  jobReference: PropTypes.string.isRequired,
+  amountLabel: PropTypes.string.isRequired,
   onSuccess: PropTypes.func.isRequired,
   onError: PropTypes.func.isRequired,
   onCancel: PropTypes.func.isRequired,
 };
 
 // Saved Card Payment Form
-function SavedCardPaymentForm({ jobId, paymentMethodId, onSuccess, onError, onCancel }) {
+function SavedCardPaymentForm({ jobId, paymentMethodId, amountLabel, onSuccess, onError, onCancel }) {
+  const stripe = useStripe();
   const [processing, setProcessing] = useState(false);
 
   const handleSubmit = async (event) => {
@@ -121,23 +129,30 @@ function SavedCardPaymentForm({ jobId, paymentMethodId, onSuccess, onError, onCa
     setProcessing(true);
 
     try {
-      // Create and confirm payment intent with saved card
+      // Create the payment and confirm it with the saved card
       const result = await createJobPaymentIntent(jobId, paymentMethodId);
 
       if (result.success) {
-        if (result.status === "requires_capture") {
-          // Payment authorised - confirm with backend
-          const confirmResult = await confirmJobPaymentAuthorized(jobId, result.paymentIntentId);
-          if (confirmResult.success) {
+        if (result.paid) {
+          onSuccess();
+        } else if (result.requiresAction && result.clientSecret) {
+          // The bank wants extra verification (3D Secure): show its challenge, then confirm
+          const { error, paymentIntent } = await stripe.handleNextAction({ clientSecret: result.clientSecret });
+          if (error) {
+            onError(error.message);
+          } else if (paymentIntent.status === "succeeded") {
+            const confirmResult = await confirmJobPaymentAuthorized(jobId, paymentIntent.id);
+            if (confirmResult.success) onSuccess();
+            else onError("Your payment went through but we couldn't update the job yet. It will update shortly.");
+          } else if (paymentIntent.status === "processing") {
             onSuccess();
           } else {
-            onError("Payment authorised but confirmation failed. Please contact support.");
+            onError(`The payment was not completed (${paymentIntent.status}). Please try again.`);
           }
-        } else if (result.requiresAction) {
-          // Need 3D Secure - fall back to regular flow
-          onError("This card requires additional verification. Please use the new card form below.");
+        } else if (result.status === "processing") {
+          onSuccess();
         } else {
-          onError(`Unexpected payment status: ${result.status}`);
+          onError(`The payment could not be completed (${result.status}). Please try again.`);
         }
       } else {
         throw new Error(result.message || "Payment failed");
@@ -161,7 +176,7 @@ function SavedCardPaymentForm({ jobId, paymentMethodId, onSuccess, onError, onCa
           color="success"
           disabled={processing}
         >
-          {processing ? <CircularProgress size={20} color="inherit" /> : "Pay & Hold Funds"}
+          {processing ? <CircularProgress size={20} color="inherit" /> : `Pay ${amountLabel}`}
         </MDButton>
       </MDBox>
     </form>
@@ -171,6 +186,7 @@ function SavedCardPaymentForm({ jobId, paymentMethodId, onSuccess, onError, onCa
 SavedCardPaymentForm.propTypes = {
   jobId: PropTypes.string.isRequired,
   paymentMethodId: PropTypes.string.isRequired,
+  amountLabel: PropTypes.string.isRequired,
   onSuccess: PropTypes.func.isRequired,
   onError: PropTypes.func.isRequired,
   onCancel: PropTypes.func.isRequired,
@@ -291,14 +307,18 @@ function JobPaymentSection({ job, isOwner, onPaymentComplete }) {
 
   const getStatusChip = () => {
     const statusConfig = {
-      pending: { color: "warning", label: "Payment Pending", icon: "schedule" },
-      authorized: { color: "info", label: "Funds Held", icon: "lock" },
-      captured: { color: "success", label: "Payment Complete", icon: "check_circle" },
-      cancelled: { color: "error", label: "Payment Cancelled", icon: "cancel" },
+      pending: { color: "warning", label: "Payment Required", icon: "schedule" },
+      processing: { color: "info", label: "Payment Processing", icon: "hourglass_top" },
       failed: { color: "error", label: "Payment Failed", icon: "error" },
+      held: { color: "info", label: "Paid, Funds Held", icon: "lock" },
+      released: { color: "success", label: "Paid, Released", icon: "check_circle" },
+      refunded: { color: "default", label: "Refunded", icon: "undo" },
+      cancelled: { color: "error", label: "Payment Cancelled", icon: "cancel" },
     };
+    // Older jobs use the earlier names for held and released
+    const key = isPaymentHeld(paymentStatus) ? "held" : isPaymentReleased(paymentStatus) ? "released" : paymentStatus;
 
-    const config = statusConfig[paymentStatus] || statusConfig.pending;
+    const config = statusConfig[key] || statusConfig.pending;
 
     return (
       <Chip
@@ -392,7 +412,7 @@ function JobPaymentSection({ job, isOwner, onPaymentComplete }) {
           </MDBox>
 
           {/* Action Button */}
-          {isOwner && paymentStatus === "pending" && (
+          {isOwner && isPaymentDue(paymentStatus) && (
             <MDButton
               variant="gradient"
               color="success"
@@ -405,13 +425,25 @@ function JobPaymentSection({ job, isOwner, onPaymentComplete }) {
               ) : (
                 <>
                   <Icon sx={{ mr: 1 }}>lock</Icon>
-                  Pay & Hold Funds
+                  {paymentStatus === "failed" ? "Try Payment Again" : "Pay Now"}
                 </>
               )}
             </MDButton>
           )}
 
-          {paymentStatus === "authorized" && (
+          {paymentStatus === "failed" && job.payment?.failureMessage && (
+            <Alert severity="error" sx={{ mb: 2 }}>
+              Your last payment attempt failed: {job.payment.failureMessage}
+            </Alert>
+          )}
+
+          {paymentStatus === "processing" && (
+            <Alert severity="info">
+              Your payment is being processed by your bank. This page updates automatically when it clears.
+            </Alert>
+          )}
+
+          {isPaymentHeld(paymentStatus) && (
             <MDBox
               p={2}
               borderRadius="lg"
@@ -422,12 +454,12 @@ function JobPaymentSection({ job, isOwner, onPaymentComplete }) {
                 <Icon fontSize="small" sx={{ verticalAlign: "middle", mr: 1 }}>
                   lock
                 </Icon>
-                Funds are securely held and will be released when you confirm job completion.
+                Payment received. The funds are held securely and will be released to the model when you confirm the job is complete.
               </MDTypography>
             </MDBox>
           )}
 
-          {paymentStatus === "captured" && (
+          {isPaymentReleased(paymentStatus) && (
             <MDBox
               p={2}
               borderRadius="lg"
@@ -463,7 +495,7 @@ function JobPaymentSection({ job, isOwner, onPaymentComplete }) {
             <MDTypography variant="body2" color="text" mb={2}>
               You are about to pay{" "}
               <strong>{formatCurrency(job.payment?.clientAmount, job.payment?.currency)}</strong>{" "}
-              for this job. The funds will be held securely until you confirm job completion.
+              for this job. Your payment is taken now and held securely until you confirm the job is complete.
             </MDTypography>
 
             {error && (
@@ -543,13 +575,16 @@ function JobPaymentSection({ job, isOwner, onPaymentComplete }) {
 
                 {/* Show saved card payment form or new card form */}
                 {selectedPaymentMethod !== "new" && savedCards.length > 0 ? (
-                  <SavedCardPaymentForm
-                    jobId={job.id}
-                    paymentMethodId={selectedPaymentMethod}
-                    onSuccess={handlePaymentSuccess}
-                    onError={handlePaymentError}
-                    onCancel={handleCloseModal}
-                  />
+                  <Elements stripe={stripePromise}>
+                    <SavedCardPaymentForm
+                      jobId={job.id}
+                      paymentMethodId={selectedPaymentMethod}
+                      amountLabel={formatCurrency(job.payment?.clientAmount, job.payment?.currency)}
+                      onSuccess={handlePaymentSuccess}
+                      onError={handlePaymentError}
+                      onCancel={handleCloseModal}
+                    />
+                  </Elements>
                 ) : clientSecret ? (
                   <Elements
                     stripe={stripePromise}
@@ -565,7 +600,8 @@ function JobPaymentSection({ job, isOwner, onPaymentComplete }) {
                   >
                     <PaymentForm
                       jobId={job.id}
-                      clientSecret={clientSecret}
+                      jobReference={job.reference || job.id}
+                      amountLabel={formatCurrency(job.payment?.clientAmount, job.payment?.currency)}
                       onSuccess={handlePaymentSuccess}
                       onError={handlePaymentError}
                       onCancel={handleCloseModal}
