@@ -176,6 +176,12 @@ const markJobPaid = async (jobId, paymentIntent) => {
     message: `Payment for job "${job.title}" has been received and is held securely. You can now start working on the job.`,
     data: { jobId, jobReference: job.reference, jobTitle: job.title, amount: modelAmount, currency, link: `/jobs/${job.reference}` },
   });
+  try {
+    await require("./invoices").createInvoiceForJob(jobId, job, paymentIntent);
+  } catch (error) {
+    console.error(`markJobPaid: invoice for job ${jobId} failed (can be backfilled):`, error.message);
+  }
+
   await notify(job.userId, {
     type: "payment_received",
     title: "Payment Received",

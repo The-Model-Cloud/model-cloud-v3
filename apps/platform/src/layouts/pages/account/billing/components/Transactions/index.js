@@ -26,7 +26,8 @@ function Transactions({ transactions, loading }) {
 
   const getTransactionConfig = (transaction) => {
     const isIncoming = transaction.type === "refund";
-    const isPending = transaction.status === "pending" || transaction.status === "authorized";
+    // Only a payment that has not gone through yet is "Pending". A held payment has been taken.
+    const isPending = transaction.status === "pending";
 
     if (isPending) {
       return {
@@ -68,6 +69,7 @@ function Transactions({ transactions, loading }) {
     const typeNames = {
       job_payment_authorized: "Job Payment (Held)",
       job_payment_completed: "Job Payment",
+      job_payment_refunded: "Job Payment (Refunded)",
       withdrawal: "Withdrawal",
       refund: "Refund",
     };

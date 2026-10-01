@@ -417,7 +417,9 @@ service cloud.firestore {
     // Invoices are created by Cloud Functions when a payment is taken. Clients can read their own.
     match /invoices/{invoiceId} {
       allow read: if isAuthenticated() &&
-        (resource.data.clientId == request.auth.uid || isAdmin());
+        (resource.data.clientId == request.auth.uid || isAdmin() ||
+         (isAccountManager() && resource.data.organisationId != null &&
+          getUserOrganisationId() == resource.data.organisationId));
       allow write: if false;
     }
 

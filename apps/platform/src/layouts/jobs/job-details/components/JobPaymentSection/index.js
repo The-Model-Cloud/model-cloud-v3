@@ -5,6 +5,7 @@
 
 import { useState, useEffect } from "react";
 import PropTypes from "prop-types";
+import { useSearchParams } from "react-router-dom";
 
 // @mui material components
 import Card from "@mui/material/Card";
@@ -201,6 +202,7 @@ function JobPaymentSection({ job, isOwner, onPaymentComplete }) {
   const [loadingSavedCards, setLoadingSavedCards] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
+  const [searchParams, setSearchParams] = useSearchParams();
 
   const paymentStatus = job?.payment?.status;
   const awardedTo = job?.awardedTo;
@@ -210,6 +212,36 @@ function JobPaymentSection({ job, isOwner, onPaymentComplete }) {
     const symbol = symbols[currency] || currency;
     return `${symbol}${(amountInCents / 100).toFixed(2)}`;
   };
+
+  // "Pay now" on the Payments page links here with ?pay=1: open the payment dialog straight away
+  useEffect(() => {
+    if (searchParams.get("pay") === "1" && isOwner && isPaymentDue(paymentStatus) && !showPaymentModal) {
+      handleOpenPayment();
+      const next = new URLSearchParams(searchParams);
+      next.delete("pay");
+      setSearchParams(next, { replace: true });
+    }
+  }, [searchParams, isOwner, paymentStatus]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Back from a bank redirect (Pay by Bank / 3D Secure): Stripe adds ?payment_intent=...&redirect_status=...
+  useEffect(() => {
+    const intentId = searchParams.get("payment_intent");
+    if (!intentId || !isOwner) return;
+    const status = searchParams.get("redirect_status");
+
+    const next = new URLSearchParams(searchParams);
+    ["payment_intent", "payment_intent_client_secret", "redirect_status", "payment"].forEach((k) => next.delete(k));
+    setSearchParams(next, { replace: true });
+
+    if (status === "succeeded" || status === "processing") {
+      // Fast path; the webhook also marks the job paid, so a failure here is harmless
+      confirmJobPaymentAuthorized(job.id, intentId)
+        .then(() => onPaymentComplete())
+        .catch(() => onPaymentComplete());
+    } else if (status === "failed") {
+      setError("Your payment was not completed. You can try again.");
+    }
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Fetch saved cards when modal opens
   useEffect(() => {

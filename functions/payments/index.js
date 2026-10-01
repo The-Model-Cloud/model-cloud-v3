@@ -2,6 +2,7 @@ const { onCall, HttpsError } = require("firebase-functions/v2/https");
 const { onSchedule } = require("firebase-functions/v2/scheduler");
 const admin = require("firebase-admin");
 const core = require("./core");
+const invoices = require("./invoices");
 
 const {
   db, requireStripe, PAYABLE, isHeld, notify, ensureCustomer,
@@ -317,3 +318,7 @@ exports.autoReleaseFunds = onSchedule(
   }
 );
 
+// Invoices
+exports.getInvoicePdf = invoices.getInvoicePdf;
+exports.adminBackfillInvoices = invoices.adminBackfillInvoices;
+exports.ensureMyInvoices = invoices.ensureMyInvoices;

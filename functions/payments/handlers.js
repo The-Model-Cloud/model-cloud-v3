@@ -81,6 +81,14 @@ const handleChargeRefunded = async (charge) => {
     }, { merge: true });
   }
   await jobDoc.ref.update({ "payment.totalRefunded": charge.amount_refunded });
+
+  const invoice = db().collection("invoices").doc(`job_${jobDoc.id}`);
+  if ((await invoice.get()).exists) {
+    await invoice.update({
+      refundedAmount: charge.amount_refunded,
+      status: charge.amount_refunded >= charge.amount ? "refunded" : "partially_refunded",
+    });
+  }
 };
 
 /** A client disputed the charge with their bank: flag the job and tell the admins. */
