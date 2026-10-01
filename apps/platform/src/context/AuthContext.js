@@ -1,6 +1,6 @@
 import { createContext, useContext, useEffect, useState } from "react";
 import { onAuthStateChanged } from "firebase/auth";
-import { doc, getDoc } from "firebase/firestore";
+import { doc, getDoc, updateDoc } from "firebase/firestore";
 import { auth, db } from "../firebase";
 
 const AuthContext = createContext();
@@ -16,7 +16,28 @@ export const AuthProvider = ({ children }) => {
         const docSnap = await getDoc(docRef);
 
         if (docSnap.exists()) {
-          setUser({ uid: firebaseUser.uid, ...docSnap.data() }); // includes .role
+          const data = docSnap.data();
+
+          // After a verified email change (banner flow) the login email is new but the profile still holds
+          // the old, bouncing one. Only reconcile in exactly that case, so an admin's manual edit to the
+          // profile email is never overwritten.
+          const bouncedEmail = data.emailBounced?.email?.toLowerCase();
+          if (
+            firebaseUser.emailVerified &&
+            firebaseUser.email &&
+            bouncedEmail &&
+            data.email?.toLowerCase() === bouncedEmail &&
+            firebaseUser.email.toLowerCase() !== bouncedEmail
+          ) {
+            try {
+              await updateDoc(docRef, { email: firebaseUser.email });
+              data.email = firebaseUser.email;
+            } catch (err) {
+              console.warn("Could not update profile email:", err);
+            }
+          }
+
+          setUser({ uid: firebaseUser.uid, ...data }); // includes .role
         } else {
           setUser({ uid: firebaseUser.uid });
         }

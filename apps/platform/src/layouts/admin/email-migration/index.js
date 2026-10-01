@@ -53,7 +53,7 @@ function EmailMigration() {
     setBackfillBusy(true);
     setBackfillError("");
     try {
-      const res = await callCloudFunctionStrict("backfillMarketingConsent", { dryRun });
+      const res = await callCloudFunctionStrict("backfillMarketingConsent", { dryRun }, { timeout: 540000 });
       if (dryRun) {
         setBackfillPreview(res);
         setBackfillResult(null);

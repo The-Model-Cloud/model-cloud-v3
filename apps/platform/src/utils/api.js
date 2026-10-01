@@ -1206,8 +1206,10 @@ export const deleteMyAccount = async () => {
  * Call a Cloud Function as the signed-in user and throw on failure (callCloudFunction swallows
  * errors and returns {success:false}, which is wrong for admin tools that must show the real result).
  */
-export const callCloudFunctionStrict = async (functionName, data) => {
-  const callable = httpsCallable(getFirebaseFunctions(), functionName);
+export const callCloudFunctionStrict = async (functionName, data, options) => {
+  // `options.timeout` (ms) matters for long admin jobs: the browser gives up after 70s by default,
+  // even though the function itself may be allowed to run for up to 9 minutes.
+  const callable = httpsCallable(getFirebaseFunctions(), functionName, options);
   const result = await callable(data);
   return result.data;
 };

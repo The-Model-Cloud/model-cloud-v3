@@ -64,21 +64,29 @@ const footerHtml = (uid, kind) => {
  * kind "marketing" - promotional email. Additionally requires marketingConsent.status === "opted_in"
  *                    and no unsubscribe suppression. Adds unsubscribe link and List-Unsubscribe headers.
  *
+ * Options for campaigns:
+ *   campaignId - recorded as a SendGrid custom arg so webhook events can be tied back to the campaign
+ *   wrap       - (html) => html, puts content + footer inside the branded template
+ *   test       - admin test send: skips the consent and unsubscribe checks, prefixes the subject
+ *
  * @returns {Promise<{sent: boolean, reason?: string}>}
  */
-const sendToUser = async (db, { uid, userData, subject, html, text, kind = "service", categories = [] }) => {
+const sendToUser = async (
+  db,
+  { uid, userData, subject, html, text, kind = "service", categories = [], campaignId, wrap, test = false }
+) => {
   if (!process.env.SENDGRID_API_KEY) return { sent: false, reason: "sendgrid_not_configured" };
   if (!(await isEmailEnabled(db))) return { sent: false, reason: "emails_disabled" };
 
   const email = userData?.email;
   if (!email) return { sent: false, reason: "no_email" };
 
-  if (kind === "marketing" && !canReceiveMarketing(userData)) {
+  if (kind === "marketing" && !test && !canReceiveMarketing(userData)) {
     return { sent: false, reason: "no_marketing_consent" };
   }
 
   const suppression = await getSuppression(db, email);
-  if (suppression) {
+  if (suppression && !(test && suppression.reason === SUPPRESSION_REASONS.UNSUBSCRIBE)) {
     const blocksAll = suppression.reason !== SUPPRESSION_REASONS.UNSUBSCRIBE;
     if (blocksAll || kind === "marketing") {
       return { sent: false, reason: `suppressed_${suppression.reason}` };
@@ -88,11 +96,13 @@ const sendToUser = async (db, { uid, userData, subject, html, text, kind = "serv
   const msg = {
     to: email,
     from: { email: FROM_EMAIL, name: FROM_NAME },
-    subject,
-    html: `${html}${footerHtml(uid, kind)}`,
-    text: text ? `${text}\n\nManage your email preferences: ${preferencesUrl(uid)}` : undefined,
+    subject: test ? `[TEST] ${subject}` : subject,
+    html: wrap ? wrap(`${html}${footerHtml(uid, kind)}`) : `${html}${footerHtml(uid, kind)}`,
+    text: text
+      ? `${text}\n\n${kind === "marketing" ? `Unsubscribe: ${preferencesUrl(uid, "&a=unsubscribe")}\n` : ""}Manage your email preferences: ${preferencesUrl(uid)}`
+      : undefined,
     categories: ["platform-email", kind, ...categories],
-    customArgs: { uid, kind },
+    customArgs: { uid, kind, ...(campaignId ? { campaignId } : {}) },
     trackingSettings: {
       clickTracking: { enable: kind === "marketing", enableText: false },
       openTracking: { enable: kind === "marketing" },

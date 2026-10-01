@@ -49,8 +49,8 @@ function AuthAction() {
         return;
       }
 
-      // Handle email verification
-      if (mode === "verifyEmail") {
+      // Handle email verification, and confirming a change of email address (same code, different wording)
+      if (mode === "verifyEmail" || mode === "verifyAndChangeEmail") {
         try {
           await applyActionCode(auth, oobCode);
           setSuccess(true);
@@ -60,7 +60,11 @@ function AuthAction() {
           setInvalidCode(true);
           switch (err.code) {
             case "auth/expired-action-code":
-              setError("This email verification link has expired. Please sign in and request a new verification email.");
+              setError(
+                mode === "verifyAndChangeEmail"
+                  ? "This link has expired. Please sign in and start the email change again."
+                  : "This email verification link has expired. Please sign in and request a new verification email."
+              );
               break;
             case "auth/invalid-action-code":
               setError("This email verification link is invalid or has already been used.");
@@ -152,7 +156,8 @@ function AuthAction() {
     }
   };
 
-  const pageTitle = mode === "verifyEmail" ? "Email Verification" : "Reset Password";
+  const isEmailChange = mode === "verifyAndChangeEmail";
+  const pageTitle = mode === "verifyEmail" ? "Email Verification" : isEmailChange ? "Update Email Address" : "Reset Password";
 
   // Loading state
   if (loading) {
@@ -166,7 +171,13 @@ function AuthAction() {
             {pageTitle}
           </>
         }
-        description={mode === "verifyEmail" ? "Verifying your email address..." : "Verifying your reset link..."}
+        description={
+          mode === "verifyEmail"
+            ? "Verifying your email address..."
+            : isEmailChange
+              ? "Confirming your new email address..."
+              : "Verifying your reset link..."
+        }
         illustration={fallbackImage}
       >
         <MDBox textAlign="center" py={4}>
@@ -200,7 +211,7 @@ function AuthAction() {
             {error}
           </MDTypography>
           <MDBox mt={4}>
-            {mode === "verifyEmail" ? (
+            {mode === "verifyEmail" || isEmailChange ? (
               <MDTypography
                 component={Link}
                 to="/sign-in"
@@ -223,6 +234,39 @@ function AuthAction() {
                 Request a new reset link
               </MDTypography>
             )}
+          </MDBox>
+        </MDBox>
+      </IllustrationLayout>
+    );
+  }
+
+  // Email address change confirmed. Firebase signs the user out everywhere, so they sign in again with the new address.
+  if (success && isEmailChange) {
+    return (
+      <IllustrationLayout
+        title={
+          <>
+            <MDBox display="flex" justifyContent="center" mb={2}>
+              <img src={Logo} style={{ height: 50 }} alt="The Model Cloud Logo" />
+            </MDBox>
+            Email Updated
+          </>
+        }
+        description=""
+        illustration={fallbackImage}
+      >
+        <MDBox textAlign="center" py={4}>
+          <Icon sx={{ fontSize: 64, color: "success.main" }}>mark_email_read</Icon>
+          <MDTypography variant="h5" fontWeight="medium" mt={2}>
+            Your email address has been updated
+          </MDTypography>
+          <MDTypography variant="body2" color="text" mt={1}>
+            Please sign in again using your new email address and your existing password.
+          </MDTypography>
+          <MDBox mt={4}>
+            <MDButton component={Link} to="/sign-in" variant="gradient" color="info" size="large">
+              Sign In
+            </MDButton>
           </MDBox>
         </MDBox>
       </IllustrationLayout>

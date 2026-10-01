@@ -100,7 +100,11 @@ const optOut = async (db, uid, email, source) => {
     update[`marketingPreferences.${key}`] = false;
   });
   await db.collection("users").doc(uid).update(update);
-  await addSuppression(db, email, SUPPRESSION_REASONS.UNSUBSCRIBE, { uid, source });
+  // Keep a stronger existing suppression (bounce, spam report) rather than downgrading it to marketing-only
+  const existing = await getSuppression(db, email);
+  if (!existing || existing.reason === SUPPRESSION_REASONS.UNSUBSCRIBE) {
+    await addSuppression(db, email, SUPPRESSION_REASONS.UNSUBSCRIBE, { uid, source });
+  }
 };
 
 /**

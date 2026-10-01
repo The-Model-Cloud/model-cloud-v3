@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { Link } from "react-router-dom";
 import { collection, getDocs } from "firebase/firestore";
 import { db } from "config/firebase";
 
@@ -12,6 +13,7 @@ import Card from "@mui/material/Card";
 import Grid from "@mui/material/Grid";
 import Alert from "@mui/material/Alert";
 import Chip from "@mui/material/Chip";
+import Tooltip from "@mui/material/Tooltip";
 import Icon from "@mui/material/Icon";
 import TextField from "@mui/material/TextField";
 import InputAdornment from "@mui/material/InputAdornment";
@@ -60,6 +62,9 @@ const fmt = (value) => {
   return d ? d.toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" }) : "";
 };
 
+// Admin profile views: models have their own settings route, everyone else shares the user one
+const profilePath = (u) => (u.role === "model" ? `/admin/model/${u.uid}/settings` : `/admin/user/${u.uid}/settings`);
+
 const csvCell = (v) => `"${String(v ?? "").replace(/"/g, '""')}"`;
 
 function EmailConsent() {
@@ -69,6 +74,7 @@ function EmailConsent() {
 
   const [statusFilter, setStatusFilter] = useState("all");
   const [groupFilter, setGroupFilter] = useState("all");
+  const [deliveryFilter, setDeliveryFilter] = useState("all"); // all | bounced
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(0);
   const [rowsPerPage, setRowsPerPage] = useState(25);
@@ -91,6 +97,9 @@ function EmailConsent() {
               source: consent.source || "",
               date: consent.date || null,
               migrationEmailSentAt: data.migrationOptInEmailSentAt || null,
+              // Flag set by the SendGrid webhook/sync; only counts while it refers to their current address
+              bounced: !!(data.emailBounced?.email && data.email && data.emailBounced.email.toLowerCase() === data.email.toLowerCase()),
+              bounceReason: data.emailBounced?.reason || "",
             };
           })
         );
@@ -116,20 +125,23 @@ function EmailConsent() {
     return c;
   }, [groupFiltered]);
 
+  const bouncedCount = useMemo(() => groupFiltered.filter((u) => u.bounced).length, [groupFiltered]);
+
   const rows = useMemo(() => {
     const term = search.trim().toLowerCase();
     return groupFiltered
       .filter((u) => statusFilter === "all" || u.status === statusFilter)
+      .filter((u) => deliveryFilter === "all" || u.bounced)
       .filter((u) => !term || u.name.toLowerCase().includes(term) || u.email.toLowerCase().includes(term))
       .sort((a, b) => a.name.localeCompare(b.name));
-  }, [groupFiltered, statusFilter, search]);
+  }, [groupFiltered, statusFilter, deliveryFilter, search]);
 
   const pageRows = rows.slice(page * rowsPerPage, page * rowsPerPage + rowsPerPage);
 
   const exportCsv = () => {
-    const header = ["Name", "Email", "Role", "Consent status", "Source", "Consent date", "Migration email sent"];
+    const header = ["Name", "Email", "Role", "Consent status", "Source", "Consent date", "Migration email sent", "Email bounced", "Bounce reason"];
     const lines = rows.map((u) =>
-      [u.name, u.email, u.role, STATUS_BY_KEY[u.status]?.label || u.status, u.source, fmt(u.date), fmt(u.migrationEmailSentAt)]
+      [u.name, u.email, u.role, STATUS_BY_KEY[u.status]?.label || u.status, u.source, fmt(u.date), fmt(u.migrationEmailSentAt), u.bounced ? "Yes" : "", u.bounceReason]
         .map(csvCell)
         .join(",")
     );
@@ -196,6 +208,24 @@ function EmailConsent() {
               ))}
             </Grid>
 
+            {bouncedCount > 0 && (
+              <Alert
+                severity="warning"
+                sx={{ mb: 3 }}
+                action={
+                  deliveryFilter === "all" ? (
+                    <MDButton variant="text" color="warning" size="small" onClick={() => { setDeliveryFilter("bounced"); setPage(0); }}>
+                      Show them
+                    </MDButton>
+                  ) : null
+                }
+              >
+                <strong>{bouncedCount}</strong> {bouncedCount === 1 ? "account has" : "accounts have"} an email address that
+                bounced, so they can&apos;t receive any email from us. They are shown a banner asking them to update it
+                when they next sign in. Use the &quot;Email address&quot; filter and Export CSV to review them.
+              </Alert>
+            )}
+
             <Card sx={{ p: 3 }}>
               <MDBox display="flex" gap={2} flexWrap="wrap" alignItems="center" mb={2}>
                 <TextField
@@ -232,6 +262,21 @@ function EmailConsent() {
                   <MenuItem value="Clients">Clients (incl. account managers)</MenuItem>
                   <MenuItem value="Admins">Admins</MenuItem>
                 </TextField>
+                <TextField
+                  select
+                  size="small"
+                  label="Email address"
+                  value={deliveryFilter}
+                  onChange={(e) => {
+                    setDeliveryFilter(e.target.value);
+                    setPage(0);
+                  }}
+                  sx={{ minWidth: 190 }}
+                  SelectProps={{ sx: { height: 36 } }}
+                >
+                  <MenuItem value="all">Any</MenuItem>
+                  <MenuItem value="bounced">Bouncing ({bouncedCount})</MenuItem>
+                </TextField>
                 <MDTypography variant="button" color="text">
                   {rows.length} user{rows.length !== 1 ? "s" : ""}
                   {statusFilter !== "all" ? ` · ${STATUS_BY_KEY[statusFilter].label}` : ""}
@@ -260,8 +305,29 @@ function EmailConsent() {
                   <TableBody>
                     {pageRows.map((u) => (
                       <TableRow key={u.uid} hover>
-                        <TableCell>{u.name || "—"}</TableCell>
-                        <TableCell>{u.email || "—"}</TableCell>
+                        <TableCell>
+                          {u.name ? (
+                            <MDTypography
+                              component={Link}
+                              to={profilePath(u)}
+                              variant="button"
+                              fontWeight="medium"
+                              color="info"
+                            >
+                              {u.name}
+                            </MDTypography>
+                          ) : (
+                            "—"
+                          )}
+                        </TableCell>
+                        <TableCell>
+                          {u.email || "—"}
+                          {u.bounced && (
+                            <Tooltip title={u.bounceReason || "Emails to this address were rejected"}>
+                              <Chip size="small" color="error" label="Bounced" sx={{ ml: 1 }} />
+                            </Tooltip>
+                          )}
+                        </TableCell>
                         <TableCell sx={{ textTransform: "capitalize" }}>{u.role || "—"}</TableCell>
                         <TableCell>
                           <Chip

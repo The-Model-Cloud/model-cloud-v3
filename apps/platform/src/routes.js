@@ -71,6 +71,9 @@ import AdminDashboard from "layouts/admin/dashboard";
 import NotifyModels from "layouts/admin/notify-models";
 import EmailMigration from "layouts/admin/email-migration";
 import EmailConsent from "layouts/admin/email-consent";
+import EmailCampaigns from "layouts/admin/email-campaigns";
+import EmailDelivery from "layouts/admin/email-delivery";
+import CampaignDetail from "layouts/admin/email-campaigns/CampaignDetail";
 
 // CMS management layouts (for super admin)
 import { CMSSiteContent, CMSPricing, CMSContactSubmissions, CMSPageMetadata } from "layouts/admin/cms";
@@ -563,6 +566,30 @@ const routes = [
         component: <EmailConsent />,
         roles: ["super admin"],
         icon: <Icon fontSize="small">how_to_reg</Icon>,
+      },
+      {
+        name: "Email Campaigns",
+        key: "email-campaigns",
+        route: "/admin/email/campaigns",
+        component: <EmailCampaigns />,
+        roles: ADMIN_ROLES,
+        icon: <Icon fontSize="small">mark_email_read</Icon>,
+      },
+      {
+        name: "Email Delivery",
+        key: "email-delivery",
+        route: "/admin/email/delivery",
+        component: <EmailDelivery />,
+        roles: ADMIN_ROLES,
+        icon: <Icon fontSize="small">query_stats</Icon>,
+      },
+      {
+        name: "Email Campaign",
+        key: "email-campaign-detail",
+        route: "/admin/email/campaigns/:id",
+        component: <CampaignDetail />,
+        roles: ADMIN_ROLES,
+        invisible: true,
       },
       {
         name: "Admin Logs",

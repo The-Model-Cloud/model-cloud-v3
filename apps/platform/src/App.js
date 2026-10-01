@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo } from "react";
+import { callPublicCloudFunction } from "utils/api";
 
 // react-router components
 import { Routes, Route, Navigate, useLocation } from "react-router-dom";
@@ -72,6 +73,9 @@ function RequireAuth({ children }) {
   }
   return children;
 }
+
+// Campaign email links carry ?ec=<signed token>. Read it at load time, before any redirect can drop it.
+const CAMPAIGN_TOKEN = new URLSearchParams(window.location.search).get("ec");
 
 export default function App() {
   const [controller, dispatch] = useMaterialUIController();
@@ -148,6 +152,18 @@ export default function App() {
   }, [pathname]);
 
   const { user } = useAuth();
+
+  // Record the visit once per browser session, so the campaign report can show site traffic from the email
+  useEffect(() => {
+    if (!CAMPAIGN_TOKEN) return;
+    try {
+      if (sessionStorage.getItem(`ec:${CAMPAIGN_TOKEN}`)) return;
+      sessionStorage.setItem(`ec:${CAMPAIGN_TOKEN}`, "1");
+    } catch (err) {
+      // storage unavailable: record anyway
+    }
+    callPublicCloudFunction("recordEmailVisit", { token: CAMPAIGN_TOKEN, path: window.location.pathname }).catch(() => {});
+  }, []);
 
   // Load UI preferences from Firestore when user logs in
   useEffect(() => {

@@ -12,6 +12,7 @@ const {
   buildConsent,
 } = require("./consent");
 const { sendToUser, preferencesUrl, escapeHtml } = require("./send");
+const { AUDIENCE_ROLES } = require("./audience");
 
 const db = () => admin.firestore();
 
@@ -182,13 +183,6 @@ exports.emailOneClickUnsubscribe = onRequest({ region: "europe-west2", cors: fal
 // Migration service email ("Continue Opt-In")
 // ---------------------------------------------------------------------------
 
-// Audience groups for the migration send. Admins are never included.
-const AUDIENCE_ROLES = {
-  models: ["model"],
-  clients: ["client", "account manager"],
-};
-AUDIENCE_ROLES.all = [...AUDIENCE_ROLES.models, ...AUDIENCE_ROLES.clients];
-
 const migrationEmail = (firstName, optInUrl, prefsUrl) => {
   const name = escapeHtml(firstName || "there");
   return {
@@ -318,3 +312,7 @@ exports.sendMigrationOptInEmails = onCall({ timeoutSeconds: 540 }, async (reques
     lastUid: batch.length ? batch[batch.length - 1].id : afterUid,
   };
 });
+
+Object.assign(exports, require("./campaigns"), require("./tracking"));
+Object.assign(exports, require("./sendgridData"));
+Object.assign(exports, require("./addressCheck"));
