@@ -58,12 +58,16 @@ function ApplyVoucherDialog({ open, onClose, onDone, vouchers, clients, client =
     setError("");
     try {
       const result = await callCloudFunctionStrict("redeemVoucher", { code: chosenVoucher.code, userId: target.uid });
+      const emailNote = result.emailed
+        ? " They have been emailed."
+        : ` They were not emailed (${(result.emailSkippedReason || "unknown").replace(/_/g, " ")}).`;
       onDone({
-        severity: "success",
+        severity: result.emailed ? "success" : "warning",
         text:
-          result.method === "stripe_coupon"
+          (result.method === "stripe_coupon"
             ? `${chosenVoucher.code} applied to ${target.name || target.email}: free months taken off their next invoices, until about ${fmt(result.until)}. They stay on their current plan.`
-            : `${chosenVoucher.code} applied to ${target.name || target.email}: no-charge ${TIER_LABEL[result.tier] || result.tier} until ${fmt(result.until)}.`,
+            : `${chosenVoucher.code} applied to ${target.name || target.email}: no-charge ${TIER_LABEL[result.tier] || result.tier} until ${fmt(result.until)}.`) +
+          emailNote,
       });
     } catch (err) {
       setError(errorMessage(err));

@@ -34,7 +34,6 @@
 const crypto = require("crypto");
 
 const WARNING_DAYS = 30;
-const MAX_GRANT_DAYS = 800; // guard against typos like 2062
 const GRANTABLE_ROLES = ["client", "account manager"];
 const DAY_MS = 24 * 60 * 60 * 1000;
 const MONTH_MS = 30 * DAY_MS;
@@ -106,9 +105,6 @@ module.exports = ({ admin, db, stripe, onCall, onSchedule, HttpsError, SUBSCRIPT
     const now = Date.now();
     if (until.getTime() <= now) {
       throw new HttpsError("invalid-argument", "End date must be in the future");
-    }
-    if (until.getTime() - now > MAX_GRANT_DAYS * DAY_MS) {
-      throw new HttpsError("invalid-argument", "End date is too far in the future");
     }
     return until;
   };
@@ -351,7 +347,6 @@ module.exports = ({ admin, db, stripe, onCall, onSchedule, HttpsError, SUBSCRIPT
     } else {
       months = remaining + Math.ceil(voucher.days / 30);
     }
-    if (months > 24) throw new HttpsError("invalid-argument", "That is more than 24 free months");
 
     const coupon = await stripe.coupons.create({
       percent_off: 100,
@@ -381,6 +376,38 @@ module.exports = ({ admin, db, stripe, onCall, onSchedule, HttpsError, SUBSCRIPT
       metadata: { code: voucher.code, method: "stripe_coupon", months, until: until.toISOString(), redeemedBy },
     });
     return { method: "stripe_coupon", tier: sub.tier, until };
+  };
+
+  /** Tell the client what they have been given. Never throws: a failed email must not undo the voucher. */
+  const sendVoucherEmail = async (uid, userData, { method, tier, until }) => {
+    try {
+      // Lazy require: send.js configures SendGrid at load time
+      const { sendToUser, escapeHtml } = require("./email/send");
+      const tierName = SUBSCRIPTION_TIERS[tier]?.name || tier;
+      const date = formatDate(until);
+      const alreadySubscribed =
+        method === "stripe_coupon"
+          ? "<p>You are already subscribed, so there is nothing you need to do. Your invoices will be free until then.</p>"
+          : "";
+      return await sendToUser(db, {
+        uid,
+        userData,
+        subject: `Your ${tierName} plan is free until ${date}`,
+        html: `<p>Hi ${escapeHtml(userData.firstName || "there")},</p>
+          <p>A voucher has been added to your The Model Cloud account.</p>
+          <p><strong>Plan:</strong> ${escapeHtml(tierName)}<br><strong>Free until:</strong> ${date}</p>
+          ${alreadySubscribed}`,
+        text: `A voucher has been added to your The Model Cloud account.
+
+Plan: ${tierName}
+Free until: ${date}`,
+        kind: "service",
+        categories: ["voucher"],
+      });
+    } catch (error) {
+      console.error(`Voucher email failed for ${uid}:`, error.message);
+      return { sent: false, reason: "email_error" };
+    }
   };
 
   /**
@@ -439,7 +466,8 @@ module.exports = ({ admin, db, stripe, onCall, onSchedule, HttpsError, SUBSCRIPT
         tier: result.tier,
         benefitUntil: Timestamp.fromDate(result.until),
       });
-      return result;
+      const email = await sendVoucherEmail(uid, userData, result);
+      return { ...result, emailed: email.sent, emailSkippedReason: email.reason || null };
     } catch (error) {
       // Give the redemption back so the voucher isn't used up by a failure
       await redemptionRef.delete().catch(() => {});
@@ -455,7 +483,14 @@ module.exports = ({ admin, db, stripe, onCall, onSchedule, HttpsError, SUBSCRIPT
     if (!code || !userId) throw new HttpsError("invalid-argument", "code and userId are required");
 
     const result = await redeemVoucherCore({ code, uid: userId, redeemedBy: adminUid, byAdmin: true });
-    return { success: true, method: result.method, tier: result.tier, until: result.until.toISOString() };
+    return {
+      success: true,
+      method: result.method,
+      tier: result.tier,
+      until: result.until.toISOString(),
+      emailed: result.emailed,
+      emailSkippedReason: result.emailSkippedReason,
+    };
   });
 
   /** Take a voucher back off a client (an admin mistake or a changed mind). Gives the redemption back to the voucher. */
