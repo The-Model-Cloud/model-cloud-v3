@@ -135,6 +135,9 @@ REACT_APP_STRIPE_PUBLISHABLE_KEY=pk_...
 REACT_APP_CLOUDINARY_CLOUD_NAME=your-cloud-name
 REACT_APP_CLOUDINARY_API_KEY=your-api-key
 REACT_APP_CLOUDINARY_UPLOAD_PRESET=ml_default
+
+# Public website (the "Choose a plan" link on Account & Billing goes to its pricing page)
+REACT_APP_WEBSITE_URL=https://themodel.cloud
 ```
 
 **Website** (`apps/website/.env.local`):
@@ -166,6 +169,14 @@ SENDGRID_FROM_EMAIL=noreply@themodel.cloud
 # Public URLs used in email links (base address only, no trailing slash or path)
 APP_URL=https://app.themodel.cloud
 WEBSITE_URL=https://themodel.cloud
+
+# Invoice issuer details printed on every invoice PDF (address lines separated by |)
+INVOICE_COMPANY_NAME=The Model Cloud
+INVOICE_COMPANY_ADDRESS=Line 1|Line 2|Postcode
+INVOICE_COMPANY_NUMBER=
+INVOICE_VAT_NUMBER=
+INVOICE_EMAIL=
+INVOICE_FOOTER=
 
 # Cloudinary
 CLOUDINARY_CLOUD_NAME=your-cloud-name
@@ -293,6 +304,12 @@ npm run deploy:all
 - Secure payments with escrow
 - Organisation dashboards
 - Team management
+- **Account & Billing** (one page for everything about their account):
+  - Plan, price, status, when it ends or renews, and any voucher
+  - Upcoming payments (next membership charge and bookings waiting for payment) and everything paid
+  - Invoices to download as PDF: one every 30 days for membership (including £0 for free and no-charge accounts) and one for each job payment
+  - Turn membership billing off and on, manage saved cards and billing details
+  - Control of their data: download everything we hold, manage email preferences, pause the account (reversible) or delete it permanently
 
 ### For Organisations
 - Multi-user access with roles (Owner, Admin, Member)
@@ -308,6 +325,8 @@ npm run deploy:all
 - Pricing tier configuration
 - Client/model import tools
 - System-wide email toggle
+- **Vouchers & Billing**: create vouchers (free for N days or until a date), apply them to clients, and see which clients are paying, on no-charge or free, which have a voucher and when it ends
+- Email platform: consent, campaigns, delivery and bounce handling
 
 ## Email Notifications
 
@@ -325,6 +344,8 @@ The platform sends automated email notifications based on user preferences. User
 | Job Invitation | Models | When invited to apply for a job |
 | Account Verification | Models | When admin verifies their account |
 | Welcome Email | All users | After registration |
+| Voucher Applied | Clients | When an admin applies a voucher (tier and the date it is free until) |
+| No-Charge Ending | Clients | 30 days before free access ends, and when it has ended |
 
 ### Marketing Subscriptions (Mailchimp)
 
@@ -360,6 +381,26 @@ All email templates are defined in `functions/index.js`. Search for `html:` to f
 | Enterprise | Full features, unlimited seats |
 | Agency | Seat management for client accounts |
 
+Client subscriptions (Stripe, website): Free, Starter £49.99, Professional £99.99 (tier id `premium`) and Agency £149.99 per month. Organisation tiers (Demo to Agency) are set by an admin and only control licence limits.
+
+## Membership, Vouchers and Invoices
+
+All of this runs in Cloud Functions (`functions/complimentary.js`, `functions/membership.js`, `functions/payments/invoices.js`). Browsers cannot write the billing fields (see `firestore.rules`).
+
+**Vouchers.** An admin creates a voucher (tier, plus "free until a date" or "N days free", optional use limit, code expiry, email lock, campaign) and applies it to a client. A client who is not paying gets the tier at no charge with no Stripe subscription (`subscription.complimentary`). A paying client gets a 100% Stripe coupon on their existing subscription, so billing stays in place (`subscription.voucher`). Applying always extends existing free time. Admin-only for now: `redeemVoucherCore` is the one place to call to let clients redeem their own. Organisations can also be put on no-charge (`organisations/{id}.noCharge`).
+
+**Invoices.** `invoices/{id}`, numbered `INV-YYYY-NNNNNN`, from one counter. Types: job payment (`job_{jobId}`) and membership (`membership_{uid}_{yyyymmdd}` or `membership_stripe_{stripeInvoiceId}`). `users/{uid}.membershipBilling.nextInvoiceAt` anchors each client's 30-day cycle.
+
+**Scheduled jobs.**
+
+| Function | When | What it does |
+|----------|------|--------------|
+| `checkSubscriptionExpiry` | Daily 01:00 | Expires lapsed Stripe subscriptions (skips no-charge accounts) |
+| `processComplimentaryExpiry` | Daily 02:00 | Warns 30 days before no-charge access ends, then moves the client to Free |
+| `issueMembershipInvoices` | Daily 03:30 | Issues the £0 membership invoice for clients whose 30 days are up |
+
+**Client controls** (callables): `getMyMembership`, `cancelMyMembership`, `resumeMyMembership`, `pauseMyAccount`, `reactivateMyAccount`, `exportMyData`. **Admin callables**: `createVoucher`, `setVoucherActive`, `redeemVoucher`, `removeVoucherFromUser`, `grantComplimentaryOrganisation`, `revokeComplimentaryOrganisation`, `extendComplimentaryAccess`, and the super-admin `adminStartMembershipInvoicing` (start invoicing for clients that pre-date it; dry run by default).
+
 ## Browser Support
 
 - Chrome (last 2 versions)
@@ -372,7 +413,8 @@ All email templates are defined in `functions/index.js`. Search for `html:` to f
 1. Create a feature branch from `main`
 2. Make your changes
 3. Test locally with both apps
-4. Create a pull request
+4. Update `README.md` and `CHANGELOG.md` in the same change (every code change, however small)
+5. Create a pull request
 
 ## Documentation
 

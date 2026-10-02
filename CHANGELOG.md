@@ -10,6 +10,7 @@ Work in progress in the working copy, not yet committed.
 
 ### Security
 
+- Firestore rules: clients can no longer write `membershipBilling`, `accountStatus`, `pausedAt` or `pausedCancelledSubscription` on their own user document, so nobody can unpause themselves, restart their invoice cycle or skip a pause. A paused account cannot create jobs or reopen closed ones
 - Firestore rules: browsers can no longer write `subscription`, `agency`, `managedBy` or `stripeCustomerId` on a user, or create an account that starts on a paid tier. Previously any signed-in user could give themselves any tier. Organisation account managers can no longer change an organisation's `tier` or `noCharge`
 - Google detected an exposed Firebase Admin SDK service account key committed to the repository. The key was deleted in Google Cloud, `functions/service-account.json` was removed from git history (history rewritten and force-pushed), and service account key files are now gitignored
 - New clients and models are locked to the Dashboard and Edit Profile pages until an admin verifies them
@@ -17,6 +18,11 @@ Work in progress in the working copy, not yet committed.
 
 ### Added
 
+- Client "Account & Billing" page (the former Payments & Invoices page, same menu item): a Your membership card (plan, price, status, when it ends or renews, any voucher), Upcoming payments (next membership charge from Stripe, plus booked jobs waiting for payment), and Your data & account controls. Paying clients can turn membership billing off (they keep the plan until the period they paid for ends) and back on. Clients on a no-charge or free plan see that they are not being billed and when free time ends
+- Membership invoices every 30 days for every client, including £0.00 invoices for free and no-charge accounts (a no-charge invoice shows the plan's value and the matching discount, naming the voucher). Paying clients' invoices are created from Stripe's subscription invoices, including £0 ones from a 100% voucher coupon. Same numbering and PDF as job invoices; they appear in the Invoices list for download. A new client gets their first invoice at sign-up, and existing clients get theirs the first time they open the page (or via the super-admin `adminStartMembershipInvoicing` backfill). Daily `issueMembershipInvoices` job at 03:30
+- Pause my account (reversible): billing stops at the end of the paid period, open jobs are closed and reopened on reactivation (jobs the client closed themselves stay closed), marketing email stops, and posting jobs is blocked until they reactivate. Refused while a booking is in progress. A banner on every page offers one-click reactivation
+- Download my data: one JSON file with the client's profile, jobs, invoices, payments, membership history, notifications and message threads
+- Voucher applied email: when an admin applies a voucher, the client is emailed the tier they now have and the date it is free until. A failed email never undoes the voucher, and the admin's confirmation says whether the client was emailed
 - Vouchers and no-charge access: admins create vouchers (a tier plus either "free until a date" or "N days free", with optional use limits, code expiry, email lock and campaign) and apply them to clients. A client who is not paying gets the tier at no charge with no Stripe subscription; a paying client gets a 100% Stripe coupon covering the next invoices, so billing stays in place. Applying a voucher always extends existing free time and never shortens it. New Admin page "Vouchers & Billing": a Clients list showing who is paying, who has a voucher and when it ends, a Vouchers tab with redemption history, and an Organisations tab for organisation-wide no-charge. Whole organisations can also be put on no-charge, and all no-charge end dates can be extended in bulk. A daily job emails and notifies clients 30 days before no-charge access ends, then moves them to Free. Applying is admin-only for now; `redeemVoucherCore` in `functions/complimentary.js` is the single place to call if clients are ever allowed to redeem their own
 - Job details: "Favourite Models" card listing the client's favourited models with match scores and an Invite to Apply button (hidden when the client has no favourites)
 - Job details: "Models From Your Lists" card showing models from the client's personal, organisation and team Model Lists, each with an Invite to Apply button
@@ -29,8 +35,18 @@ Work in progress in the working copy, not yet committed.
 - Admin: Notify Models page
 - Website: hero models hook (`useHeroModels`) and `sitemap.xml`
 
+### Fixed
+
+- A subscription invoice that reached us before the subscription was linked to the client was ignored. The webhook now also finds the client by Stripe customer id
+- `?tab=delete-account` on the settings page opened the wrong tab for clients
+
 ### Changed
 
+- Voucher and no-charge end dates have no upper limit (31 Dec 2030 and beyond are accepted). Dates in the past are still refused
+- The Premium subscription tier is now shown as "Professional" to clients (website plan card, emails), matching the pricing page. The tier id `premium` and the Stripe price are unchanged
+- Settings tabs (`/edit-profile?tab=...`) now find the tab by name for the user's role, so `?tab=delete-account` and `?tab=notifications` work for clients (clients have fewer tabs than models)
+- Website: the fallback platform URL is now `https://app.themodel.cloud` (it was `v4.themodel.cloud`), in `lib/urls.ts` and the sign-up, account and subscription success pages
+- Account deletion now lists invoices as retained records (kept for tax purposes) alongside jobs, transactions and withdrawals
 - Book Model / Invite modal now only lists live jobs, so jobs already awarded to a model are no longer offered
 - Updates to Sidenav, user collapse menu and dashboard navbar
 - Updates to the sign-in and sign-up illustration layouts

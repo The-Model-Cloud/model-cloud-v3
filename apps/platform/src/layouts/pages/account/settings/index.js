@@ -46,6 +46,18 @@ const TAB_MAP = {
   "delete-account": 7,
 };
 
+const TAB_LABELS = {
+  "basic-info": "Basic Info",
+  portfolio: "Portfolio",
+  digitals: "Digitals",
+  measurements: "Measurements",
+  "social-media": "Social Media",
+  notifications: "Notifications",
+  sessions: "Sessions",
+  "change-password": "Change Password",
+  "delete-account": "Delete Account",
+};
+
 function Settings() {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
@@ -122,6 +134,15 @@ function Settings() {
       ];
     }
   };
+
+  // ?tab=... links by name. The tab order differs by role (a client has no Portfolio tab, for example),
+  // so once the role is known, find the tab by its label instead of trusting a fixed index.
+  useEffect(() => {
+    if (!userRole || !tabParam || !TAB_LABELS[tabParam]) return;
+    const index = getTabs().findIndex((t) => t.label === TAB_LABELS[tabParam]);
+    if (index >= 0) setTabValue(index);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [userRole, tabParam]);
 
   const renderTabContent = () => {
     const tabs = getTabs();

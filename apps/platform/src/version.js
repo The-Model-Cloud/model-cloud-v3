@@ -1,2 +1,2 @@
-const version = "v26.10.02.1101";
+const version = "v26.10.02.1420";
 export default version;

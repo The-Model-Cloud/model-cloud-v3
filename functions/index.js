@@ -112,7 +112,7 @@ const SUBSCRIPTION_TIERS = {
   },
   premium: {
     id: "premium",
-    name: "Premium",
+    name: "Professional",
     price: 9999, // £99.99 in pence
     currency: "gbp",
     stripePriceId: process.env.STRIPE_PREMIUM_PRICE_ID || null,
@@ -140,6 +140,20 @@ Object.assign(
   exports,
   complimentaryModule({ admin, db, stripe, onCall, onSchedule, HttpsError, SUBSCRIPTION_TIERS })
 );
+
+// Client membership: 30-day invoices (including £0), account overview, cancel/pause controls, data export
+const membershipModule = require("./membership")({
+  admin,
+  db,
+  stripe,
+  onCall,
+  onSchedule,
+  onDocumentCreated,
+  HttpsError,
+  SUBSCRIPTION_TIERS,
+});
+Object.assign(exports, membershipModule.functions);
+const membershipHelpers = membershipModule.helpers;
 
 // Configure Cloudinary
 if (process.env.CLOUDINARY_CLOUD_NAME && process.env.CLOUDINARY_API_KEY && process.env.CLOUDINARY_API_SECRET) {
@@ -6852,15 +6866,21 @@ async function handleInvoicePaymentSucceeded(invoice) {
   // Subscription invoices are handled by subscription.updated
   // This is mainly for logging/audit
   if (invoice.subscription) {
-    const usersSnapshot = await db
+    let usersSnapshot = await db
       .collection("users")
       .where("subscription.stripeSubscriptionId", "==", invoice.subscription)
       .limit(1)
       .get();
 
+    // The first invoice can arrive before the subscription webhook has linked the subscription to the user
+    if (usersSnapshot.empty && invoice.customer) {
+      usersSnapshot = await db.collection("users").where("stripeCustomerId", "==", invoice.customer).limit(1).get();
+    }
+
     if (!usersSnapshot.empty) {
+      const userDoc = usersSnapshot.docs[0];
       await db.collection("subscriptionEvents").add({
-        userId: usersSnapshot.docs[0].id,
+        userId: userDoc.id,
         eventType: "invoice_paid",
         metadata: {
           invoiceId: invoice.id,
@@ -6870,6 +6890,13 @@ async function handleInvoicePaymentSucceeded(invoice) {
         stripeEventId: invoice.id,
         createdAt: admin.firestore.FieldValue.serverTimestamp(),
       });
+
+      // Our own numbered invoice for the client's account page (a failure here must not fail the webhook)
+      try {
+        await membershipHelpers.createMembershipInvoiceFromStripe(userDoc.id, userDoc.data(), invoice);
+      } catch (error) {
+        console.error(`Membership invoice failed for stripe invoice ${invoice.id}:`, error.message);
+      }
     }
   }
 }

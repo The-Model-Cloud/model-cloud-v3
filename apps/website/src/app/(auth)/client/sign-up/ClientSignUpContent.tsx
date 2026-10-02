@@ -80,7 +80,7 @@ function ClientSignUpForm() {
       toast.success("Account created successfully!");
 
       // Redirect to platform onboarding
-      const appUrl = process.env.NEXT_PUBLIC_APP_URL || "https://v4.themodel.cloud";
+      const appUrl = process.env.NEXT_PUBLIC_APP_URL || "https://app.themodel.cloud";
       window.location.href = `${appUrl}/onboarding`;
     } catch (err: unknown) {
       console.error("Sign up error:", err);

@@ -35,7 +35,7 @@ function SubscriptionSuccessContent() {
     refreshSubscription();
   }, [refresh]);
 
-  const appUrl = process.env.NEXT_PUBLIC_APP_URL || "https://v4.themodel.cloud";
+  const appUrl = process.env.NEXT_PUBLIC_APP_URL || "https://app.themodel.cloud";
 
   return (
     <div className="container py-20">

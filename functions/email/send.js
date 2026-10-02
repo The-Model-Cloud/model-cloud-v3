@@ -84,6 +84,9 @@ const sendToUser = async (
   if (kind === "marketing" && !test && !canReceiveMarketing(userData)) {
     return { sent: false, reason: "no_marketing_consent" };
   }
+  if (kind === "marketing" && !test && userData?.accountStatus === "paused") {
+    return { sent: false, reason: "account_paused" };
+  }
 
   const suppression = await getSuppression(db, email);
   if (suppression && !(test && suppression.reason === SUPPRESSION_REASONS.UNSUBSCRIBE)) {

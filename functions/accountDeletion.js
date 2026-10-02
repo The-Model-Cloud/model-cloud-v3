@@ -50,7 +50,7 @@ const removeFromMailchimp = async (email) => {
 /**
  * Self-service account deletion (GDPR right to erasure).
  *
- * Deletes the caller's own account only. Retained on purpose: jobs, transactions and withdrawals
+ * Deletes the caller's own account only. Retained on purpose: jobs, invoices, transactions and withdrawals
  * (financial/contract records other parties and tax law depend on). Those are reported back in `retained`.
  */
 exports.deleteMyAccount = onCall({ timeoutSeconds: 300 }, async (request) => {
@@ -174,7 +174,7 @@ exports.deleteMyAccount = onCall({ timeoutSeconds: 300 }, async (request) => {
   console.log(`deleteMyAccount: ${uid} deleted`, { ...summary, mailchimp });
   return {
     success: true,
-    retained: ["jobs", "transactions", "withdrawals"],
+    retained: ["jobs", "invoices", "transactions", "withdrawals"],
     // A Stripe Connect account is not closed automatically because it may hold funds.
     stripeConnectAccountNeedsReview: Boolean(userData.stripeAccountId),
     partialErrors: summary.errors.length,

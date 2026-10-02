@@ -1,17 +1,12 @@
 /**
  * Platform URL utilities
  *
- * DEV Environment:
- * - Platform: https://v4.themodel.cloud/
- * - Website: https://sandbox.themodel.cloud/
- *
- * LIVE Environment (when ready):
  * - Platform: https://app.themodel.cloud/
- * - Website: https://www.themodel.cloud/
+ * - Website: https://themodel.cloud/
  */
 
 export const PLATFORM_URL =
-  process.env.NEXT_PUBLIC_APP_URL || "https://v4.themodel.cloud";
+  process.env.NEXT_PUBLIC_APP_URL || "https://app.themodel.cloud";
 
 export const platformUrl = (path: string) => {
   const cleanPath = path.startsWith("/") ? path : `/${path}`;

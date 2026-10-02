@@ -1,9 +1,11 @@
 /**
- * Payments & Invoices Page (clients and account managers)
+ * Account & Billing Page (clients and account managers)
  *
- * - Every job with what is owed or paid: Pending (not booked yet), Require Payment (booked, unpaid), Paid
- * - Invoices (one per payment, PDF download) and the billing details that appear on them
+ * - Membership: plan, price, when it ends or renews, any voucher, and the switch to turn billing off
+ * - Upcoming payments, and every job with what is owed or paid: Pending, Require Payment, Paid
+ * - Invoices (membership every 30 days, plus one per job payment, PDF download) and the billing details on them
  * - Saved cards and the transaction list
+ * - Data and account controls: download my data, email preferences, pause, delete
  */
 
 import { useState, useEffect, useMemo, useCallback } from "react";
@@ -34,6 +36,9 @@ import AddCardModal from "layouts/pages/account/billing/components/AddCardModal"
 import JobPayments, { formatMoney } from "layouts/pages/account/billing/components/JobPayments";
 import InvoicesList from "layouts/pages/account/billing/components/InvoicesList";
 import BillingDetails from "layouts/pages/account/billing/components/BillingDetails";
+import MembershipCard from "layouts/pages/account/billing/components/MembershipCard";
+import UpcomingPayments from "layouts/pages/account/billing/components/UpcomingPayments";
+import AccountControls from "layouts/pages/account/billing/components/AccountControls";
 
 // API / helpers
 import { getSavedPaymentMethods, getTransactionHistory, callCloudFunctionStrict } from "utils/api";
@@ -66,6 +71,7 @@ function Billing() {
   const [transactions, setTransactions] = useState([]);
   const [jobs, setJobs] = useState([]);
   const [invoices, setInvoices] = useState([]);
+  const [membership, setMembership] = useState(null);
   const [showAddCardModal, setShowAddCardModal] = useState(false);
   const [successMessage, setSuccessMessage] = useState("");
   const [errorMessage, setErrorMessage] = useState("");
@@ -74,8 +80,16 @@ function Billing() {
     if (!user?.uid) return;
     setLoading(true);
     try {
-      // Issue any invoices that are missing for payments made before invoices existed (quick no-op otherwise)
-      await callCloudFunctionStrict("ensureMyInvoices", {}).catch(() => {});
+      // Membership first: it starts the 30-day invoice cycle for clients who pre-date it, so their first invoice is
+      // in the list below. Also issue any job invoices that are missing (quick no-op otherwise).
+      const [membershipResult] = await Promise.all([
+        callCloudFunctionStrict("getMyMembership", {}).catch((err) => {
+          console.warn("Could not load membership:", err?.message);
+          return null;
+        }),
+        callCloudFunctionStrict("ensureMyInvoices", {}).catch(() => {}),
+      ]);
+      setMembership(membershipResult);
 
       const [methodsResult, transactionsResult, jobDocs, invoiceDocs] = await Promise.all([
         getSavedPaymentMethods().catch(() => ({ success: false })),
@@ -130,10 +144,10 @@ function Billing() {
       <MDBox mt={4} mb={3}>
         <MDBox mb={3}>
           <MDTypography variant="h4" fontWeight="medium">
-            Payments & Invoices
+            Account & Billing
           </MDTypography>
           <MDTypography variant="body2" color="text">
-            Pay for your bookings, see what has been paid, and download your invoices
+            Your plan, what you will pay next, your invoices, and control of your data and account
           </MDTypography>
         </MDBox>
 
@@ -147,6 +161,18 @@ function Billing() {
             <Alert severity="error" onClose={() => setErrorMessage("")}>{errorMessage}</Alert>
           </MDBox>
         )}
+
+        <MDBox mb={3}>
+          <MembershipCard
+            membership={membership}
+            loading={loading && !membership}
+            onChanged={(text) => {
+              setSuccessMessage(text);
+              loadData();
+            }}
+            onError={setErrorMessage}
+          />
+        </MDBox>
 
         <MDBox mb={3}>
           <Grid container spacing={3}>
@@ -175,6 +201,10 @@ function Billing() {
               />
             </Grid>
           </Grid>
+        </MDBox>
+
+        <MDBox mb={3}>
+          <UpcomingPayments membership={membership} jobs={jobs} loading={loading} />
         </MDBox>
 
         <MDBox mb={3}>
@@ -207,6 +237,14 @@ function Billing() {
               <Transactions transactions={transactions} loading={loading} />
             </Grid>
           </Grid>
+        </MDBox>
+
+        <MDBox mb={3}>
+          <AccountControls
+            paused={membership?.accountStatus === "paused" || user?.accountStatus === "paused"}
+            onError={setErrorMessage}
+            onMessage={setSuccessMessage}
+          />
         </MDBox>
       </MDBox>
       <Footer />

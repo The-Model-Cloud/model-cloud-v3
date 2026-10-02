@@ -30,6 +30,9 @@ const STATUS = {
 const fmtDate = (ms) =>
   ms ? new Date(ms).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" }) : "—";
 
+// Firestore Timestamps to epoch milliseconds
+const toMs = (value) => (value?.toMillis ? value.toMillis() : value ? new Date(value).getTime() : null);
+
 /** Save a base64 PDF returned by the server. */
 const savePdf = ({ filename, base64 }) => {
   const bytes = Uint8Array.from(atob(base64), (c) => c.charCodeAt(0));
@@ -41,7 +44,7 @@ const savePdf = ({ filename, base64 }) => {
   URL.revokeObjectURL(url);
 };
 
-/** The client's real invoices: amount charged and the job it was for, with a PDF download. */
+/** The client's real invoices: membership invoices (every 30 days, even at £0) and one for each job they pay for. */
 function InvoicesList({ invoices, loading, onError }) {
   const [busyId, setBusyId] = useState("");
 
@@ -61,7 +64,7 @@ function InvoicesList({ invoices, loading, onError }) {
       <MDBox p={3} pb={1}>
         <MDTypography variant="h6" fontWeight="medium">Invoices</MDTypography>
         <MDTypography variant="button" color="text">
-          An invoice is issued each time you pay for a job.
+          A membership invoice is issued every 30 days (including at no charge), plus one each time you pay for a job.
         </MDTypography>
       </MDBox>
 
@@ -73,7 +76,7 @@ function InvoicesList({ invoices, loading, onError }) {
       ) : invoices.length === 0 ? (
         <MDBox p={3} pt={1}>
           <MDTypography variant="body2" color="text">
-            No invoices yet. They appear here after you pay for a job.
+            No invoices yet. Your first membership invoice appears here shortly.
           </MDTypography>
         </MDBox>
       ) : (
@@ -82,7 +85,7 @@ function InvoicesList({ invoices, loading, onError }) {
             <TableHead>
               <TableRow>
                 <TableCell><strong>Invoice</strong></TableCell>
-                <TableCell><strong>Job</strong></TableCell>
+                <TableCell><strong>For</strong></TableCell>
                 <TableCell align="right"><strong>Amount</strong></TableCell>
                 <TableCell><strong>Status</strong></TableCell>
                 <TableCell align="right" />
@@ -90,7 +93,8 @@ function InvoicesList({ invoices, loading, onError }) {
             </TableHead>
             <TableBody>
               {invoices.map((inv) => {
-                const status = STATUS[inv.status] || STATUS.paid;
+                const isMembership = inv.type === "membership";
+                const status = inv.total === 0 ? { label: "No charge", color: "default" } : STATUS[inv.status] || STATUS.paid;
                 return (
                   <TableRow key={inv.id} hover>
                     <TableCell>
@@ -98,8 +102,14 @@ function InvoicesList({ invoices, loading, onError }) {
                       <MDTypography variant="caption" color="text">{fmtDate(inv.issuedAt)}</MDTypography>
                     </TableCell>
                     <TableCell>
-                      <MDTypography variant="button" display="block">{inv.jobTitle}</MDTypography>
-                      <MDTypography variant="caption" color="text">{inv.jobReference}</MDTypography>
+                      <MDTypography variant="button" display="block">
+                        {isMembership ? `${inv.membership?.tierName || "Membership"} membership` : inv.jobTitle}
+                      </MDTypography>
+                      <MDTypography variant="caption" color="text">
+                        {isMembership
+                          ? `${fmtDate(toMs(inv.membership?.periodStart))} to ${fmtDate(toMs(inv.membership?.periodEnd))}`
+                          : inv.jobReference}
+                      </MDTypography>
                     </TableCell>
                     <TableCell align="right" sx={{ whiteSpace: "nowrap" }}>
                       {formatMoney(inv.total, inv.currency)}

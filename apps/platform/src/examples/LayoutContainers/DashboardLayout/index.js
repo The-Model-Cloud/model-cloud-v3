@@ -24,6 +24,7 @@ import PropTypes from "prop-types";
 // Material Dashboard 3 PRO React components
 import MDBox from "components/MDBox";
 import EmailBounceBanner from "components/EmailBounceBanner";
+import PausedAccountBanner from "components/PausedAccountBanner";
 
 // Material Dashboard 3 PRO React context
 import { useMaterialUIController, setLayout } from "context";
@@ -52,6 +53,7 @@ function DashboardLayout({ children }) {
         },
       })}
     >
+      <PausedAccountBanner />
       <EmailBounceBanner />
       {children}
     </MDBox>

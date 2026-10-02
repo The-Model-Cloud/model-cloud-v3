@@ -54,12 +54,14 @@ service cloud.firestore {
       // (including complimentary / no-charge grants). Without this a client could give themselves any tier.
       function billingFieldsUntouched() {
         return !request.resource.data.diff(resource.data).affectedKeys()
-          .hasAny(['subscription', 'agency', 'managedBy', 'stripeCustomerId']);
+          .hasAny(['subscription', 'agency', 'managedBy', 'stripeCustomerId',
+                   'membershipBilling', 'accountStatus', 'pausedAt', 'pausedCancelledSubscription']);
       }
 
       // A new account may only start on the free tier (sign-up records the tier they intend to buy separately)
       function newUserBillingSafe() {
-        return !request.resource.data.keys().hasAny(['agency', 'managedBy', 'stripeCustomerId']) &&
+        return !request.resource.data.keys().hasAny(['agency', 'managedBy', 'stripeCustomerId',
+                                                      'membershipBilling', 'accountStatus', 'pausedAt', 'pausedCancelledSubscription']) &&
           (!('subscription' in request.resource.data) ||
            (request.resource.data.subscription.get('tier', 'free') == 'free' &&
             !('complimentary' in request.resource.data.subscription)));
@@ -113,14 +115,21 @@ service cloud.firestore {
 
       // Clients may only open or close a job; moving it into or out of awarded / in progress / completed /
       // cancelled happens server-side as part of awarding and paying.
+      // A paused account (the client chose to pause it) cannot post or reopen jobs until it is reactivated.
+      function accountNotPaused() {
+        return get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('accountStatus', 'active') != 'paused';
+      }
+
       function jobStatusChangeAllowed() {
         return !request.resource.data.diff(resource.data).affectedKeys().hasAny(['status']) ||
           (resource.data.get('status', 'open') in ['open', 'closed'] &&
-           request.resource.data.status in ['open', 'closed']);
+           request.resource.data.status in ['open', 'closed'] &&
+           (request.resource.data.status != 'open' || accountNotPaused()));
       }
 
       // A new job cannot arrive already awarded or paid
       allow create: if isAuthenticated() &&
+        accountNotPaused() &&
         !request.resource.data.keys().hasAny(['payment', 'completion', 'awardedTo', 'awardCancelledAt']) &&
         request.resource.data.get('status', 'open') in ['open', 'draft'];
 

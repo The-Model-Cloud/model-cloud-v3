@@ -11,6 +11,11 @@ const core = require("./core");
  * edits can never change a document that has already been issued. Clients read their own (rules); nobody
  * writes from a browser.
  *
+ * Membership invoices (type "membership") are issued for every client every 30 days, including £0 ones for
+ * free and no-charge accounts, so each client has a complete record. Paying clients' invoices come from Stripe's
+ * subscription invoices (source "stripe"), the rest are issued by the membership scheduler. Same numbering,
+ * same collection, same PDF.
+ *
  * Issuer details come from environment variables (set these in functions/.env):
  *   INVOICE_COMPANY_NAME, INVOICE_COMPANY_ADDRESS (lines separated by |), INVOICE_COMPANY_NUMBER,
  *   INVOICE_VAT_NUMBER, INVOICE_EMAIL, INVOICE_FOOTER
@@ -30,6 +35,31 @@ const issuer = () => ({
 
 const invoiceRef = (jobId) => db().collection("invoices").doc(`job_${jobId}`);
 
+/** Next sequential, gap-free invoice number (INV-2026-000001). Must be called inside a transaction, before any writes. */
+const allocateInvoiceNumber = async (tx) => {
+  const counterRef = db().collection("settings").doc("invoiceCounter");
+  const counter = await tx.get(counterRef);
+  const next = (counter.exists ? counter.data().next : 1) || 1;
+  tx.set(counterRef, { next: next + 1 }, { merge: true });
+  return `INV-${new Date().getFullYear()}-${String(next).padStart(6, "0")}`;
+};
+
+/** Who is being billed: a snapshot, so later edits never change an issued invoice */
+const billToSnapshot = (client) => {
+  const billing = client.billingDetails || {};
+  return {
+    name: `${client.firstName || ""} ${client.lastName || ""}`.trim(),
+    email: billing.billingEmail || client.email || "",
+    companyName: billing.companyName || client.companyName || "",
+    addressLine1: billing.addressLine1 || "",
+    addressLine2: billing.addressLine2 || "",
+    city: billing.city || "",
+    postcode: billing.postcode || "",
+    country: billing.country || "",
+    vatNumber: billing.vatNumber || "",
+  };
+};
+
 /**
  * Issue the invoice for a paid job. Safe to call more than once: the second call returns the existing invoice.
  * @returns {Promise<string>} the invoice id
@@ -40,7 +70,6 @@ const createInvoiceForJob = async (jobId, job, paymentIntent) => {
 
   const clientSnap = await db().collection("users").doc(job.userId).get();
   const client = clientSnap.data() || {};
-  const billing = client.billingDetails || {};
 
   // Stripe's own receipt link, when available
   let receiptUrl = null;
@@ -59,14 +88,10 @@ const createInvoiceForJob = async (jobId, job, paymentIntent) => {
   await db().runTransaction(async (tx) => {
     if ((await tx.get(ref)).exists) return;
 
-    // Sequential, gap-free numbers: INV-2026-000001
-    const counterRef = db().collection("settings").doc("invoiceCounter");
-    const counter = await tx.get(counterRef);
-    const next = (counter.exists ? counter.data().next : 1) || 1;
-    tx.set(counterRef, { next: next + 1 }, { merge: true });
+    const invoiceNumber = await allocateInvoiceNumber(tx);
 
     tx.set(ref, {
-      invoiceNumber: `INV-${new Date().getFullYear()}-${String(next).padStart(6, "0")}`,
+      invoiceNumber,
       status: "paid",
       clientId: job.userId,
       organisationId: job.organisationId || null,
@@ -82,20 +107,72 @@ const createInvoiceForJob = async (jobId, job, paymentIntent) => {
       ],
       total: clientAmount,
       refundedAmount: 0,
-      billTo: {
-        name: `${client.firstName || ""} ${client.lastName || ""}`.trim(),
-        email: billing.billingEmail || client.email || "",
-        companyName: billing.companyName || client.companyName || "",
-        addressLine1: billing.addressLine1 || "",
-        addressLine2: billing.addressLine2 || "",
-        city: billing.city || "",
-        postcode: billing.postcode || "",
-        country: billing.country || "",
-        vatNumber: billing.vatNumber || "",
-      },
+      billTo: billToSnapshot(client),
       issuer: issuer(),
       stripePaymentIntentId: paymentIntent.id,
       receiptUrl,
+      issuedAt: FieldValue.serverTimestamp(),
+      paidAt: FieldValue.serverTimestamp(),
+    });
+  });
+  return ref.id;
+};
+
+/**
+ * Issue a membership invoice for one 30-day period. Safe to call twice with the same id: returns the existing one.
+ *
+ * @param {object} p
+ * @param {string} p.id            document id, which makes it idempotent (membership_<uid>_<yyyymmdd> or membership_stripe_<id>)
+ * @param {string} p.clientId
+ * @param {object} p.client        users document data (bill-to snapshot and organisation)
+ * @param {string} p.tier          subscription tier id
+ * @param {string} p.tierName
+ * @param {"free"|"no_charge"|"stripe"} p.source
+ * @param {Array<{description: string, amount: number}>} p.lines  pence; negative for a discount
+ * @param {number} p.total         pence
+ * @param {string} [p.currency]
+ * @param {Date} p.periodStart
+ * @param {Date} p.periodEnd
+ * @param {string|null} [p.voucherCode]
+ * @param {string|null} [p.stripeInvoiceId]
+ * @param {string|null} [p.receiptUrl]
+ * @returns {Promise<string>} the invoice id
+ */
+const createMembershipInvoice = async (p) => {
+  const ref = db().collection("invoices").doc(p.id);
+  if ((await ref.get()).exists) return ref.id;
+
+  await db().runTransaction(async (tx) => {
+    if ((await tx.get(ref)).exists) return;
+    const invoiceNumber = await allocateInvoiceNumber(tx);
+
+    tx.set(ref, {
+      type: "membership",
+      invoiceNumber,
+      status: "paid",
+      clientId: p.clientId,
+      organisationId: p.client.organisationId || null,
+      jobId: null,
+      jobReference: "",
+      jobTitle: `${p.tierName} membership`,
+      jobLocation: "",
+      modelName: "",
+      currency: p.currency || "GBP",
+      lines: p.lines,
+      total: p.total,
+      refundedAmount: 0,
+      billTo: billToSnapshot(p.client),
+      issuer: issuer(),
+      membership: {
+        tier: p.tier,
+        tierName: p.tierName,
+        source: p.source,
+        voucherCode: p.voucherCode || null,
+        periodStart: admin.firestore.Timestamp.fromDate(p.periodStart),
+        periodEnd: admin.firestore.Timestamp.fromDate(p.periodEnd),
+      },
+      stripeInvoiceId: p.stripeInvoiceId || null,
+      receiptUrl: p.receiptUrl || null,
       issuedAt: FieldValue.serverTimestamp(),
       paidAt: FieldValue.serverTimestamp(),
     });
@@ -107,7 +184,8 @@ const createInvoiceForJob = async (jobId, job, paymentIntent) => {
 // PDF
 // ---------------------------------------------------------------------------
 
-const money = (pence, currency = "GBP") => `${{ GBP: "£", EUR: "€", USD: "$" }[currency] || `${currency} `}${(pence / 100).toFixed(2)}`;
+const money = (pence, currency = "GBP") =>
+  `${pence < 0 ? "-" : ""}${{ GBP: "£", EUR: "€", USD: "$" }[currency] || `${currency} `}${(Math.abs(pence) / 100).toFixed(2)}`;
 const dateText = (ts) => {
   const d = ts?.toDate ? ts.toDate() : ts ? new Date(ts) : new Date();
   return d.toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" });
@@ -150,12 +228,18 @@ const renderInvoicePdf = (invoice) =>
       .filter(Boolean)
       .forEach((line) => doc.text(line, left, doc.y));
 
-    // Job
+    // Job, or the membership period
     y = doc.y + 20;
-    doc.fillColor(grey).font("Helvetica-Bold").fontSize(9).text("JOB", left, y);
-    doc.fillColor("#111111").font("Helvetica").fontSize(10)
-      .text(`${invoice.jobTitle}${invoice.jobReference ? ` (${invoice.jobReference})` : ""}`, left, doc.y);
-    if (invoice.jobLocation) doc.fillColor(grey).text(invoice.jobLocation, left, doc.y);
+    if (invoice.type === "membership") {
+      doc.fillColor(grey).font("Helvetica-Bold").fontSize(9).text("MEMBERSHIP", left, y);
+      doc.fillColor("#111111").font("Helvetica").fontSize(10).text(`${invoice.membership?.tierName || "Membership"} plan`, left, doc.y);
+      doc.fillColor(grey).text(`Period: ${dateText(invoice.membership?.periodStart)} to ${dateText(invoice.membership?.periodEnd)}`, left, doc.y);
+    } else {
+      doc.fillColor(grey).font("Helvetica-Bold").fontSize(9).text("JOB", left, y);
+      doc.fillColor("#111111").font("Helvetica").fontSize(10)
+        .text(`${invoice.jobTitle}${invoice.jobReference ? ` (${invoice.jobReference})` : ""}`, left, doc.y);
+      if (invoice.jobLocation) doc.fillColor(grey).text(invoice.jobLocation, left, doc.y);
+    }
 
     // Lines
     y = doc.y + 25;
@@ -172,7 +256,7 @@ const renderInvoicePdf = (invoice) =>
     doc.moveTo(left, y).lineTo(right, y).strokeColor("#dddddd").stroke();
     y += 10;
     doc.font("Helvetica-Bold").fontSize(12)
-      .text("Total paid", left, y).text(money(invoice.total, invoice.currency), left, y, { width: right - left, align: "right" });
+      .text(invoice.total === 0 ? "Total due" : "Total paid", left, y).text(money(invoice.total, invoice.currency), left, y, { width: right - left, align: "right" });
 
     if (invoice.refundedAmount > 0) {
       y += 22;
@@ -181,10 +265,14 @@ const renderInvoicePdf = (invoice) =>
     }
 
     // Footer
-    doc.fillColor(grey).font("Helvetica").fontSize(8).text(
-      `Paid by card or bank transfer via Stripe${invoice.stripePaymentIntentId ? ` (ref ${invoice.stripePaymentIntentId})` : ""}. ${from.footer || ""}`.trim(),
-      left, 770, { width: right - left, align: "center" }
-    );
+    const footerLead =
+      invoice.type === "membership" && invoice.membership?.source !== "stripe"
+        ? "No payment is due for this period."
+        : `Paid by card or bank transfer via Stripe${invoice.stripePaymentIntentId ? ` (ref ${invoice.stripePaymentIntentId})` : ""}.`;
+    doc.fillColor(grey).font("Helvetica").fontSize(8).text(`${footerLead} ${from.footer || ""}`.trim(), left, 770, {
+      width: right - left,
+      align: "center",
+    });
     doc.end();
   });
 
@@ -280,4 +368,5 @@ exports.adminBackfillInvoices = onCall({ timeoutSeconds: 300 }, async (request) 
 });
 
 module.exports.createInvoiceForJob = createInvoiceForJob;
+module.exports.createMembershipInvoice = createMembershipInvoice;
 module.exports.renderInvoicePdf = renderInvoicePdf;

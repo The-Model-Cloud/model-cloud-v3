@@ -435,7 +435,7 @@ const routes = [
   // ============================================================
   {
     type: "collapse",
-    name: "Payments & Invoices",
+    name: "Account & Billing",
     key: "payments-invoices",
     icon: <Icon fontSize="small">credit_card</Icon>,
     roles: ["client", "account manager"],
