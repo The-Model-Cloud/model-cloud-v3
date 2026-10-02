@@ -24,6 +24,8 @@ interface SubscriptionContextType extends SubscriptionState {
   isFreeTier: boolean;
   isAgency: boolean;
   isManagedClient: boolean;
+  /** On a paid tier at no charge (admin-granted) until a set date */
+  isComplimentary: boolean;
 }
 
 const defaultTierDetails: TierDetails = {
@@ -51,6 +53,7 @@ const SubscriptionContext = createContext<SubscriptionContextType>({
   isFreeTier: true,
   isAgency: false,
   isManagedClient: false,
+  isComplimentary: false,
 });
 
 export function SubscriptionProvider({ children }: { children: ReactNode }) {
@@ -79,6 +82,9 @@ export function SubscriptionProvider({ children }: { children: ReactNode }) {
               : null,
             cancelAtPeriodEnd: data.subscription.cancelAtPeriodEnd,
             managedSeat: data.subscription.managedSeat,
+            complimentaryUntil: data.subscription.complimentary
+              ? new Date(data.subscription.complimentary.until)
+              : null,
           }
         : null;
 
@@ -134,6 +140,7 @@ export function SubscriptionProvider({ children }: { children: ReactNode }) {
     isFreeTier: state.tier === "free",
     isAgency: state.tier === "agency",
     isManagedClient: state.managedBy !== null,
+    isComplimentary: !!state.subscription?.complimentaryUntil,
   };
 
   return (

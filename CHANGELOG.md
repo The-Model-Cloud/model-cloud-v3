@@ -10,12 +10,14 @@ Work in progress in the working copy, not yet committed.
 
 ### Security
 
+- Firestore rules: browsers can no longer write `subscription`, `agency`, `managedBy` or `stripeCustomerId` on a user, or create an account that starts on a paid tier. Previously any signed-in user could give themselves any tier. Organisation account managers can no longer change an organisation's `tier` or `noCharge`
 - Google detected an exposed Firebase Admin SDK service account key committed to the repository. The key was deleted in Google Cloud, `functions/service-account.json` was removed from git history (history rewritten and force-pushed), and service account key files are now gitignored
 - New clients and models are locked to the Dashboard and Edit Profile pages until an admin verifies them
 - Fixed the `verifyEmail` bug in the auth-action handler
 
 ### Added
 
+- Vouchers and no-charge access: admins create vouchers (a tier plus either "free until a date" or "N days free", with optional use limits, code expiry, email lock and campaign) and apply them to clients. A client who is not paying gets the tier at no charge with no Stripe subscription; a paying client gets a 100% Stripe coupon covering the next invoices, so billing stays in place. Applying a voucher always extends existing free time and never shortens it. New Admin page "Vouchers & Billing": a Clients list showing who is paying, who has a voucher and when it ends, a Vouchers tab with redemption history, and an Organisations tab for organisation-wide no-charge. Whole organisations can also be put on no-charge, and all no-charge end dates can be extended in bulk. A daily job emails and notifies clients 30 days before no-charge access ends, then moves them to Free. Applying is admin-only for now; `redeemVoucherCore` in `functions/complimentary.js` is the single place to call if clients are ever allowed to redeem their own
 - Job details: "Favourite Models" card listing the client's favourited models with match scores and an Invite to Apply button (hidden when the client has no favourites)
 - Job details: "Models From Your Lists" card showing models from the client's personal, organisation and team Model Lists, each with an Invite to Apply button
 - Model profile: "Invite to Job" button, shown to clients who have at least one live job
@@ -36,6 +38,53 @@ Work in progress in the working copy, not yet committed.
 - Updates to `.htaccess`, `robots.txt` and FTP deploy scripts for both apps
 - Updated Firestore rules, `firebase.json` and Cloud Functions
 - Website header, footer, hero and CTA updates, and site content types
+
+## [2026-10-01] Email Platform and Job Payments
+
+### Security
+
+- Firestore rules: browsers can no longer write a job's `payment`, `completion` or `awardedTo` fields, create a job that is already awarded or paid, change a job's status other than open/closed, or delete a job once a payment exists. These are now written only by Cloud Functions. Previously a client could mark their own job as paid
+- Saved cards: deleting or setting a default payment method now checks the card belongs to the caller
+- Award validation: agreed amount must be between 5 and 100,000, GBP only, and the job must be open
+- The Stripe webhook now accepts several signing secrets (comma separated in `STRIPE_WEBHOOK_SECRET`), because two endpoints point at the same function and each has its own secret
+- Payment status is now confirmed against Stripe on the server (webhook and browser confirm share one idempotent path) instead of trusting the browser
+
+### Added
+
+- Email platform: marketing consent model (`marketingConsent`: unconfirmed, opted_in, not_opted_in, opted_out) with a suppression list, signed unsubscribe links and a shared send helper that enforces consent, suppression and the system email toggle (`functions/email/`)
+- Public `/email-preferences` page: Continue Opt-In and unsubscribe, changed only by an explicit button click so email link scanners cannot opt anyone in or out
+- One-click unsubscribe endpoint and `List-Unsubscribe` headers on marketing email
+- Marketing opt-in checkbox (unticked by default) on the platform sign-up form and both website sign-up forms
+- Dashboard settings: marketing toggles are now soft opt-outs per category, plus "Unsubscribe from all emails" and "Subscribe to all emails" buttons
+- Admin (super admin): Email Migration page with a consent backfill (accounts created before 1 March 2026 are marked as legacy) and the one-off "Continue Opt-In" migration email, sent by audience (models, clients, everyone) in batches
+- Admin (super admin): Email Consent page showing opted in, opted out, awaiting confirmation and not opted in, with filters, links to each user's profile and CSV export
+- Admin: Email Campaigns (admin and super admin): rich-text campaign editor with merge fields, preview, test send, audience and category selection, send now or schedule, and a scheduled sender that works through batches without duplicates
+- Campaign tracking: UTM parameters and a signed recipient token on links to our own sites, site visits recorded against the campaign, and a SendGrid event webhook (signature verified) recording delivery, opens, clicks, bounces and spam reports
+- Admin: Email Delivery page showing live SendGrid totals, a daily chart, per-email activity, bounce, block, spam and unsubscribe lists, and a "Sync to platform" action that copies them into the platform suppression list
+- Bounced email addresses: users are flagged when an address bounces and shown a banner asking them to update it. Changing it uses Firebase verify-before-update-email (the login only changes once the link in the new address is clicked), with a server-side check of the new address (syntax, mail server, common typos, previous bounces). The Email Consent page has a Bounced badge, filter and CSV columns
+- Server-side self-service account deletion (`deleteMyAccount`) replacing the browser-side delete, with password re-entry, Stripe subscription cancellation, data cleanup, Mailchimp removal and a hashed suppression entry
+- Job payments: the client is charged in full when they pay, funds are held in the platform's Stripe balance, and the model's share is transferred on completion. If the model has no bank account yet, the funds stay held and are sent automatically once they link one, with a daily retry for failed transfers
+- Job payments: failed payments can be retried, 3D Secure is handled for saved cards, and a bank redirect (Pay by Bank) is completed on return
+- Job payments: refund and dispute handling in the webhook (`charge.refunded`, `charge.dispute.created`, `charge.dispute.closed`). Disputes notify super admins and are logged in Admin Logs
+- Server-side Cancel Booking (`cancelJobBooking`) for jobs not yet paid. A paid booking must be cancelled and refunded by an admin
+- Invoices: one is issued automatically for each paid job with a sequential number (`INV-YYYY-NNNNNN`), a snapshot of the client's billing details and amounts, a PDF download and a link to the Stripe card receipt. Refunds are reflected on the invoice
+- Payments & Invoices page: summary cards (Require Payment, Paid, Pending), a list of the client's jobs with Pending / Require Payment / Paid status and a Pay now button, real invoices, and an editable Billing Details panel (company, address, VAT number)
+
+### Changed
+
+- Account menu: Documents is hidden for everyone and Security is hidden for models (placeholder pages, to be restored later)
+- Transactions list: a held payment now shows its amount instead of "Pending"
+- Email Consent: names link to the user's profile (model settings for models, user settings for everyone else)
+- Callable timeout for the long-running admin jobs (sync and backfill) raised to 9 minutes in the browser
+- Awarding a job now stores the model's share and the platform fee so that they always add up exactly to the amount charged
+
+### Fixed
+
+- A spam-report suppression could be downgraded to a marketing-only unsubscribe when the user was also opted out. A stronger existing suppression is now never weakened
+- Models could be paid twice for one job (destination charge plus a separate transfer), and funds were never transferred if the model had no account when the client paid
+- Card holds lapsed after about 7 days, before the 14-day auto-release, so capture could fail on longer jobs
+- A failed payment left the job stuck with no way to retry
+- Removed the fake sample Invoices and Billing Information panels and the decorative card graphic from the Payments & Invoices page
 
 ## [2026-03-27] Ready to Release
 

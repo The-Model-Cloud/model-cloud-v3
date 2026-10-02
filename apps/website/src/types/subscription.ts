@@ -20,6 +20,8 @@ export interface SubscriptionInfo {
   currentPeriodEnd: Date | null;
   cancelAtPeriodEnd: boolean;
   managedSeat: boolean;
+  /** End date of a complimentary (no-charge) plan, or null if the plan is paid / free */
+  complimentaryUntil: Date | null;
 }
 
 export interface AgencyInfo {
@@ -55,6 +57,7 @@ export interface GetSubscriptionStatusResponse {
     currentPeriodEnd: string | null;
     cancelAtPeriodEnd: boolean;
     managedSeat: boolean;
+    complimentary?: { until: string };
   };
   agency?: {
     totalSeats: number;

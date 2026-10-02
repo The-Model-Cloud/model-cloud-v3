@@ -603,6 +603,15 @@ function OrganisationDetail() {
                   </MDTypography>
                   <MDBox display="flex" alignItems="center" gap={1} mt={0.5}>
                     {organisation && getTierChip(organisation.tier)}
+                    {organisation?.noCharge?.enabled && (
+                      <Chip
+                        size="small"
+                        color="success"
+                        variant="outlined"
+                        sx={{ ml: 1 }}
+                        label={`No charge until ${(organisation.noCharge.until?.toDate?.() || new Date(organisation.noCharge.until)).toLocaleDateString("en-GB")}`}
+                      />
+                    )}
                     {getStatusChip()}
                   </MDBox>
                 </MDBox>
@@ -667,6 +676,15 @@ function OrganisationDetail() {
                   </MDTypography>
                   <MDBox mt={0.5}>
                     {organisation && getTierChip(organisation.tier)}
+                    {organisation?.noCharge?.enabled && (
+                      <Chip
+                        size="small"
+                        color="success"
+                        variant="outlined"
+                        sx={{ ml: 1 }}
+                        label={`No charge until ${(organisation.noCharge.until?.toDate?.() || new Date(organisation.noCharge.until)).toLocaleDateString("en-GB")}`}
+                      />
+                    )}
                   </MDBox>
                 </MDBox>
               </Grid>

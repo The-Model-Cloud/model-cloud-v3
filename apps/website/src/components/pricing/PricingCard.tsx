@@ -33,7 +33,7 @@ interface PricingCardProps {
 
 export function PricingCard({ tier, allTiers = [] }: PricingCardProps) {
   const { firebaseUser, loading: authLoading } = useAuth();
-  const { tier: currentTier, loading: subLoading, isFreeTier } = useSubscription();
+  const { tier: currentTier, loading: subLoading, isFreeTier, isComplimentary } = useSubscription();
   const { startCheckout, openPortal, loading: checkoutLoading } = useCheckout();
   const [localLoading, setLocalLoading] = useState(false);
 
@@ -45,7 +45,8 @@ export function PricingCard({ tier, allTiers = [] }: PricingCardProps) {
     (tier.id.toLowerCase() as SubscriptionTier);
 
   const isCurrentTier = currentTier === subscriptionTierId;
-  const hasSubscription = !isFreeTier;
+  // A no-charge plan has no Stripe subscription, so there is no portal: moving to a paid plan goes through checkout
+  const hasSubscription = !isFreeTier && !isComplimentary;
 
   const handleClick = async () => {
     if (!firebaseUser) {

@@ -13,8 +13,15 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { AlertCircle, CheckCircle2, Clock } from "lucide-react";
 
 export function SubscriptionStatus() {
-  const { subscription, tierDetails, loading, error, isManagedClient, tier } =
-    useSubscription();
+  const {
+    subscription,
+    tierDetails,
+    loading,
+    error,
+    isManagedClient,
+    isComplimentary,
+    tier,
+  } = useSubscription();
 
   if (loading) {
     return (
@@ -72,10 +79,14 @@ export function SubscriptionStatus() {
   const isActive = subscription?.status === "active";
   const cancelAtPeriodEnd = subscription?.cancelAtPeriodEnd;
   const periodEnd = subscription?.currentPeriodEnd;
+  const complimentaryUntil = subscription?.complimentaryUntil;
 
   const getStatusBadge = () => {
     if (tier === "free") {
       return <Badge variant="secondary">Free</Badge>;
+    }
+    if (isComplimentary) {
+      return <Badge variant="default">No charge</Badge>;
     }
     if (cancelAtPeriodEnd) {
       return <Badge variant="destructive">Cancelling</Badge>;
@@ -101,7 +112,15 @@ export function SubscriptionStatus() {
       <CardContent className="space-y-4">
         <div className="flex items-center justify-between">
           <span className="text-2xl font-bold">
-            {tierDetails?.price ? (
+            {isComplimentary ? (
+              <>
+                £0
+                <span className="text-sm font-normal text-muted-foreground">
+                  {" "}
+                  until {complimentaryUntil?.toLocaleDateString()}
+                </span>
+              </>
+            ) : tierDetails?.price ? (
               <>
                 {tierDetails.currency === "gbp" ? "£" : "$"}
                 {(tierDetails.price / 100).toFixed(2)}
@@ -120,7 +139,18 @@ export function SubscriptionStatus() {
           </span>
         </div>
 
-        {periodEnd && (
+        {isComplimentary && (
+          <div className="p-3 bg-green-50 dark:bg-green-950 rounded-lg border border-green-200 dark:border-green-800">
+            <p className="text-sm text-green-800 dark:text-green-200">
+              You have the full {tierName} plan at no charge until{" "}
+              {complimentaryUntil?.toLocaleDateString()}. You won&apos;t be
+              billed. Before it ends we&apos;ll remind you, and you can choose
+              a plan to keep your benefits.
+            </p>
+          </div>
+        )}
+
+        {periodEnd && !isComplimentary && (
           <div className="flex items-center gap-2 text-sm text-muted-foreground">
             <Clock className="h-4 w-4" />
             {cancelAtPeriodEnd ? (

@@ -71,6 +71,7 @@ import AdminDashboard from "layouts/admin/dashboard";
 import NotifyModels from "layouts/admin/notify-models";
 import EmailMigration from "layouts/admin/email-migration";
 import EmailConsent from "layouts/admin/email-consent";
+import NoChargeAccess from "layouts/admin/no-charge-access";
 import EmailCampaigns from "layouts/admin/email-campaigns";
 import EmailDelivery from "layouts/admin/email-delivery";
 import CampaignDetail from "layouts/admin/email-campaigns/CampaignDetail";
@@ -566,6 +567,14 @@ const routes = [
         component: <EmailConsent />,
         roles: ["super admin"],
         icon: <Icon fontSize="small">how_to_reg</Icon>,
+      },
+      {
+        name: "Vouchers & Billing",
+        key: "vouchers-billing",
+        route: "/admin/vouchers",
+        component: <NoChargeAccess />,
+        roles: ADMIN_ROLES,
+        icon: <Icon fontSize="small">card_giftcard</Icon>,
       },
       {
         name: "Email Campaigns",

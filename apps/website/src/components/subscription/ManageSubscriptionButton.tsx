@@ -17,7 +17,7 @@ export function ManageSubscriptionButton({
   size = "default",
   className,
 }: ManageSubscriptionButtonProps) {
-  const { isFreeTier, isManagedClient } = useSubscription();
+  const { isFreeTier, isManagedClient, isComplimentary } = useSubscription();
   const { openPortal, loading } = useCheckout();
 
   const handleClick = async () => {
@@ -28,8 +28,8 @@ export function ManageSubscriptionButton({
     }
   };
 
-  // Don't show for free tier users or managed clients
-  if (isFreeTier || isManagedClient) {
+  // Don't show for free tier users, managed clients, or no-charge plans (no Stripe subscription to manage)
+  if (isFreeTier || isManagedClient || isComplimentary) {
     return null;
   }
 

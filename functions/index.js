@@ -133,6 +133,14 @@ const ADDITIONAL_SEAT_PRICE_ID = process.env.STRIPE_ADDITIONAL_SEAT_PRICE_ID || 
 admin.initializeApp();
 const db = admin.firestore();
 
+// Complimentary ("no-charge") tier access: grant/revoke/extend callables and the daily warning/expiry job
+const complimentaryModule = require("./complimentary");
+const { isComplimentaryActive } = complimentaryModule;
+Object.assign(
+  exports,
+  complimentaryModule({ admin, db, stripe, onCall, onSchedule, HttpsError, SUBSCRIPTION_TIERS })
+);
+
 // Configure Cloudinary
 if (process.env.CLOUDINARY_CLOUD_NAME && process.env.CLOUDINARY_API_KEY && process.env.CLOUDINARY_API_SECRET) {
   cloudinary.config({
@@ -202,6 +210,13 @@ const isSubscriptionActive = (userData) => {
   // Free tier is always active
   if (tier === "free") {
     return true;
+  }
+
+  // Complimentary (no-charge) access is valid until its own end date and has no Stripe period to check.
+  // If it has lapsed, only a real Stripe subscription can keep the account active.
+  if (userData.subscription.complimentary?.enabled) {
+    if (isComplimentaryActive(userData.subscription)) return true;
+    if (!userData.subscription.stripeSubscriptionId) return false;
   }
 
   // Check status
@@ -455,6 +470,13 @@ exports.getSubscriptionStatus = onCall(async (request) => {
       cancelAtPeriodEnd: userData.subscription.cancelAtPeriodEnd || false,
       managedSeat: userData.subscription.managedSeat || false,
     };
+
+    if (isComplimentaryActive(userData.subscription)) {
+      const until = userData.subscription.complimentary.until;
+      response.subscription.complimentary = {
+        until: (until.toDate ? until.toDate() : new Date(until)).toISOString(),
+      };
+    }
   }
 
   // Include agency seat info if applicable
@@ -6934,6 +6956,9 @@ exports.checkSubscriptionExpiry = onSchedule(
 
         // Skip managed seats (they're handled by agency expiry)
         if (userData.subscription?.managedSeat) continue;
+
+        // Skip complimentary access (processComplimentaryExpiry warns, then reverts them to Free)
+        if (userData.subscription?.complimentary?.enabled) continue;
 
         console.log(`Marking subscription expired for user: ${userDoc.id}`);
 

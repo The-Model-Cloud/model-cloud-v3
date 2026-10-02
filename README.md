@@ -151,7 +151,7 @@ NEXT_PUBLIC_FIREBASE_APP_ID=your-app-id
 NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY=pk_...
 
 # App URL
-NEXT_PUBLIC_APP_URL=https://v4.themodel.cloud
+NEXT_PUBLIC_APP_URL=https://app.themodel.cloud
 ```
 
 **Cloud Functions** (`functions/.env`):
@@ -162,6 +162,10 @@ STRIPE_SECRET_KEY=sk_...
 # SendGrid
 SENDGRID_API_KEY=SG...
 SENDGRID_FROM_EMAIL=noreply@themodel.cloud
+
+# Public URLs used in email links (base address only, no trailing slash or path)
+APP_URL=https://app.themodel.cloud
+WEBSITE_URL=https://themodel.cloud
 
 # Cloudinary
 CLOUDINARY_CLOUD_NAME=your-cloud-name
@@ -210,8 +214,8 @@ Both the **Platform** and **Website** are deployed to **20i hosting via FTP**. F
 
 | Application | Hosting | URL |
 |-------------|---------|-----|
-| Platform | 20i (FTP) | https://v4.themodel.cloud |
-| Website | 20i (FTP) | https://sandbox.themodel.cloud |
+| Platform | 20i (FTP) | https://app.themodel.cloud |
+| Website | 20i (FTP) | https://themodel.cloud |
 | Cloud Functions | Firebase | europe-west2 |
 
 ### FTP Configuration
