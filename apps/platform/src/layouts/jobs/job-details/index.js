@@ -247,13 +247,7 @@ function JobDetails() {
 
                     // ✅ Step 8: Send email to client
                     console.log("Step 8: Sending email to client...");
-                    await sendApplicationEmail(
-                        client.email,
-                        `${model.firstName} ${model.lastName || ""}`,
-                        job.title,
-                        job.reference,
-                        job.userId // Pass client UID to check their notification preferences
-                    );
+                    await sendApplicationEmail(job.id);
 
                     // ✅ Step 8b: Send message to client (if accepting invitation)
                     if (isInvited) {
@@ -274,12 +268,7 @@ function JobDetails() {
 
             // ✅ Step 10: Send confirmation email to model
             console.log("Step 10: Sending confirmation email to model...");
-            await sendModelApplicationConfirmation(
-                model.email,
-                `${model.firstName} ${model.lastName || ""}`,
-                job.title,
-                job.reference
-            ).catch(err => console.warn("⚠️ Model confirmation email failed:", err.message));
+            await sendModelApplicationConfirmation(job.id).catch(err => console.warn("⚠️ Model confirmation email failed:", err.message));
 
             console.log("✅ Application process completed!");
 

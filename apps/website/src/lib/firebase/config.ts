@@ -19,6 +19,8 @@ const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
 export const auth = getAuth(app);
 export const db = getFirestore(app);
 export const storage = getStorage(app);
-export const functions = getFunctions(app, "europe-west2");
+// The callable functions (subscriptions, seats, sign-up) are deployed to us-central1, the same region the
+// platform calls. getHeroModels (europe-west2) is fetched by URL in useHeroModels, so it is not affected.
+export const functions = getFunctions(app, "us-central1");
 
 export default app;

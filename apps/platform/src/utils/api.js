@@ -52,22 +52,15 @@ export const callCloudFunction = async (functionName, data) => {
 };
 
 /**
- * Send job application email to client via Cloud Function
- * @param {string} to - Client's email address
- * @param {string} modelName - Model's full name
- * @param {string} jobTitle - Job title
- * @param {string} jobReference - Job reference number
- * @param {string} clientUid - Client's user ID (to check notification preferences)
+ * Tell the client that the signed-in model has applied to their job (via Cloud Function).
+ * The server works out the client, the model and the job details itself, and checks the caller applied.
+ * @param {string} jobId - Firestore document ID of the job
  * @returns {Promise<any>} - The response data
  */
-export const sendApplicationEmail = async (to, modelName, jobTitle, jobReference, clientUid = null) => {
+export const sendApplicationEmail = async (jobId) => {
   try {
     const result = await callCloudFunction("sendApplicationEmail", {
-      to,
-      modelName,
-      jobTitle,
-      jobReference,
-      clientUid,
+      jobId,
     });
 
     if (result.skipped) {
@@ -82,20 +75,14 @@ export const sendApplicationEmail = async (to, modelName, jobTitle, jobReference
 };
 
 /**
- * Send a job application confirmation email to a model
- * @param {string} to - Model's email address
- * @param {string} modelName - Model's full name
- * @param {string} jobTitle - Job title
- * @param {string} jobReference - Job reference number
+ * Send the signed-in model a confirmation that their application was submitted (to their own address)
+ * @param {string} jobId - Firestore document ID of the job
  * @returns {Promise<any>} - The response data
  */
-export const sendModelApplicationConfirmation = async (to, modelName, jobTitle, jobReference) => {
+export const sendModelApplicationConfirmation = async (jobId) => {
   try {
     const result = await callCloudFunction("sendModelApplicationConfirmation", {
-      to,
-      modelName,
-      jobTitle,
-      jobReference,
+      jobId,
     });
 
     if (result.skipped) {

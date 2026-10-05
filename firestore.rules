@@ -179,20 +179,72 @@ service cloud.firestore {
         isAdmin()
       );
 
-      // Job applications subcollection
-      match /applications/{applicationId} {
-        allow read: if isAuthenticated();
-        allow create: if isAuthenticated();
-        allow update: if isAuthenticated();
-        allow delete: if isAuthenticated();
+      // Applications and invitations hold personal details (names, email addresses) and drive who gets booked,
+      // so only the people involved may touch them. Both are keyed by the model's user id.
+      function parentJob() {
+        return get(/databases/$(database)/documents/jobs/$(jobId)).data;
       }
 
-      // Job invitations subcollection
+      // The job's owner, an account manager of the job's organisation, or an admin
+      function isJobManager() {
+        return isAuthenticated() && (
+          parentJob().userId == request.auth.uid ||
+          isAdmin() ||
+          (isAccountManager() && isInJobOrganisation(parentJob()))
+        );
+      }
+
+      // Members of the job's organisation may also see who applied and who was invited
+      function isJobOrganisationMember() {
+        return isAuthenticated() && isInJobOrganisation(parentJob());
+      }
+
+      // Job applications subcollection (document id = the applying model's uid)
+      match /applications/{applicationId} {
+        allow read: if isAuthenticated() &&
+          (request.auth.uid == applicationId || isJobManager() || isJobOrganisationMember());
+
+        // A model applies for themselves, to an open job
+        allow create: if isAuthenticated() && isModel() &&
+          request.auth.uid == applicationId &&
+          request.resource.data.modelId == request.auth.uid &&
+          request.resource.data.status == 'pending' &&
+          parentJob().get('status', 'open') == 'open';
+
+        // A model may only re-apply or cancel their own application; the job's managers can set any status
+        allow update: if isJobManager() || (
+          isAuthenticated() && isModel() &&
+          request.auth.uid == applicationId &&
+          resource.data.get('status', 'pending') in ['pending', 'cancelled'] &&
+          request.resource.data.status in ['pending', 'cancelled'] &&
+          request.resource.data.diff(resource.data).affectedKeys()
+            .hasOnly(['modelId', 'modelName', 'appliedAt', 'status', 'cancelledAt']) &&
+          (request.resource.data.status == 'cancelled' || parentJob().get('status', 'open') == 'open')
+        );
+
+        allow delete: if isJobManager();
+      }
+
+      // Job invitations subcollection (document id = the invited model's uid)
       match /invitations/{invitationId} {
-        allow read: if isAuthenticated();
-        allow create: if isAuthenticated();
-        allow update: if isAuthenticated();
-        allow delete: if isAuthenticated();
+        allow read: if isAuthenticated() &&
+          (request.auth.uid == invitationId || isJobManager() || isJobOrganisationMember());
+
+        // Only the job's managers invite, and the invitation must be recorded as theirs
+        allow create: if isJobManager() &&
+          request.resource.data.invitedBy == request.auth.uid &&
+          request.resource.data.modelId == invitationId;
+
+        // The invited model may only answer their own invitation
+        allow update: if isJobManager() || (
+          isAuthenticated() &&
+          request.auth.uid == invitationId &&
+          request.resource.data.status in ['applied', 'declined'] &&
+          request.resource.data.diff(resource.data).affectedKeys()
+            .hasOnly(['status', 'appliedAt', 'declinedAt', 'declineReason'])
+        );
+
+        allow delete: if isJobManager();
       }
     }
 

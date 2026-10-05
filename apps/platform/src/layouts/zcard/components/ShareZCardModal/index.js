@@ -123,7 +123,14 @@ function ShareZCardModal({ open, onClose, zcard, onZCardUpdated }) {
         showSnackbar("Email sent successfully!");
         setEmailTo("");
       } else if (result.skipped) {
-        showSnackbar("Email service not configured. Use 'Open Email Client' instead.", "warning");
+        // The server explains refusals (too many emails, invalid address); a blocked address has a reason code
+        showSnackbar(
+          result.error ||
+            (result.reason?.startsWith("suppressed")
+              ? "We can't email that address. Use 'Open Email Client' instead."
+              : "Email service not configured. Use 'Open Email Client' instead."),
+          "warning"
+        );
       } else {
         showSnackbar("Failed to send email", "error");
       }

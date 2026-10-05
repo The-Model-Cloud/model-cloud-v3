@@ -181,6 +181,7 @@ if (sendgridApiKey) {
 
 // Consent-aware sender (bounce/spam suppression, tracking args, system toggle)
 const { sendToUser, escapeHtml, APP_URL } = require("./email/send");
+const { getSuppression } = require("./email/consent");
 
 // ============================================================================
 // SYSTEM SETTINGS HELPERS
@@ -1091,10 +1092,23 @@ exports.getAgencyManagedUsers = onCall(async (request) => {
 
 
 exports.updateInstagramFollowerCount = onCall(async (request) => {
+  if (!request.auth) {
+    throw new HttpsError("unauthenticated", "User must be logged in");
+  }
+
   const { uid, instagramUsername } = request.data;
 
   if (!uid || !instagramUsername) {
     throw new HttpsError("invalid-argument", "Missing uid or username.");
+  }
+
+  // Only the account's owner, or an admin editing it, may refresh the count
+  if (uid !== request.auth.uid) {
+    const callerDoc = await db.collection("users").doc(request.auth.uid).get();
+    const callerRole = callerDoc.exists ? callerDoc.data().role : null;
+    if (callerRole !== "admin" && callerRole !== "super admin") {
+      throw new HttpsError("permission-denied", "You can only update your own follower count");
+    }
   }
 
   try {
@@ -1118,103 +1132,96 @@ exports.updateInstagramFollowerCount = onCall(async (request) => {
   }
 });
 
-// HTTP endpoint for sending job application email to client
-exports.sendApplicationEmail = onCall(async (request) => {
+// Job application emails. The caller must be a model who has applied to the job; the job and both
+// recipients come from the database, never from the browser, so these cannot be used to email arbitrary
+// addresses.
+const loadApplication = async (request) => {
   if (!request.auth) {
     throw new HttpsError("unauthenticated", "User must be logged in");
   }
-
-  if (!sendgridApiKey) {
-    console.warn("SendGrid not configured");
-    return { success: false, skipped: true };
+  const { jobId } = request.data || {};
+  if (!jobId || typeof jobId !== "string") {
+    throw new HttpsError("invalid-argument", "jobId is required");
   }
 
-  // Check if emails are enabled in system settings
-  const emailEnabled = await isEmailEnabled();
-  if (!emailEnabled) {
-    console.log("📧 Email disabled by system settings");
-    return { success: false, skipped: true, reason: "disabled" };
+  const jobDoc = await db.collection("jobs").doc(jobId).get();
+  if (!jobDoc.exists) {
+    throw new HttpsError("not-found", "Job not found");
+  }
+  const job = jobDoc.data();
+  if (!(job.applicants || []).includes(request.auth.uid)) {
+    throw new HttpsError("permission-denied", "Only a model who has applied to this job can send this email");
   }
 
-  const { to, modelName, jobTitle, jobReference, clientUid } = request.data;
+  const [modelDoc, clientDoc] = await Promise.all([
+    db.collection("users").doc(request.auth.uid).get(),
+    db.collection("users").doc(job.userId).get(),
+  ]);
+  if (!modelDoc.exists || !clientDoc.exists) {
+    throw new HttpsError("not-found", "Applicant or job owner not found");
+  }
+  return { job, modelData: modelDoc.data(), clientData: clientDoc.data() };
+};
 
-  if (!to || !modelName || !jobTitle || !jobReference) {
-    throw new HttpsError("invalid-argument", "Missing required fields");
+// Tells the client that a model has applied to their job
+exports.sendApplicationEmail = onCall(async (request) => {
+  const { job, modelData, clientData } = await loadApplication(request);
+
+  // The client may have turned application emails off
+  if (clientData.notificationSettings?.emailOnJobApplication === false) {
+    console.log(`📧 Skipping email - client ${job.userId} has disabled job application notifications`);
+    return { success: true, skipped: true, reason: "user_preference" };
   }
 
-  // Check if the client has disabled job application email notifications
-  if (clientUid) {
-    try {
-      const clientDoc = await db.collection("users").doc(clientUid).get();
-      if (clientDoc.exists) {
-        const clientData = clientDoc.data();
-        const notificationSettings = clientData.notificationSettings || {};
-        if (notificationSettings.emailOnJobApplication === false) {
-          console.log(`📧 Skipping email - client ${clientUid} has disabled job application notifications`);
-          return { success: true, skipped: true, reason: "user_preference" };
-        }
-      }
-    } catch (error) {
-      console.warn("Could not check client notification settings:", error.message);
-      // Continue anyway - better to send email than not
-    }
-  }
+  const modelName = `${modelData.firstName || ""} ${modelData.lastName || ""}`.trim() || "A model";
+  const jobUrl = `${APP_URL}/jobs/${encodeURIComponent(job.reference)}`;
 
-  const msg = {
-    to,
-    from: sendgridFromEmail,
-    subject: `New Application – ${jobTitle}`,
-    text: `New application from ${modelName}\n\nReference: ${jobReference}`,
+  const result = await sendToUser(db, {
+    uid: job.userId,
+    userData: clientData,
+    subject: `New Application – ${job.title}`,
+    text: `New application from ${modelName}\n\nJob: ${job.title}\nReference: ${job.reference}\n\nView the job: ${jobUrl}`,
     html: `
       <h2>New Job Application</h2>
-      <p><strong>Model:</strong> ${modelName}</p>
-      <p><strong>Job:</strong> ${jobTitle}</p>
-      <p><strong>Reference:</strong> ${jobReference}</p>
-    `
-  };
-
-  await sgMail.send(msg);
-
-  return { success: true };
+      <p><strong>Model:</strong> ${escapeHtml(modelName)}</p>
+      <p><strong>Job:</strong> ${escapeHtml(job.title)}</p>
+      <p><strong>Reference:</strong> ${escapeHtml(job.reference)}</p>
+      <p><a href="${jobUrl}">View job</a></p>
+    `,
+    categories: ["job-application"],
+  });
+  if (!result.sent) {
+    console.log(`Application email not sent to client ${job.userId}: ${result.reason}`);
+  }
+  return { success: result.sent, skipped: !result.sent, reason: result.reason };
 });
 
 
-// HTTP endpoint for sending job application confirmation email to model
+// Confirms to the applying model that their application was submitted (always to the caller's own address)
 exports.sendModelApplicationConfirmation = onCall(async (request) => {
-  if (!sendgridApiKey) {
-    return { success: false, skipped: true };
-  }
+  const { job, modelData } = await loadApplication(request);
 
-  // Check if emails are enabled in system settings
-  const emailEnabled = await isEmailEnabled();
-  if (!emailEnabled) {
-    console.log("📧 Email disabled by system settings");
-    return { success: false, skipped: true, reason: "disabled" };
-  }
+  const modelName = `${modelData.firstName || ""} ${modelData.lastName || ""}`.trim() || "there";
+  const jobUrl = `${APP_URL}/jobs/${encodeURIComponent(job.reference)}`;
 
-  const { to, modelName, jobTitle, jobReference } = request.data;
-
-  if (!to || !modelName || !jobTitle || !jobReference) {
-    throw new HttpsError("invalid-argument", "Missing required fields");
-  }
-
-  const msg = {
-    to,
-    from: sendgridFromEmail,
-    subject: `Application Submitted – ${jobTitle}`,
-    text: `Hi ${modelName}, your application for ${jobTitle} has been submitted.`,
+  const result = await sendToUser(db, {
+    uid: request.auth.uid,
+    userData: modelData,
+    subject: `Application Submitted – ${job.title}`,
+    text: `Hi ${modelName}, your application for ${job.title} has been submitted.\n\nView the job: ${jobUrl}`,
     html: `
       <h2>Application Submitted</h2>
-      <p>Hi ${modelName},</p>
-      <p>Your application for <strong>${jobTitle}</strong> has been submitted.</p>
-      <p>Reference: ${jobReference}</p>
-      <p><a href="https://app.themodel.cloud/jobs/${jobReference}">View job</a></p>
-    `
-  };
-
-  await sgMail.send(msg);
-
-  return { success: true };
+      <p>Hi ${escapeHtml(modelName)},</p>
+      <p>Your application for <strong>${escapeHtml(job.title)}</strong> has been submitted.</p>
+      <p>Reference: ${escapeHtml(job.reference)}</p>
+      <p><a href="${jobUrl}">View job</a></p>
+    `,
+    categories: ["application-confirmation"],
+  });
+  if (!result.sent) {
+    console.log(`Application confirmation not sent to model ${request.auth.uid}: ${result.reason}`);
+  }
+  return { success: result.sent, skipped: !result.sent, reason: result.reason };
 });
 
 
@@ -2389,44 +2396,118 @@ exports.onMessageCreated = onDocumentCreated(
 // ============================================================================
 
 /**
+ * Share emails (a favourites list or a Z-Card) go to an address the user types, often someone outside the
+ * platform, so the recipient has to come from the browser. To stop them being used to send spam or phishing
+ * from our domain they are limited per user, only link to our own platform, skip addresses that bounced or
+ * reported spam, take the sender's name from their account, and escape everything the user typed.
+ */
+const SHARE_EMAIL_LIMIT_PER_HOUR = 20;
+const EMAIL_PATTERN = /^[^\s@<>"]+@[^\s@<>"]+\.[^\s@<>"]+$/;
+
+const enforceShareEmailLimit = async (uid) => {
+  const ref = db.collection("emailRateLimits").doc(`share_${uid}`);
+  const now = Date.now();
+  const hour = 60 * 60 * 1000;
+  await db.runTransaction(async (tx) => {
+    const snap = await tx.get(ref);
+    const data = snap.exists ? snap.data() : null;
+    const inWindow = data && now - data.windowStart < hour;
+    const count = inWindow ? data.count : 0;
+    if (count >= SHARE_EMAIL_LIMIT_PER_HOUR) {
+      throw new HttpsError("resource-exhausted", "You have sent too many share emails. Please try again later.");
+    }
+    tx.set(ref, { windowStart: inWindow ? data.windowStart : now, count: count + 1 });
+  });
+};
+
+// Validates a share request and returns what is needed to send it
+const prepareShareEmail = async (request, { requiredFields }) => {
+  if (!request.auth) {
+    throw new HttpsError("unauthenticated", "User must be logged in");
+  }
+  const data = request.data || {};
+  for (const field of requiredFields) {
+    if (!data[field] || typeof data[field] !== "string") {
+      throw new HttpsError("invalid-argument", `Missing required field: ${field}`);
+    }
+  }
+
+  const to = String(data.to).trim();
+  if (to.length > 254 || !EMAIL_PATTERN.test(to)) {
+    throw new HttpsError("invalid-argument", "Enter a valid email address");
+  }
+
+  // The link must point at our own platform, so this cannot be used to send people to another site
+  let shareUrl;
+  try {
+    const appOrigin = new URL(APP_URL).origin;
+    const url = new URL(data.shareUrl);
+    if (url.origin !== appOrigin) throw new Error("foreign origin");
+    shareUrl = url.toString();
+  } catch (error) {
+    throw new HttpsError("invalid-argument", "The share link is not valid");
+  }
+
+  const senderDoc = await db.collection("users").doc(request.auth.uid).get();
+  const sender = senderDoc.exists ? senderDoc.data() : {};
+  const senderName =
+    sender.companyName || `${sender.firstName || ""} ${sender.lastName || ""}`.trim() || "Someone";
+
+  if (!sendgridApiKey) return { skipped: { success: false, skipped: true } };
+  if (!(await isEmailEnabled())) return { skipped: { success: false, skipped: true, reason: "disabled" } };
+
+  const suppression = await getSuppression(db, to);
+  if (suppression && suppression.reason !== "unsubscribe") {
+    // Bounced or reported spam: never email it again (an unsubscribe only concerns marketing)
+    return { skipped: { success: false, skipped: true, reason: `suppressed_${suppression.reason}` } };
+  }
+
+  await enforceShareEmailLimit(request.auth.uid);
+  return { to, shareUrl, senderName, data };
+};
+
+const sendShareEmail = async (msg, logLabel) => {
+  try {
+    await sgMail.send({
+      ...msg,
+      from: { email: sendgridFromEmail, name: "The Model Cloud" },
+      categories: ["platform-email", "service", "share"],
+    });
+    console.log(`${logLabel} sent to ${msg.to}`);
+    return { success: true };
+  } catch (error) {
+    console.error(`Failed to send ${logLabel}:`, error.message);
+    throw new HttpsError("internal", "Failed to send email");
+  }
+};
+
+/**
  * Send a favourite list share email
  * Called when user shares a list via email from the ShareListModal
  */
 exports.sendShareListEmail = onCall(async (request) => {
-  if (!request.auth) {
-    throw new HttpsError("unauthenticated", "User must be logged in");
-  }
+  const prepared = await prepareShareEmail(request, { requiredFields: ["to", "listTitle", "shareUrl"] });
+  if (prepared.skipped) return prepared.skipped;
 
-  if (!sendgridApiKey) {
-    console.warn("SendGrid not configured");
-    return { success: false, skipped: true };
-  }
+  const { to, shareUrl, senderName, data } = prepared;
+  const listTitle = String(data.listTitle).slice(0, 200);
+  const listDescription = data.listDescription ? String(data.listDescription).slice(0, 1000) : "";
+  const modelCount = Number.isFinite(Number(data.modelCount)) ? Number(data.modelCount) : 0;
 
-  // Check if emails are enabled in system settings
-  const emailEnabled = await isEmailEnabled();
-  if (!emailEnabled) {
-    console.log("📧 Share list email disabled by system settings");
-    return { success: false, skipped: true, reason: "disabled" };
-  }
-
-  const { to, listTitle, listDescription, shareUrl, modelCount, senderName } = request.data;
-
-  if (!to || !listTitle || !shareUrl) {
-    throw new HttpsError("invalid-argument", "Missing required fields: to, listTitle, shareUrl");
-  }
-
-  const msg = {
-    to,
-    from: sendgridFromEmail,
-    subject: `${senderName || "Someone"} shared a model list with you: ${listTitle}`,
-    html: `
+  return sendShareEmail(
+    {
+      to,
+      subject: `${senderName} shared a model list with you: ${listTitle}`.slice(0, 250),
+      text: `${senderName} shared a model list with you: ${listTitle}\n\n${modelCount} models in this list.\n\nView it here: ${shareUrl}`,
+      html: `
       <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-        <h2 style="color: #333;">${listTitle}</h2>
-        ${listDescription ? `<p style="color: #666;">${listDescription}</p>` : ""}
-        <p style="color: #666;">${modelCount || 0} models in this list</p>
+        <h2 style="color: #333;">${escapeHtml(listTitle)}</h2>
+        <p style="color: #666;">Shared by ${escapeHtml(senderName)}</p>
+        ${listDescription ? `<p style="color: #666;">${escapeHtml(listDescription)}</p>` : ""}
+        <p style="color: #666;">${modelCount} models in this list</p>
 
         <div style="margin: 24px 0;">
-          <a href="${shareUrl}"
+          <a href="${escapeHtml(shareUrl)}"
              style="background-color: #1976d2; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; display: inline-block; font-weight: bold;">
             View Model List
           </a>
@@ -2438,52 +2519,37 @@ exports.sendShareListEmail = onCall(async (request) => {
           <a href="https://themodel.cloud" style="color: #1976d2;">Visit The Model Cloud</a>
         </p>
       </div>
-    `
-  };
-
-  try {
-    await sgMail.send(msg);
-    console.log(`Share list email sent to ${to} for list: ${listTitle}`);
-    return { success: true };
-  } catch (error) {
-    console.error("Failed to send share list email:", error.message);
-    throw new HttpsError("internal", "Failed to send email");
-  }
+    `,
+    },
+    `Share list email for "${listTitle}"`
+  );
 });
 
 
 /**
  * Send a Z-Card share email
  * Called when user shares a Z-Card via the ShareZCardModal
- * Uses v2 callable functions API for proper auth handling
  */
 exports.sendZCardEmail = onCall(async (request) => {
-  if (!request.auth) {
-    throw new HttpsError("unauthenticated", "User must be logged in");
-  }
+  const prepared = await prepareShareEmail(request, { requiredFields: ["to", "modelName", "shareUrl"] });
+  if (prepared.skipped) return prepared.skipped;
 
-  if (!sendgridApiKey) {
-    console.warn("SendGrid not configured");
-    return { success: false, skipped: true };
-  }
+  const { to, shareUrl, senderName, data } = prepared;
+  const modelName = String(data.modelName).slice(0, 200);
+  const senderContact = data.senderContact ? String(data.senderContact).slice(0, 300) : "";
 
-  const { to, modelName, shareUrl, senderName, senderContact } = request.data;
-
-  if (!to || !modelName || !shareUrl) {
-    throw new HttpsError("invalid-argument", "Missing required fields: to, modelName, shareUrl");
-  }
-
-  const msg = {
-    to,
-    from: sendgridFromEmail,
-    subject: `${senderName || "Someone"} shared a Z-Card for ${modelName}`,
-    html: `
+  return sendShareEmail(
+    {
+      to,
+      subject: `${senderName} shared a Z-Card for ${modelName}`.slice(0, 250),
+      text: `${senderName} shared a Z-Card for ${modelName}.\n\nView it here: ${shareUrl}${senderContact ? `\n\nContact: ${senderContact}` : ""}`,
+      html: `
       <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-        <h2 style="color: #333;">Z-Card for ${modelName}</h2>
-        <p style="color: #666;">A professional comp card has been shared with you.</p>
+        <h2 style="color: #333;">Z-Card for ${escapeHtml(modelName)}</h2>
+        <p style="color: #666;">A professional comp card has been shared with you by ${escapeHtml(senderName)}.</p>
 
         <div style="margin: 24px 0;">
-          <a href="${shareUrl}"
+          <a href="${escapeHtml(shareUrl)}"
              style="background-color: #E91E63; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; display: inline-block; font-weight: bold;">
             View Z-Card
           </a>
@@ -2491,7 +2557,7 @@ exports.sendZCardEmail = onCall(async (request) => {
 
         ${senderContact ? `
         <p style="color: #666;">
-          <strong>Contact:</strong> ${senderContact}
+          <strong>Contact:</strong> ${escapeHtml(senderContact)}
         </p>
         ` : ""}
 
@@ -2501,17 +2567,10 @@ exports.sendZCardEmail = onCall(async (request) => {
           <a href="https://themodel.cloud" style="color: #E91E63;">Visit The Model Cloud</a>
         </p>
       </div>
-    `
-  };
-
-  try {
-    await sgMail.send(msg);
-    console.log(`Z-Card email sent to ${to} for model: ${modelName}`);
-    return { success: true };
-  } catch (error) {
-    console.error("Failed to send Z-Card email:", error.message);
-    throw new HttpsError("internal", "Failed to send email");
-  }
+    `,
+    },
+    `Z-Card email for ${modelName}`
+  );
 });
 
 
@@ -7750,6 +7809,16 @@ exports.updateMailchimpSubscription = onCall(async (request) => {
 
   if (!email || !tag) {
     throw new HttpsError("invalid-argument", "Email and tag are required");
+  }
+
+  // Only the signed-in user's own address may be changed (an admin may change anyone's)
+  const callerEmail = String(request.auth.token.email || "").toLowerCase();
+  if (String(email).toLowerCase() !== callerEmail) {
+    const callerDoc = await db.collection("users").doc(request.auth.uid).get();
+    const callerRole = callerDoc.exists ? callerDoc.data().role : null;
+    if (callerRole !== "admin" && callerRole !== "super admin") {
+      throw new HttpsError("permission-denied", "You can only change your own subscription");
+    }
   }
 
   // Map internal tag names to Mailchimp tag names

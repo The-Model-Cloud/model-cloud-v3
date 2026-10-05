@@ -347,7 +347,9 @@ The platform sends automated email notifications based on user preferences. User
 | Voucher Applied | Clients | When an admin applies a voucher (tier and the date it is free until) |
 | No-Charge Ending | Clients | 30 days before free access ends, and when it has ended |
 
-Job match, matching-models and job invitation emails are sent through `sendToUser` (`functions/email/send.js`), the same sender as campaigns. It enforces the system email toggle and the bounce and spam suppression list, and tags each message with the user id and a category (`job-match`, `model-match`, `job-invitation`) so SendGrid events and the Email Delivery page can track them.
+Application emails (to the client, and the model's confirmation) take only a job id and work out the recipients themselves. Share emails (favourites list, Z-Card) go to an address the user types, so they are limited to 20 per user per hour, only link to our own platform and skip addresses that bounced or reported spam.
+
+Job match, matching-models, job invitation and application emails are sent through `sendToUser` (`functions/email/send.js`), the same sender as campaigns. It enforces the system email toggle and the bounce and spam suppression list, and tags each message with the user id and a category (`job-match`, `model-match`, `job-invitation`) so SendGrid events and the Email Delivery page can track them.
 
 ### Marketing Subscriptions (Mailchimp)
 

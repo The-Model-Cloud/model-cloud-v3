@@ -13,37 +13,12 @@ Line numbers are approximate and will drift as the code changes. Search for the 
 - **Breaks:** any account can read, and list, every user document: email, phone, address, `stripeCustomerId` and billing details.
 - **Fix:** split the public profile fields (name, avatar, slug, categories, photos) from private fields, either into a separate collection or behind a callable. Restrict full-document reads to the owner, admins and organisation members. Check every browser query that reads other users (model search, favourites, messaging, public profile, organisations) before tightening.
 
-### 2. Website checkout calls the wrong Cloud Functions region
-- **Where:** `apps/website/src/lib/firebase/config.ts:22` uses `getFunctions(app, "europe-west2")`. The subscription callables have no region option and there is no `setGlobalOptions`, so they deploy to us-central1.
-- **Breaks:** every call in `apps/website/src/lib/firebase/functions.ts` fails (not-found or CORS): `createSubscriptionCheckoutSession`, `createCustomerPortalSession`, `upgradeSubscription`, `purchaseAdditionalSeats`, `getSubscriptionStatus`, `initializeFreeTier` and the seat callables. Paid sign-up cannot work.
-- **Fix:** change the website to `"us-central1"`, or add `region: "europe-west2"` to those callables and redeploy. Do not mix the two. `getHeroModels` is correctly in europe-west2.
-
 ### 3. Stripe is still in test mode
 - **Where:** `functions/.env` holds `sk_test_` for `STRIPE_SECRET_KEY`, test price ids and the test webhook secret.
 - **Fix before launch:** use the live secret key, live price ids (starter, premium, agency, seats) and live webhook signing secrets. Live mode needs two webhook endpoints: an account endpoint (subscription, invoice, `payment_intent`, `charge` events) and a Connect endpoint (`account.updated`, `payout.*`). Both secrets can go comma-separated in `STRIPE_WEBHOOK_SECRET` (supported at `functions/index.js` near the webhook handler).
 - **Watch:** the code pins the Stripe API to `2023-10-16`, but webhook payloads follow the endpoint's own API version. Create the live endpoints with `2023-10-16`, or `current_period_end` and `invoice.subscription` move and `Timestamp.fromMillis(NaN)` throws in `handleSubscriptionCreated` and `handleSubscriptionUpdated`.
 
 ## High
-
-### 6. Job `applications` and `invitations` are open to every signed-in user
-- **Where:** `firestore.rules` (~157-170).
-- **Breaks:** any user can read, create, update and delete other users' applications and invitations.
-- **Fix:** scope to the job owner, the applicant or invited model, and admins.
-
-### 7. Email callables that send to any address
-- **Where:** `functions/index.js`: `sendModelApplicationConfirmation` (no auth check at all), `sendApplicationEmail`, `sendZCardEmail` (takes `to`, `shareUrl`, `senderName`), `sendShareListEmail`.
-- **Breaks:** anyone (the first one even without signing in) can send platform-branded email to any address through our SendGrid account, with free text and unescaped HTML. Risks spam complaints, phishing and sender reputation.
-- **Fix:** require auth, derive the recipient server-side (the caller's own address, or the job owner for an applicant), escape the HTML, and send through `sendToUser` (`functions/email/send.js`). Rate-limit the share emails.
-
-### 8. `updateInstagramFollowerCount` has no auth check
-- **Where:** `functions/index.js` (~1093).
-- **Breaks:** anyone can overwrite `instagramFollowerCount` on any user and trigger outbound scraping.
-- **Fix:** require auth and `uid == request.auth.uid`.
-
-### 9. `updateMailchimpSubscription` has no ownership check
-- **Where:** `functions/index.js` (~7698). It takes an arbitrary `email`.
-- **Breaks:** any signed-in user can subscribe or unsubscribe anyone.
-- **Fix:** use `request.auth.token.email`.
 
 ### 10. A user can end up with two subscriptions
 - **Where:** `functions/index.js` (~554-557) only blocks a new checkout when the status is `"active"`.
