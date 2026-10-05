@@ -1895,10 +1895,19 @@ exports.sendJobMatchEmailsManual = onCall(async (request) => {
     throw new HttpsError("permission-denied", "Only super admins can send manual notifications");
   }
 
-  const { jobId, skipApplicants = true } = request.data;
+  // audience: "models" (matching models only), "clients" (the job's client only), "both", or "test"
+  // (one copy of each email to the signed-in super admin, marked [TEST], nothing to real users)
+  const { jobId, skipApplicants = true, audience = "both" } = request.data;
   if (!jobId) {
     throw new HttpsError("invalid-argument", "jobId is required");
   }
+  if (!["models", "clients", "both", "test"].includes(audience)) {
+    throw new HttpsError("invalid-argument", "audience must be models, clients, both or test");
+  }
+  const isTest = audience === "test";
+  const sendToModels = audience === "models" || audience === "both";
+  const sendToClient = audience === "clients" || audience === "both";
+  const callerData = callerDoc.data();
 
   const jobDoc = await db.collection("jobs").doc(jobId).get();
   if (!jobDoc.exists) {
@@ -1952,14 +1961,17 @@ exports.sendJobMatchEmailsManual = onCall(async (request) => {
     let modelEmailsSent = 0;
     let clientEmailSent = false;
 
-    // Email each matching model
-    for (const model of matchingModels) {
+    // Email each matching model (a test sends one copy, to the signed-in super admin, whatever they have matched)
+    const modelRecipients = isTest
+      ? [{ uid: request.auth.uid, ...callerData }]
+      : sendToModels ? matchingModels : [];
+    for (const model of modelRecipients) {
       const modelNotificationSettings = model.notificationSettings || {};
-      if (modelNotificationSettings.emailOnJobMatch === false) continue;
+      if (!isTest && modelNotificationSettings.emailOnJobMatch === false) continue;
       if (!model.email) continue;
 
       const modelName = model.firstName || "there";
-      const jobUrl = `https://app.themodel.cloud/jobs/${jobData.reference || jobId}`;
+      const jobUrl = `${APP_URL}/jobs/${jobData.reference || jobId}`;
 
       const msg = {
         subject: `New Job Match: ${jobData.title}`,
@@ -1991,7 +2003,7 @@ exports.sendJobMatchEmailsManual = onCall(async (request) => {
       };
 
       const result = await sendToUser(db, {
-        uid: model.uid, userData: model, subject: msg.subject, html: msg.html, categories: ["job-match"],
+        uid: model.uid, userData: model, subject: msg.subject, html: msg.html, categories: ["job-match"], test: isTest,
       });
       if (result.sent) {
         modelEmailsSent++;
@@ -2001,14 +2013,18 @@ exports.sendJobMatchEmailsManual = onCall(async (request) => {
       }
     }
 
-    // Email the client with the matching model summary
-    if (clientNotificationSettings.emailOnModelMatch !== false && matchingModels.length > 0) {
-      const clientName = clientData.firstName || "there";
-      const jobUrl = `https://app.themodel.cloud/jobs/${jobData.reference || jobId}`;
+    // Email the client with the matching model summary (a test sends it to the signed-in super admin instead)
+    const clientRecipient = isTest ? callerData : clientData;
+    const clientRecipientUid = isTest ? request.auth.uid : jobData.userId;
+    if ((sendToClient || isTest) &&
+        (isTest || clientNotificationSettings.emailOnModelMatch !== false) &&
+        matchingModels.length > 0) {
+      const clientName = clientRecipient.firstName || "there";
+      const jobUrl = `${APP_URL}/jobs/${jobData.reference || jobId}`;
 
       const displayModels = matchingModels.slice(0, 10);
       const modelListHtml = displayModels.map(model => {
-        const modelUrl = `https://app.themodel.cloud/${model.publicSlug || model.uid}`;
+        const modelUrl = `${APP_URL}/${model.publicSlug || model.uid}`;
         const modelName = `${model.firstName || ""} ${model.lastName || ""}`.trim() || "Model";
         const avatarUrl = model.profileAvatar || "https://themodel.cloud/default-avatar.png";
         return `
@@ -2062,20 +2078,23 @@ exports.sendJobMatchEmailsManual = onCall(async (request) => {
       };
 
       const result = await sendToUser(db, {
-        uid: jobData.userId, userData: clientData, subject: msg.subject, html: msg.html, categories: ["model-match"],
+        uid: clientRecipientUid, userData: clientRecipient, subject: msg.subject, html: msg.html,
+        categories: ["model-match"], test: isTest,
       });
       clientEmailSent = result.sent;
       if (result.sent) {
-        console.log(`[Manual] ✅ Client match summary sent to: ${clientData.email}`);
+        console.log(`[Manual] ✅ Client match summary sent to: ${clientRecipient.email}`);
       } else {
-        console.log(`[Manual] Client match summary not sent to ${jobData.userId}: ${result.reason}`);
+        console.log(`[Manual] Client match summary not sent to ${clientRecipientUid}: ${result.reason}`);
       }
     }
 
-    console.log(`[Manual] Done: ${modelEmailsSent} model emails, client: ${clientEmailSent}`);
+    console.log(`[Manual] Done (${audience}): ${modelEmailsSent} model emails, client: ${clientEmailSent}`);
 
     return {
       success: true,
+      audience,
+      test: isTest,
       matchingModels: matchingModels.length,
       modelEmailsSent,
       clientEmailSent,

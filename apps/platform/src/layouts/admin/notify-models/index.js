@@ -19,6 +19,8 @@ import LinearProgress from "@mui/material/LinearProgress";
 import Icon from "@mui/material/Icon";
 import Checkbox from "@mui/material/Checkbox";
 import FormControlLabel from "@mui/material/FormControlLabel";
+import Radio from "@mui/material/Radio";
+import RadioGroup from "@mui/material/RadioGroup";
 import TextField from "@mui/material/TextField";
 import InputAdornment from "@mui/material/InputAdornment";
 import Table from "@mui/material/Table";
@@ -37,11 +39,20 @@ import MDButton from "components/MDButton";
 
 const CATEGORIES = selectData.skills; // shared with model profile
 
+// Who receives the emails. "test" sends one copy of each email to the signed-in super admin only.
+const AUDIENCES = [
+  { value: "models", label: "Models only", help: "Email each matching model" },
+  { value: "clients", label: "Clients only", help: "Email each job's client a summary of the models that match" },
+  { value: "both", label: "Models and clients", help: "Email matching models and each job's client" },
+  { value: "test", label: "Send a test to me", help: "One copy of each email to you, marked [TEST]. Uses the first selected job" },
+];
+
 function NotifyModels() {
   // --- Filter state ---
   const [selectedCategories, setSelectedCategories] = useState([]);
   const [locationFilter, setLocationFilter] = useState("");
   const [skipApplicants, setSkipApplicants] = useState(true);
+  const [audience, setAudience] = useState("models");
 
   // --- Jobs state ---
   const [allJobs, setAllJobs] = useState([]);
@@ -134,20 +145,29 @@ function NotifyModels() {
     setResults([]);
   };
 
+  const isTest = audience === "test";
   const selectedJobs = filteredJobs.filter((j) => selectedJobIds.has(j.id));
+  // A test sends one pair of emails to you, so it only ever uses the first selected job
+  const jobsToSend = isTest ? selectedJobs.slice(0, 1) : selectedJobs;
+
+  const chooseAudience = (value) => {
+    setAudience(value);
+    setConfirmed(false);
+    setResults([]);
+  };
 
   const handleSend = async () => {
-    if (selectedJobs.length === 0) return;
+    if (jobsToSend.length === 0) return;
     setIsSending(true);
-    setSendProgress({ current: 0, total: selectedJobs.length });
+    setSendProgress({ current: 0, total: jobsToSend.length });
     setResults([]);
 
     const newResults = [];
-    for (let i = 0; i < selectedJobs.length; i++) {
-      const job = selectedJobs[i];
-      setSendProgress({ current: i + 1, total: selectedJobs.length });
+    for (let i = 0; i < jobsToSend.length; i++) {
+      const job = jobsToSend[i];
+      setSendProgress({ current: i + 1, total: jobsToSend.length });
       try {
-        const result = await sendJobMatchEmails(job.id, skipApplicants);
+        const result = await sendJobMatchEmails(job.id, skipApplicants, audience);
         newResults.push({ job, result, error: null });
       } catch (err) {
         newResults.push({ job, result: null, error: err.message });
@@ -161,6 +181,22 @@ function NotifyModels() {
   };
 
   const totalEmailsSent = results.reduce((sum, r) => sum + (r.result?.modelEmailsSent || 0), 0);
+  const totalClientEmails = results.filter((r) => r.result?.clientEmailSent).length;
+
+  // What a finished job shows: what was sent, according to who it was sent to
+  const describeResult = (r) => {
+    if (r.test) {
+      const sent = [r.modelEmailsSent > 0 && "model email", r.clientEmailSent && "client email"].filter(Boolean);
+      return { label: sent.length ? "Test sent" : "Test not sent", detail: sent.length ? `Sent to you: ${sent.join(" and ")}` : "Nothing was sent to you (no matches, or your address is blocked)" };
+    }
+    const parts = [];
+    if (r.audience !== "clients") parts.push(`${r.modelEmailsSent} model email${r.modelEmailsSent !== 1 ? "s" : ""}`);
+    if (r.audience !== "models") parts.push(r.clientEmailSent ? "client emailed" : "client not emailed");
+    return {
+      label: r.audience === "clients" ? (r.clientEmailSent ? "Client emailed" : "Not sent") : r.audience === "both" ? `${r.modelEmailsSent} sent${r.clientEmailSent ? " + client" : ""}` : `${r.modelEmailsSent} sent`,
+      detail: `${r.matchingModels} matches · ${parts.join(" · ")}`,
+    };
+  };
   const totalMatches = results.reduce((sum, r) => sum + (r.result?.matchingModels || 0), 0);
   const failedCount = results.filter((r) => r.error || !r.result?.success).length;
 
@@ -236,6 +272,33 @@ function NotifyModels() {
               </MDBox>
 
               <Divider sx={{ mb: 2 }} />
+
+              {/* Who to email */}
+              <MDTypography variant="caption" fontWeight="bold" color="text" sx={{ textTransform: "uppercase", letterSpacing: 1 }}>
+                Send to
+              </MDTypography>
+              <RadioGroup value={audience} onChange={(e) => chooseAudience(e.target.value)} sx={{ mb: 2 }}>
+                {AUDIENCES.map((option) => (
+                  <MDBox key={option.value}>
+                    <FormControlLabel
+                      value={option.value}
+                      disabled={isSending}
+                      control={<Radio size="small" />}
+                      label={
+                        <MDTypography variant="button" fontWeight="regular">
+                          {option.label}
+                        </MDTypography>
+                      }
+                      sx={{ mb: 0, display: "flex" }}
+                    />
+                    {audience === option.value && (
+                      <MDTypography variant="caption" color="text" display="block" sx={{ ml: 4, mt: -0.5, mb: 0.5 }}>
+                        {option.help}
+                      </MDTypography>
+                    )}
+                  </MDBox>
+                ))}
+              </RadioGroup>
 
               {/* Options */}
               <MDTypography variant="caption" fontWeight="bold" color="text" sx={{ textTransform: "uppercase", letterSpacing: 1 }}>
@@ -357,9 +420,9 @@ function NotifyModels() {
                                       <Chip label="Failed" color="error" size="small" />
                                     </Tooltip>
                                   ) : (
-                                    <Tooltip title={`${jobResult.result.matchingModels} matches · ${jobResult.result.modelEmailsSent} emails sent`}>
+                                    <Tooltip title={describeResult(jobResult.result).detail}>
                                       <Chip
-                                        label={`${jobResult.result.modelEmailsSent} sent`}
+                                        label={describeResult(jobResult.result).label}
                                         color="success"
                                         size="small"
                                       />
@@ -405,9 +468,13 @@ function NotifyModels() {
                     severity={failedCount > 0 ? "warning" : "success"}
                     sx={{ mb: 2 }}
                   >
-                    {failedCount === 0
-                      ? `All done — ${totalMatches} matching models found across ${results.length} job${results.length !== 1 ? "s" : ""}, ${totalEmailsSent} email${totalEmailsSent !== 1 ? "s" : ""} sent.`
-                      : `Completed with ${failedCount} error${failedCount !== 1 ? "s" : ""} — ${totalEmailsSent} email${totalEmailsSent !== 1 ? "s" : ""} sent from ${results.length - failedCount} job${results.length - failedCount !== 1 ? "s" : ""}.`
+                    {isTest
+                      ? (failedCount === 0
+                          ? `Test done — ${describeResult(results[0].result).detail}. Check your inbox (${totalMatches} model${totalMatches !== 1 ? "s" : ""} match this job).`
+                          : "The test failed — see the job's result for the reason.")
+                      : failedCount === 0
+                        ? `All done — ${totalMatches} matching models found across ${results.length} job${results.length !== 1 ? "s" : ""}. ${totalEmailsSent} model email${totalEmailsSent !== 1 ? "s" : ""} and ${totalClientEmails} client email${totalClientEmails !== 1 ? "s" : ""} sent.`
+                        : `Completed with ${failedCount} error${failedCount !== 1 ? "s" : ""} — ${totalEmailsSent} model email${totalEmailsSent !== 1 ? "s" : ""} and ${totalClientEmails} client email${totalClientEmails !== 1 ? "s" : ""} sent from ${results.length - failedCount} job${results.length - failedCount !== 1 ? "s" : ""}.`
                     }
                   </Alert>
                 )}
@@ -415,10 +482,25 @@ function NotifyModels() {
                 <MDBox display="flex" alignItems="center" justifyContent="space-between" flexWrap="wrap" gap={2}>
                   <MDTypography variant="body2" color="text">
                     <strong>{selectedJobs.length}</strong> job{selectedJobs.length !== 1 ? "s" : ""} selected
-                    {skipApplicants ? " · existing applicants will be skipped" : " · all matching models will be notified"}
+                    {isTest
+                      ? " · a test goes to you only, using the first job"
+                      : audience === "clients"
+                        ? " · each job's client will be emailed"
+                        : skipApplicants ? " · existing applicants will be skipped" : " · all matching models will be notified"}
                   </MDTypography>
 
-                  {!confirmed ? (
+                  {isTest ? (
+                    <MDButton
+                      variant="gradient"
+                      color="info"
+                      disabled={isSending}
+                      startIcon={isSending ? <CircularProgress size={14} color="inherit" /> : null}
+                      onClick={handleSend}
+                    >
+                      <Icon sx={{ mr: 1 }}>forward_to_inbox</Icon>
+                      {isSending ? "Sending..." : "Send Test To Me"}
+                    </MDButton>
+                  ) : !confirmed ? (
                     <MDButton
                       variant="gradient"
                       color="info"
@@ -431,7 +513,11 @@ function NotifyModels() {
                   ) : (
                     <MDBox display="flex" alignItems="center" gap={1}>
                       <MDTypography variant="body2" color="text" fontWeight="medium">
-                        Email matching models for all {selectedJobs.length} job{selectedJobs.length !== 1 ? "s" : ""}?
+                        {audience === "clients"
+                          ? `Email the client of ${selectedJobs.length === 1 ? "this job" : `all ${selectedJobs.length} jobs`}?`
+                          : audience === "both"
+                            ? `Email matching models and the clients for ${selectedJobs.length === 1 ? "this job" : `all ${selectedJobs.length} jobs`}?`
+                            : `Email matching models for ${selectedJobs.length === 1 ? "this job" : `all ${selectedJobs.length} jobs`}?`}
                       </MDTypography>
                       <MDButton
                         variant="gradient"

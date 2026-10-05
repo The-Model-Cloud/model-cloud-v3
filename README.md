@@ -326,6 +326,7 @@ npm run deploy:all
 - Client/model import tools
 - System-wide email toggle
 - **Vouchers & Billing**: create vouchers (free for N days or until a date), apply them to clients, and see which clients are paying, on no-charge or free, which have a voucher and when it ends
+- **Notify Models of Matching Jobs** (super admin): pick open jobs and email matching models only, clients only, both, or send a test to yourself
 - Email platform: consent, campaigns, delivery and bounce handling
 
 ## Email Notifications

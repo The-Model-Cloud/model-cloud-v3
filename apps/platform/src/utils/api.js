@@ -193,11 +193,12 @@ export const markThreadAsRead = async (threadId) => {
  * Manually send job match emails for a specific job (Super Admin only)
  * @param {string} jobId - Firestore document ID of the job
  * @param {boolean} skipApplicants - Whether to skip models who already applied (default: true)
- * @returns {Promise<{success: boolean, matchingModels: number, modelEmailsSent: number, clientEmailSent: boolean}>}
+ * @param {"models"|"clients"|"both"|"test"} audience - Who to email. "test" sends one copy of each email to the caller only
+ * @returns {Promise<{success: boolean, audience: string, test: boolean, matchingModels: number, modelEmailsSent: number, clientEmailSent: boolean}>}
  */
-export const sendJobMatchEmails = async (jobId, skipApplicants = true) => {
+export const sendJobMatchEmails = async (jobId, skipApplicants = true, audience = "both") => {
   try {
-    const result = await callCloudFunction("sendJobMatchEmailsManual", { jobId, skipApplicants });
+    const result = await callCloudFunction("sendJobMatchEmailsManual", { jobId, skipApplicants, audience });
 
     if (result.error && !result.success) {
       throw new Error(result.error);
