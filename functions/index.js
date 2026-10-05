@@ -1602,9 +1602,62 @@ const doesModelMatchJob = (model, job) => {
 };
 
 /**
+ * Firestore trigger: when a client invites a model, add the job to the model's `invitedJobs` list.
+ * My Jobs builds the model's list from that field, and a browser cannot write another user's document,
+ * so it has to happen here. Idempotent: an invitation already on the list is not added twice.
+ */
+exports.onInvitationCreated = onDocumentCreated("jobs/{jobId}/invitations/{modelId}", async (event) => {
+  const snap = event.data;
+  if (!snap) return null;
+
+  const { jobId, modelId } = event.params;
+  const invitation = snap.data();
+
+  try {
+    const [jobDoc, inviterDoc] = await Promise.all([
+      db.collection("jobs").doc(jobId).get(),
+      invitation.invitedBy ? db.collection("users").doc(invitation.invitedBy).get() : Promise.resolve(null),
+    ]);
+    if (!jobDoc.exists) {
+      console.warn(`Invitation for missing job ${jobId}`);
+      return null;
+    }
+    const job = jobDoc.data();
+    const inviter = inviterDoc?.exists ? inviterDoc.data() : {};
+
+    const entry = {
+      jobId,
+      jobReference: job.reference,
+      jobTitle: job.title,
+      invitedBy: invitation.invitedBy || null,
+      invitedByName:
+        inviter.companyName ||
+        `${inviter.firstName || ""} ${inviter.lastName || ""}`.trim() ||
+        invitation.invitedByName ||
+        "A client",
+      invitedAt: new Date().toISOString(),
+      status: "pending",
+    };
+
+    const modelRef = db.collection("users").doc(modelId);
+    await db.runTransaction(async (tx) => {
+      const modelSnap = await tx.get(modelRef);
+      if (!modelSnap.exists) return;
+      const invitedJobs = modelSnap.data().invitedJobs || [];
+      if (invitedJobs.some((j) => j.jobId === jobId)) return;
+      tx.update(modelRef, { invitedJobs: [...invitedJobs, entry] });
+    });
+    return { success: true };
+  } catch (error) {
+    console.error(`Could not add invited job ${jobId} to model ${modelId}:`, error);
+    return { success: false, error: error.message };
+  }
+});
+
+/**
  * Firestore trigger: When a job is created, notify matching models and the client
  */
-exports.onJobCreated = onDocumentCreated("jobs/{jobId}", async (event) => {
+exports.onJobCreated =onDocumentCreated("jobs/{jobId}", async (event) => {
   const snap = event.data;
   if (!snap) {
     console.log("No data associated with the event");

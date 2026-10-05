@@ -1,4 +1,4 @@
-import { doc, setDoc, getDoc, collection, getDocs, addDoc, serverTimestamp, arrayUnion } from "firebase/firestore";
+import { doc, setDoc, getDoc, collection, getDocs, addDoc, serverTimestamp } from "firebase/firestore";
 import { db } from "config/firebase";
 import { createNotification } from "./notifications";
 import { callCloudFunction, createThread } from "./api";
@@ -33,26 +33,8 @@ export const sendJobInvitation = async (job, model, client) => {
 
     console.log("✅ Invitation record created");
 
-    // Step 1b: Add invitation reference to model's user document for easy lookup
-    // This is wrapped in try-catch as security rules may prevent cross-user writes
-    try {
-      const modelRef = doc(db, "users", model.uid);
-      await setDoc(modelRef, {
-        invitedJobs: arrayUnion({
-          jobId: job.id,
-          jobReference: job.reference,
-          jobTitle: job.title,
-          invitedBy: client.uid,
-          invitedByName: client.companyName || `${client.firstName} ${client.lastName || ""}`.trim(),
-          invitedAt: new Date().toISOString(),
-          status: "pending",
-        }),
-      }, { merge: true });
-      console.log("✅ Invitation added to model's user document");
-    } catch (userDocError) {
-      console.warn("⚠️ Could not add invitation to model's user document (security rules may prevent this):", userDocError.message);
-      // Continue - the invitation record in the job subcollection is the source of truth
-    }
+    // The model's `invitedJobs` list (read by My Jobs) is added by the onInvitationCreated Cloud Function:
+    // a browser cannot write another user's document.
 
     // Step 2: Create notification for the model
     await createJobInvitationNotification(model.uid, client, job)

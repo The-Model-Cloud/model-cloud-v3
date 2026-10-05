@@ -2,7 +2,7 @@
 
 Open bugs found in the launch-readiness review (2026-10-05), most urgent first. Found by reading the code; none were reproduced by running the app, so confirm each one when you fix it.
 
-**Working rule:** when a bug is fixed, remove it from this file and add it to `CHANGELOG.md` in the same change.
+**Working rule:** when a bug is fixed, remove it from this file and add it to `CHANGELOG.md` in the same change. Bug numbers are not reused or renumbered, so gaps are fixed bugs.
 
 Line numbers are approximate and will drift as the code changes. Search for the function or field named.
 
@@ -22,16 +22,6 @@ Line numbers are approximate and will drift as the code changes. Search for the 
 - **Where:** `functions/.env` holds `sk_test_` for `STRIPE_SECRET_KEY`, test price ids and the test webhook secret.
 - **Fix before launch:** use the live secret key, live price ids (starter, premium, agency, seats) and live webhook signing secrets. Live mode needs two webhook endpoints: an account endpoint (subscription, invoice, `payment_intent`, `charge` events) and a Connect endpoint (`account.updated`, `payout.*`). Both secrets can go comma-separated in `STRIPE_WEBHOOK_SECRET` (supported at `functions/index.js` near the webhook handler).
 - **Watch:** the code pins the Stripe API to `2023-10-16`, but webhook payloads follow the endpoint's own API version. Create the live endpoints with `2023-10-16`, or `current_period_end` and `invoice.subscription` move and `Timestamp.fromMillis(NaN)` throws in `handleSubscriptionCreated` and `handleSubscriptionUpdated`.
-
-### 4. The awarded model cannot open the job page
-- **Where:** `apps/platform/src/layouts/jobs/job-details/index.js` (~480-524). Non-admins load the job with `where("status","==","open")`; the owner fallback is skipped for models.
-- **Breaks:** once `awardJobToModel` sets `status: "awarded"` (later `in_progress`, `completed`), the awarded model gets "job not found" from the notification link, the email link and My Jobs. `JobCompletionSection` (`modelMarkJobComplete`) is hidden, so they cannot complete the job. Applicants also lose the page after the job closes.
-- **Fix:** for models, query `where("reference","==",ref)` without the status filter (the `jobs` read rule is `isAuthenticated()`), or fall back to the unfiltered query when the open-only query returns nothing.
-
-### 5. Invited models never see the job in My Jobs
-- **Where:** `apps/platform/src/utils/invitations.js` (~38-55) writes `invitedJobs` onto the model's `users/{uid}` document. `apps/platform/src/layouts/jobs/my-jobs/index.js` (~60-66) builds the model's list from `userData.invitedJobs`.
-- **Breaks:** the rules only allow a user to update their own document (or an admin), so the write always fails and the error is swallowed. The "Invited" status and inviter name never appear. The model can only reach the job through the email or notification link.
-- **Fix:** write `invitedJobs` from a Cloud Function, or have My Jobs read `collectionGroup("invitations")` filtered on `modelId` (needs a rule and an index).
 
 ## High
 

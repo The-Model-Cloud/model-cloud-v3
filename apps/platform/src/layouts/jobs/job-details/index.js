@@ -458,70 +458,23 @@ function JobDetails() {
                 }
 
                 const userData = userSnap.data();
-                const userRole = userData.role;
 
                 const jobRef = collection(db, "jobs");
                 let jobData = null;
 
-                // Strategy: Try different query approaches based on user role
-                // Firestore security rules require:
-                // - Admins can read any job
-                // - Owners/org members can read their jobs
-                // - Everyone can read jobs with status="open"
-
-                if (userRole === "admin" || userRole === "super admin") {
-                    // Admins can query by reference alone
+                // Any signed-in user may read a job (see the jobs read rule), so look it up by reference
+                // whatever its status. Filtering on status "open" hid awarded, in-progress and completed
+                // jobs from the model who was booked for them (they could not mark the job complete) and
+                // from applicants once the job had closed.
+                try {
                     const q = query(jobRef, where("reference", "==", reference));
                     const querySnapshot = await getDocs(q);
                     if (!querySnapshot.empty) {
                         const docSnap = querySnapshot.docs[0];
                         jobData = { id: docSnap.id, ...docSnap.data() };
                     }
-                } else {
-                    // For all other users (models, clients, account managers):
-                    // Try the compound query first (requires composite index)
-                    // If index doesn't exist yet, fall back to querying all open jobs
-                    try {
-                        const q = query(
-                            jobRef,
-                            where("reference", "==", reference),
-                            where("status", "==", "open")
-                        );
-                        const querySnapshot = await getDocs(q);
-                        if (!querySnapshot.empty) {
-                            const docSnap = querySnapshot.docs[0];
-                            jobData = { id: docSnap.id, ...docSnap.data() };
-                        }
-                    } catch (indexError) {
-                        // Compound query failed (likely missing index), try fallback
-                        console.log("Compound query failed, using fallback:", indexError.message);
-
-                        // Fallback: query all open jobs and filter client-side
-                        const q = query(jobRef, where("status", "==", "open"));
-                        const querySnapshot = await getDocs(q);
-                        querySnapshot.forEach((docSnap) => {
-                            const data = docSnap.data();
-                            if (data.reference === reference) {
-                                jobData = { id: docSnap.id, ...data };
-                            }
-                        });
-                    }
-
-                    // If still not found and user is a client/account manager, they might own the job
-                    // Try querying without status filter (for non-open jobs they own)
-                    if (!jobData && userRole !== "model") {
-                        try {
-                            const q = query(jobRef, where("reference", "==", reference));
-                            const querySnapshot = await getDocs(q);
-                            if (!querySnapshot.empty) {
-                                const docSnap = querySnapshot.docs[0];
-                                jobData = { id: docSnap.id, ...docSnap.data() };
-                            }
-                        } catch (ownerError) {
-                            // User doesn't have permission to access this job
-                            console.log("User does not have access to this job");
-                        }
-                    }
+                } catch (queryError) {
+                    console.log("Could not load job:", queryError.message);
                 }
 
                 if (jobData) {
