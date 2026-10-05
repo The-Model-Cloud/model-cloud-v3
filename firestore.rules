@@ -559,6 +559,15 @@ service cloud.firestore {
     }
 
     // ============================================================================
+    // CHANGELOG - a copy of CHANGELOG.md for the super-admin Changelog page, written by scripts/sync-changelog.js
+    // (Admin SDK). It describes security fixes, so only a super admin may read it; nobody can write it from a browser.
+    // ============================================================================
+    match /changelog/{docId} {
+      allow read: if isSuperAdmin();
+      allow write: if false;
+    }
+
+    // ============================================================================
     // USER SESSIONS - Login session tracking
     // ============================================================================
 

@@ -28,7 +28,9 @@ import { createSession } from "utils/sessionManager";
 function Illustration() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  const redirectTo = searchParams.get("redirect") || null;
+  // Only follow a path inside this app ("/jobs/TMC-123"), never another site ("//example.com", "https://...")
+  const requestedRedirect = searchParams.get("redirect");
+  const redirectTo = requestedRedirect && /^\/(?![\\/])/.test(requestedRedirect) ? requestedRedirect : null;
   const [rememberMe, setRememberMe] = useState(false);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");

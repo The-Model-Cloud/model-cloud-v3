@@ -58,6 +58,7 @@ import OptimizeImages from "layouts/admin/optimize-images";
 import ModelData from "layouts/admin/model-data";
 import AdminLogs from "layouts/admin/logs";
 import LoggedInUsers from "layouts/admin/logged-in-users";
+import Changelog from "layouts/admin/changelog";
 import AllModels from "layouts/models/all";
 import BrowseModels from "layouts/models/browse";
 import ModelSettingsProxy from "layouts/pages/account/settings/ModelSettingsProxy";
@@ -615,6 +616,14 @@ const routes = [
         component: <LoggedInUsers />,
         roles: ["super admin"],
         icon: <Icon fontSize="small">manage_accounts</Icon>,
+      },
+      {
+        name: "Changelog",
+        key: "changelog",
+        route: "/admin/changelog",
+        component: <Changelog />,
+        roles: ["super admin"],
+        icon: <Icon fontSize="small">new_releases</Icon>,
       },
     ],
   },

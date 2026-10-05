@@ -211,7 +211,8 @@ Run these from the root directory:
 | `npm run build:website` | Build website for production |
 | `npm run build:all` | Build both applications |
 | `npm run install:all` | Install all dependencies |
-| `npm run deploy:platform` | Build and deploy platform to 20i (FTP) |
+| `npm run sync:changelog` | Copy `CHANGELOG.md` to Firestore for the super-admin Changelog page (also runs as part of `deploy:platform`) |
+| `npm run deploy:platform` | Sync the changelog, then build and deploy platform to 20i (FTP) |
 | `npm run deploy:website` | Build and deploy website to 20i (FTP) |
 | `npm run deploy:functions` | Deploy Cloud Functions to Firebase |
 | `npm run deploy:firestore` | Deploy Firestore rules and indexes |
@@ -326,6 +327,7 @@ npm run deploy:all
 - Client/model import tools
 - System-wide email toggle
 - **Vouchers & Billing**: create vouchers (free for N days or until a date), apply them to clients, and see which clients are paying, on no-charge or free, which have a voucher and when it ends
+- **Changelog** (super admin, Tools menu): the contents of `CHANGELOG.md` in the app, with search. It shows the version last synced to Firestore, so run `npm run sync:changelog` (or deploy the platform) after the file changes
 - **Notify Models of Matching Jobs** (super admin): pick open jobs and email matching models only, clients only, both, or send a test to yourself
 - Email platform: consent, campaigns, delivery and bounce handling
 
@@ -365,6 +367,10 @@ Users can opt-in to marketing emails synced with Mailchimp:
 ### Email Templates
 
 All email templates are defined in `functions/index.js`. Search for `html:` to find template locations.
+
+## Access
+
+Every platform page needs a login. A signed-out visitor is sent to the sign-in page and, after signing in, returned to the page they asked for (so links in emails work). The only pages open without a login are sign-in, sign-up, reset password, the email action page, terms, email preferences, and shared-list and Z-Card links (`/shared/...`, `/zcard/view/...`). The list is `PUBLIC_PATHS` and `PUBLIC_PATH_PREFIXES` in `apps/platform/src/App.js`. Firestore rules enforce access to the data itself, whatever the page.
 
 ## User Roles
 

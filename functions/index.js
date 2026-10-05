@@ -1259,7 +1259,7 @@ exports.sendJobInvitationEmail = onCall(async (request) => {
 
   const msg = {
     subject: `You've Been Invited to Apply – ${jobTitle}`,
-    text: `Hi ${modelName},\n\n${senderName} has invited you to apply for the job "${jobTitle}".\n\nView the job and apply here: https://app.themodel.cloud/jobs/${jobReference}\n\nGood luck!\n\nThe Model Cloud Team`,
+    text: `Hi ${modelName},\n\n${senderName} has invited you to apply for the job "${jobTitle}".\n\nLog in to view the job and apply here: https://app.themodel.cloud/jobs/${jobReference}\n\nGood luck!\n\nThe Model Cloud Team`,
     html: `
       <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
         <h2 style="color: #1976d2;">You've Been Invited!</h2>
@@ -1271,8 +1271,9 @@ exports.sendJobInvitationEmail = onCall(async (request) => {
         </div>
         <p>This invitation means the client thinks you'd be a great fit for this job. Don't miss this opportunity!</p>
         <p style="margin: 30px 0;">
-          <a href="https://app.themodel.cloud/jobs/${jobReference}" style="background-color: #1976d2; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; font-weight: bold;">View Job & Apply</a>
+          <a href="https://app.themodel.cloud/jobs/${jobReference}" style="background-color: #1976d2; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; font-weight: bold;">Log In to View Job & Apply</a>
         </p>
+        <p style="color: #666; font-size: 13px; margin: 0 0 16px 0;">You'll be asked to log in to your Model Cloud account first.</p>
         <p style="color: #666; font-size: 14px;">Good luck!</p>
         <p style="color: #666; font-size: 14px;">The Model Cloud Team</p>
       </div>
@@ -1781,9 +1782,10 @@ exports.onJobCreated =onDocumentCreated("jobs/{jobId}", async (event) => {
             <p>
               <a href="${jobUrl}"
                  style="background-color: #667eea; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; display: inline-block; font-weight: bold;">
-                View Job & Apply
+                Log In to View Job & Apply
               </a>
             </p>
+        <p style="color: #666; font-size: 13px; margin: 0 0 16px 0;">You'll be asked to log in to your Model Cloud account first.</p>
 
             <p style="color: #999; font-size: 12px; margin-top: 32px; border-top: 1px solid #eee; padding-top: 16px;">
               You received this email because a job matching your profile was posted on The Model Cloud.
@@ -1854,9 +1856,10 @@ exports.onJobCreated =onDocumentCreated("jobs/{jobId}", async (event) => {
             <p style="text-align: center;">
               <a href="${jobUrl}"
                  style="background-color: #667eea; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; display: inline-block; font-weight: bold;">
-                View All Matching Models
+                Log In to View All Matching Models
               </a>
             </p>
+        <p style="color: #666; font-size: 13px; margin: 0 0 16px 0;">You'll be asked to log in to your Model Cloud account first.</p>
 
             <p style="color: #999; font-size: 12px; margin-top: 32px; border-top: 1px solid #eee; padding-top: 16px;">
               You received this email because you posted a job on The Model Cloud.
@@ -2004,9 +2007,10 @@ exports.sendJobMatchEmailsManual = onCall(async (request) => {
             <p>
               <a href="${jobUrl}"
                  style="background-color: #667eea; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; display: inline-block; font-weight: bold;">
-                View Job & Apply
+                Log In to View Job & Apply
               </a>
             </p>
+        <p style="color: #666; font-size: 13px; margin: 0 0 16px 0;">You'll be asked to log in to your Model Cloud account first.</p>
 
             <p style="color: #999; font-size: 12px; margin-top: 32px; border-top: 1px solid #eee; padding-top: 16px;">
               You received this email because a job matching your profile was posted on The Model Cloud.
@@ -2079,9 +2083,10 @@ exports.sendJobMatchEmailsManual = onCall(async (request) => {
             <p style="text-align: center;">
               <a href="${jobUrl}"
                  style="background-color: #667eea; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; display: inline-block; font-weight: bold;">
-                View All Matching Models
+                Log In to View All Matching Models
               </a>
             </p>
+        <p style="color: #666; font-size: 13px; margin: 0 0 16px 0;">You'll be asked to log in to your Model Cloud account first.</p>
 
             <p style="color: #999; font-size: 12px; margin-top: 32px; border-top: 1px solid #eee; padding-top: 16px;">
               You received this email because you posted a job on The Model Cloud.

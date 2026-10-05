@@ -74,6 +74,17 @@ function RequireAuth({ children }) {
   return children;
 }
 
+// The only pages a signed-out visitor may open. Everything else needs a login, and sends them to sign-in first.
+//  - sign-in, sign-up, password reset and the Firebase email action page (verify email, reset password) are how you log in
+//  - email preferences must work from an email link without logging in (unsubscribing cannot require a login)
+//  - /shared/... and /zcard/view/... are links a user chose to share with people outside the platform; the list or
+//    Z-Card's own visibility setting decides whether the visitor may see it
+const PUBLIC_PATHS = ["/sign-in", "/sign-up", "/reset-password", "/terms", "/email-preferences"];
+const PUBLIC_PATH_PREFIXES = ["/auth/", "/shared/", "/zcard/view/"];
+
+const isPublicPath = (pathname) =>
+  PUBLIC_PATHS.includes(pathname) || PUBLIC_PATH_PREFIXES.some((prefix) => pathname.startsWith(prefix));
+
 // Campaign email links carry ?ec=<signed token>. Read it at load time, before any redirect can drop it.
 const CAMPAIGN_TOKEN = new URLSearchParams(window.location.search).get("ec");
 
@@ -90,7 +101,7 @@ export default function App() {
   } = controller;
   const [onMouseEnter, setOnMouseEnter] = useState(false);
   const [rtlCache, setRtlCache] = useState(null);
-  const { pathname } = useLocation();
+  const { pathname, search, hash } = useLocation();
 
   useEffect(() => {
     // Check if it's an authentication route (should use page layout, no sidenav)
@@ -242,6 +253,13 @@ export default function App() {
 
       return [];
     });
+
+  // Nobody sees a page without being signed in. `user` is the real Firebase sign-in state (AuthProvider does not
+  // render the app until it is known), so an expired session is caught too. After signing in, the visitor is sent
+  // back to the page they asked for (for example the job in an email link), with its query string.
+  if (!user && !isPublicPath(pathname)) {
+    return <Navigate to={`/sign-in?redirect=${encodeURIComponent(`${pathname}${search}${hash}`)}`} replace />;
+  }
 
   return direction === "rtl" ? (
     <CacheProvider value={rtlCache}>
