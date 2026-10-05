@@ -67,8 +67,34 @@ service cloud.firestore {
             !('complimentary' in request.resource.data.subscription)));
       }
 
-      allow create: if isAuthenticated() && request.auth.uid == userId && newUserBillingSafe();
-      allow update: if isAuthenticated() && ((request.auth.uid == userId && billingFieldsUntouched()) || isAdmin());
+      // PRIVILEGES: role, admin verification, organisation membership and the model's payout account are
+      // set by an admin or a Cloud Function, never by the user. Every admin rule and admin callable trusts
+      // `role`, and the "locked until verified" control trusts `verified`.
+      function privilegedFieldsUntouched() {
+        return !request.resource.data.diff(resource.data).affectedKeys()
+          .hasAny(['role', 'verified', 'organisationId', 'organisationRole', 'teamId',
+                   'balance', 'stripeAccountId', 'stripeAccountStatus', 'stripePayoutsEnabled']);
+      }
+
+      // A new account may only be a model or a client, starts unverified, and carries none of the privileged fields
+      // (the first super admin is created outside the browser)
+      function newUserPrivilegesSafe() {
+        return request.resource.data.get('role', 'model') in ['model', 'client'] &&
+          request.resource.data.get('verified', false) == false &&
+          !request.resource.data.keys().hasAny(['organisationId', 'organisationRole', 'teamId',
+                                                 'balance', 'stripeAccountId', 'stripeAccountStatus', 'stripePayoutsEnabled']);
+      }
+
+      // Only a super admin may grant, change or remove the super admin role (an admin cannot promote themselves)
+      function superAdminRoleUntouched() {
+        return !request.resource.data.diff(resource.data).affectedKeys().hasAny(['role']) ||
+          (resource.data.get('role', '') != 'super admin' && request.resource.data.get('role', '') != 'super admin');
+      }
+
+      allow create: if isAuthenticated() && request.auth.uid == userId && newUserBillingSafe() && newUserPrivilegesSafe();
+      allow update: if isAuthenticated() &&
+        ((request.auth.uid == userId && billingFieldsUntouched() && privilegedFieldsUntouched()) ||
+         (isAdmin() && (isSuperAdmin() || superAdminRoleUntouched())));
       allow delete: if isSuperAdmin();
 
       // User notifications subcollection
