@@ -37,6 +37,7 @@ Work in progress in the working copy, not yet committed.
 
 ### Fixed
 
+- Website sign-ups (model and client) never received the email-verification email and were not given a `publicSlug`, so their public profile link did not work. `signUp` and `signUpClient` in `apps/website/src/lib/firebase/auth.ts` now set the display name, send the verification email and generate the slug (`first.l`, then `first.l1`...) the same way the platform sign-up does. A failure to send the email or check the slug no longer blocks the account being created (the slug falls back to the user id)
 - Website sign-up (model and client) sent new users to `app.themodel.cloud/onboarding`, a route the platform does not have, so they landed on a blank "profile not found" page, signed out (the website and platform are separate origins). They now go to the platform sign-in page, which sends them on to Edit Profile. The client sign-up success page's "Complete Your Profile" button does the same (`PLATFORM_URLS.completeProfile` in `apps/website/src/lib/urls.ts`)
 - Models were never emailed about matching jobs: the job-created trigger (`onJobCreated`) and the manual `sendJobMatchEmailsManual` looked for models with `isVerified == true`, but admin verification writes `verified: true`, so no models were ever found (and clients never got their matching-models summary). Both now query `verified`
 - A subscription invoice that reached us before the subscription was linked to the client was ignored. The webhook now also finds the client by Stripe customer id

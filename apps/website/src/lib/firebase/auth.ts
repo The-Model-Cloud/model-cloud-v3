@@ -2,11 +2,13 @@ import {
   signInWithEmailAndPassword,
   createUserWithEmailAndPassword,
   sendPasswordResetEmail,
+  sendEmailVerification,
+  updateProfile,
   signOut as firebaseSignOut,
   onAuthStateChanged,
   User as FirebaseUser,
 } from "firebase/auth";
-import { doc, getDoc, setDoc, serverTimestamp } from "firebase/firestore";
+import { collection, doc, getDoc, getDocs, query, setDoc, serverTimestamp, where } from "firebase/firestore";
 import { auth, db } from "./config";
 import type { User, UserRole } from "@/types/user";
 import type { SubscriptionTier } from "@/types/subscription";
@@ -31,6 +33,41 @@ function marketingConsentFields(marketingOptIn: boolean) {
   };
 }
 
+/**
+ * Public profile slug ("first.l", then "first.l1", "first.l2"...). Same format as the platform
+ * sign-up (apps/platform sign-up/illustration), which links to /{publicSlug}.
+ * Falls back to the uid so a slug lookup failure never blocks sign-up.
+ */
+async function generateUniqueSlug(firstName: string, lastName: string, uid: string) {
+  const clean = (value: string) => value.trim().toLowerCase().replace(/[^a-z0-9]/g, "");
+  const first = clean(firstName);
+  const lastInitial = clean(lastName).charAt(0);
+  const baseSlug = [first, lastInitial].filter(Boolean).join(".");
+  if (!baseSlug) return uid;
+
+  try {
+    let slug = baseSlug;
+    for (let count = 1; ; count++) {
+      const snapshot = await getDocs(query(collection(db, "users"), where("publicSlug", "==", slug)));
+      if (snapshot.empty) return slug;
+      slug = `${baseSlug}${count}`;
+    }
+  } catch (error) {
+    console.error("Could not check publicSlug, using uid:", error);
+    return uid;
+  }
+}
+
+/** Display name and verification email. Neither may stop the account being created. */
+async function finishAccountSetup(user: FirebaseUser, firstName: string, lastName: string) {
+  try {
+    await updateProfile(user, { displayName: `${firstName} ${lastName}`.trim() });
+    await sendEmailVerification(user);
+  } catch (error) {
+    console.error("Could not send verification email:", error);
+  }
+}
+
 export async function signIn(email: string, password: string) {
   const userCredential = await signInWithEmailAndPassword(auth, email, password);
   return userCredential.user;
@@ -47,6 +84,9 @@ export async function signUp(
   const userCredential = await createUserWithEmailAndPassword(auth, email, password);
   const user = userCredential.user;
 
+  await finishAccountSetup(user, firstName, lastName);
+  const publicSlug = await generateUniqueSlug(firstName, lastName, user.uid);
+
   // Create user document in Firestore
   await setDoc(doc(db, "users", user.uid), {
     uid: user.uid,
@@ -54,6 +94,7 @@ export async function signUp(
     firstName,
     lastName,
     role,
+    publicSlug,
     verified: false,
     ...marketingConsentFields(marketingOptIn),
     createdAt: serverTimestamp(),
@@ -75,6 +116,9 @@ export async function signUpClient(
   const userCredential = await createUserWithEmailAndPassword(auth, email, password);
   const user = userCredential.user;
 
+  await finishAccountSetup(user, firstName, lastName);
+  const publicSlug = await generateUniqueSlug(firstName, lastName, user.uid);
+
   // Create user document in Firestore with client-specific fields
   await setDoc(doc(db, "users", user.uid), {
     uid: user.uid,
@@ -82,6 +126,7 @@ export async function signUpClient(
     firstName,
     lastName,
     companyName,
+    publicSlug,
     role: "client" as UserRole,
     verified: false,
     subscription: {
