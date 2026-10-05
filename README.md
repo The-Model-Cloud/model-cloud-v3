@@ -296,7 +296,7 @@ npm run deploy:all
 - Job applications and invitations
 - Availability calendar
 - Earnings dashboard
-- Stripe Connect payouts
+- Stripe Connect payouts (UK bank accounts). The Payouts page shows the connected bank, what Stripe needs next and why a payout may be on hold, and lets the model change their bank, name and address in the Stripe Express dashboard
 
 ### For Clients
 - Browse and search models

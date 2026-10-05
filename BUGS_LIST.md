@@ -94,6 +94,11 @@ Line numbers are approximate and will drift as the code changes. Search for the 
 - **Breaks:** a job title or name containing HTML is sent to many recipients as HTML. Only the location, date and rate lines of the match email are escaped so far.
 - **Fix:** run every user-supplied value through `escapeHtml` (exported from `functions/email/send.js`), and validate image URLs.
 
+### 29. Payout accounts are always created as UK accounts
+- **Where:** `createStripeConnectedAccount` in `functions/index.js` (~5308): `country: userData.country === "United States" ? "US" : "GB"`; balances and withdrawals are GBP only.
+- **Breaks:** a model in Italy, Spain, France or Germany (the platform's priority countries) gets a UK Stripe account, which needs a UK bank account and cannot be changed later (a Stripe account's country is fixed at creation).
+- **Fix:** decide which countries and currencies to support, then create the account in the model's own country and handle that currency in balances and withdrawals.
+
 ## Deploy and configuration checks
 
 - Rebuild `apps/platform/build` before any FTP deploy. The local folder holds only the holding-page build (no `index.html`, no `static/`), and `ftpDeploy` wipes the remote first.

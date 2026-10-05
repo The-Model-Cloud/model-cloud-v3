@@ -5340,8 +5340,8 @@ exports.createStripeConnectedAccount = onCall(async (request) => {
     // Create account onboarding link
     const accountLink = await stripe.accountLinks.create({
       account: account.id,
-      refresh_url: `${process.env.FRONTEND_URL || "https://v4.themodel.cloud"}/payouts?refresh=true`,
-      return_url: `${process.env.FRONTEND_URL || "https://v4.themodel.cloud"}/payouts?success=true`,
+      refresh_url: `${APP_URL}/payouts?refresh=true`,
+      return_url: `${APP_URL}/payouts?success=true`,
       type: "account_onboarding",
     });
 
@@ -5384,8 +5384,8 @@ exports.createStripeOnboardingLink = onCall(async (request) => {
   try {
     const accountLink = await stripe.accountLinks.create({
       account: userData.stripeAccountId,
-      refresh_url: `${process.env.FRONTEND_URL || "https://v4.themodel.cloud"}/payouts?refresh=true`,
-      return_url: `${process.env.FRONTEND_URL || "https://v4.themodel.cloud"}/payouts?success=true`,
+      refresh_url: `${APP_URL}/payouts?refresh=true`,
+      return_url: `${APP_URL}/payouts?success=true`,
       type: "account_onboarding",
     });
 
@@ -5433,6 +5433,10 @@ exports.createStripeDashboardLink = onCall(async (request) => {
     };
   } catch (error) {
     console.error("Error creating dashboard link:", error);
+    // Stripe only issues a dashboard login once the account has finished its first setup
+    if (/onboarding|not completed|not yet/i.test(error.message || "")) {
+      throw new HttpsError("failed-precondition", "Finish setting up your payout account first, then you can manage it here.");
+    }
     throw new HttpsError("internal", error.message);
   }
 });
@@ -5514,6 +5518,10 @@ exports.getStripeAccountStatus = onCall(async (request) => {
       }
     }
 
+    // The bank account payouts go to (name and last four digits only; Stripe holds the full details)
+    const bankAccounts = (account.external_accounts?.data || []).filter((e) => e.object === "bank_account");
+    const bank = bankAccounts.find((e) => e.default_for_currency) || bankAccounts[0] || null;
+
     return {
       success: true,
       hasAccount: true,
@@ -5522,6 +5530,15 @@ exports.getStripeAccountStatus = onCall(async (request) => {
       payoutsEnabled: account.payouts_enabled,
       chargesEnabled: account.charges_enabled,
       requirements: account.requirements,
+      disabledReason: account.requirements?.disabled_reason || null,
+      bankAccount: bank
+        ? {
+            bankName: bank.bank_name || null,
+            last4: bank.last4 || null,
+            currency: (bank.currency || "").toUpperCase(),
+            country: bank.country || null,
+          }
+        : null,
       balance: balance,
     };
   } catch (error) {

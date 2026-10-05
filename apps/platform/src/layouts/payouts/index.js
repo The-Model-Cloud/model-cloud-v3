@@ -1,15 +1,16 @@
 /**
  * Model Payouts Dashboard
- * Allows models to view their balance, set up Stripe payouts, and request withdrawals
+ * Allows models to view their balance, set up and manage their Stripe payout account, and request withdrawals
  */
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { useSearchParams } from "react-router-dom";
 
 // @mui material components
 import Grid from "@mui/material/Grid";
 import Card from "@mui/material/Card";
 import Alert from "@mui/material/Alert";
+import Icon from "@mui/material/Icon";
 
 // Material Dashboard 3 PRO React components
 import MDBox from "components/MDBox";
@@ -23,6 +24,7 @@ import Footer from "examples/Footer";
 // Payouts components
 import BalanceCard from "layouts/payouts/components/BalanceCard";
 import StripeOnboarding from "layouts/payouts/components/StripeOnboarding";
+import PayoutAccountCard from "layouts/payouts/components/PayoutAccountCard";
 import WithdrawalForm from "layouts/payouts/components/WithdrawalForm";
 import WithdrawalHistory from "layouts/payouts/components/WithdrawalHistory";
 
@@ -33,6 +35,9 @@ import {
   getWithdrawalHistory,
 } from "utils/api";
 
+// Don't re-check Stripe more often than this when the model switches back to this tab
+const REFRESH_MIN_INTERVAL_MS = 5000;
+
 function Payouts() {
   const [searchParams] = useSearchParams();
   const [loading, setLoading] = useState(true);
@@ -41,25 +46,21 @@ function Payouts() {
   const [stripeStatus, setStripeStatus] = useState(null);
   const [withdrawals, setWithdrawals] = useState([]);
   const [successMessage, setSuccessMessage] = useState("");
+  const [warningMessage, setWarningMessage] = useState("");
   const [errorMessage, setErrorMessage] = useState("");
+  const lastLoadedAt = useRef(0);
 
-  // Check for success/refresh URL params (from Stripe onboarding redirect)
+  // Stripe sends the model back with ?refresh=true when the setup link expired or was abandoned
   useEffect(() => {
-    if (searchParams.get("success") === "true") {
-      setSuccessMessage("Stripe account setup completed successfully!");
-    }
     if (searchParams.get("refresh") === "true") {
       setErrorMessage("Please complete your Stripe account setup to receive payouts.");
     }
   }, [searchParams]);
 
-  // Load data on mount
-  useEffect(() => {
-    loadData();
-  }, []);
-
-  const loadData = async () => {
-    setLoading(true);
+  // `silent` refreshes the data without the loading skeletons (used when the model comes back from Stripe)
+  const loadData = useCallback(async (silent = false) => {
+    lastLoadedAt.current = Date.now();
+    if (!silent) setLoading(true);
     try {
       // Load balance, stripe status, and withdrawal history in parallel
       const [balanceResult, stripeResult, withdrawalResult] = await Promise.all([
@@ -80,21 +81,50 @@ function Payouts() {
       if (withdrawalResult.success) {
         setWithdrawals(withdrawalResult.withdrawals || []);
       }
+
+      // Stripe also sends the model back to ?success=true when they simply leave the form, so only
+      // say "all set" when Stripe confirms payouts are on
+      if (!silent && searchParams.get("success") === "true" && stripeResult.success) {
+        if (stripeResult.payoutsEnabled) {
+          setSuccessMessage("Your Stripe payout account is set up and ready.");
+        } else {
+          setWarningMessage(
+            "Thanks. Stripe still needs a few details or is checking the ones you gave. See Payout Account below for what is left."
+          );
+        }
+      }
     } catch (error) {
       console.error("Failed to load payout data:", error);
       setErrorMessage("Failed to load payout information. Please try again.");
     } finally {
       setLoading(false);
     }
-  };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Load data on mount
+  useEffect(() => {
+    loadData();
+  }, [loadData]);
+
+  // The model manages their account in a Stripe tab; when they switch back here, show what changed
+  useEffect(() => {
+    const onFocus = () => {
+      if (document.hidden) return;
+      if (Date.now() - lastLoadedAt.current < REFRESH_MIN_INTERVAL_MS) return;
+      loadData(true);
+    };
+    window.addEventListener("focus", onFocus);
+    return () => window.removeEventListener("focus", onFocus);
+  }, [loadData]);
 
   const handleWithdrawalSuccess = () => {
     setSuccessMessage("Withdrawal request submitted successfully!");
-    loadData(); // Refresh data
+    loadData(true); // Refresh data
   };
 
   const handleStripeSetupComplete = () => {
-    loadData(); // Refresh data after Stripe setup
+    loadData(true); // Refresh data after Stripe setup
   };
 
   const formatCurrency = (amountInCents, currency = "GBP") => {
@@ -102,6 +132,13 @@ function Payouts() {
     const symbol = symbols[currency] || currency;
     return `${symbol}${(amountInCents / 100).toFixed(2)}`;
   };
+
+  // Where the model is with Stripe decides what the middle card offers
+  const hasAccount = Boolean(stripeStatus?.hasAccount);
+  const detailsSubmitted = Boolean(stripeStatus?.detailsSubmitted);
+  const payoutsEnabled = Boolean(stripeStatus?.payoutsEnabled);
+  const needsSetup = !hasAccount || !detailsSubmitted; // no account yet, or the first setup was not finished
+  const onHold = hasAccount && detailsSubmitted && !payoutsEnabled; // set up, but Stripe has paused payouts
 
   return (
     <DashboardLayout>
@@ -122,6 +159,13 @@ function Payouts() {
           <MDBox mb={3}>
             <Alert severity="success" onClose={() => setSuccessMessage("")}>
               {successMessage}
+            </Alert>
+          </MDBox>
+        )}
+        {warningMessage && (
+          <MDBox mb={3}>
+            <Alert severity="warning" onClose={() => setWarningMessage("")}>
+              {warningMessage}
             </Alert>
           </MDBox>
         )}
@@ -147,14 +191,42 @@ function Payouts() {
             />
           </Grid>
 
-          {/* Stripe Setup / Withdrawal Form */}
+          {/* Stripe setup / withdrawals */}
           <Grid item xs={12} md={6} lg={4}>
-            {!stripeStatus?.hasAccount || !stripeStatus?.payoutsEnabled ? (
+            {needsSetup ? (
               <StripeOnboarding
                 stripeStatus={stripeStatus}
                 loading={loading}
                 onSetupComplete={handleStripeSetupComplete}
               />
+            ) : onHold ? (
+              <Card>
+                <MDBox p={3}>
+                  <MDBox display="flex" alignItems="center" mb={2}>
+                    <MDBox
+                      display="flex"
+                      alignItems="center"
+                      justifyContent="center"
+                      width="3rem"
+                      height="3rem"
+                      borderRadius="lg"
+                      color="white"
+                      bgColor="warning"
+                      mr={2}
+                    >
+                      <Icon fontSize="medium">pause_circle</Icon>
+                    </MDBox>
+                    <MDTypography variant="h6" fontWeight="medium">
+                      Withdrawals on hold
+                    </MDTypography>
+                  </MDBox>
+                  <MDTypography variant="body2" color="text">
+                    Stripe has paused payouts on your account, so you cannot withdraw right now. Your earnings are
+                    safe. See <strong>Payout Account</strong> for what Stripe needs. Withdrawals switch back on
+                    here as soon as Stripe is happy.
+                  </MDTypography>
+                </MDBox>
+              </Card>
             ) : (
               <WithdrawalForm
                 availableBalance={balance.available}
@@ -168,49 +240,13 @@ function Payouts() {
             )}
           </Grid>
 
-          {/* Account Status */}
+          {/* Payout account: bank, what Stripe needs, manage */}
           <Grid item xs={12} md={12} lg={4}>
-            <Card>
-              <MDBox p={3}>
-                <MDTypography variant="h6" fontWeight="medium" mb={2}>
-                  Account Status
-                </MDTypography>
-                <MDBox>
-                  <MDBox display="flex" justifyContent="space-between" mb={1}>
-                    <MDTypography variant="body2" color="text">
-                      Stripe Account
-                    </MDTypography>
-                    <MDTypography
-                      variant="body2"
-                      fontWeight="medium"
-                      color={stripeStatus?.hasAccount ? "success" : "warning"}
-                    >
-                      {stripeStatus?.hasAccount ? "Connected" : "Not Set Up"}
-                    </MDTypography>
-                  </MDBox>
-                  <MDBox display="flex" justifyContent="space-between" mb={1}>
-                    <MDTypography variant="body2" color="text">
-                      Payouts Enabled
-                    </MDTypography>
-                    <MDTypography
-                      variant="body2"
-                      fontWeight="medium"
-                      color={stripeStatus?.payoutsEnabled ? "success" : "warning"}
-                    >
-                      {stripeStatus?.payoutsEnabled ? "Yes" : "No"}
-                    </MDTypography>
-                  </MDBox>
-                  <MDBox display="flex" justifyContent="space-between" mb={1}>
-                    <MDTypography variant="body2" color="text">
-                      Withdrawal Fee
-                    </MDTypography>
-                    <MDTypography variant="body2" fontWeight="medium">
-                      {withdrawalFeePercent}%
-                    </MDTypography>
-                  </MDBox>
-                </MDBox>
-              </MDBox>
-            </Card>
+            <PayoutAccountCard
+              stripeStatus={stripeStatus}
+              loading={loading}
+              withdrawalFeePercent={withdrawalFeePercent}
+            />
           </Grid>
 
           {/* Withdrawal History */}

@@ -18,11 +18,7 @@ import MDTypography from "components/MDTypography";
 import MDButton from "components/MDButton";
 
 // API
-import {
-  createStripeConnectedAccount,
-  createStripeOnboardingLink,
-  createStripeDashboardLink,
-} from "utils/api";
+import { createStripeConnectedAccount, createStripeOnboardingLink } from "utils/api";
 
 function StripeOnboarding({ stripeStatus, loading, onSetupComplete }) {
   const [processing, setProcessing] = useState(false);
@@ -53,23 +49,6 @@ function StripeOnboarding({ stripeStatus, loading, onSetupComplete }) {
     }
   };
 
-  const handleViewDashboard = async () => {
-    setProcessing(true);
-    try {
-      const result = await createStripeDashboardLink();
-      if (result.success && result.dashboardUrl) {
-        window.open(result.dashboardUrl, "_blank");
-      } else {
-        throw new Error("Failed to get dashboard URL");
-      }
-    } catch (error) {
-      console.error("Failed to open Stripe dashboard:", error);
-      alert("Failed to open Stripe dashboard. Please try again.");
-    } finally {
-      setProcessing(false);
-    }
-  };
-
   if (loading) {
     return (
       <Card>
@@ -83,8 +62,6 @@ function StripeOnboarding({ stripeStatus, loading, onSetupComplete }) {
   }
 
   const hasAccount = stripeStatus?.hasAccount;
-  const isComplete = stripeStatus?.detailsSubmitted;
-  const payoutsEnabled = stripeStatus?.payoutsEnabled;
 
   return (
     <Card>
@@ -98,15 +75,15 @@ function StripeOnboarding({ stripeStatus, loading, onSetupComplete }) {
             height="3rem"
             borderRadius="lg"
             color="white"
-            bgColor={hasAccount && payoutsEnabled ? "success" : "info"}
+            bgColor={hasAccount ? "warning" : "info"}
             mr={2}
           >
             <Icon fontSize="medium">
-              {hasAccount && payoutsEnabled ? "check_circle" : "account_balance"}
+              {hasAccount ? "pending_actions" : "account_balance"}
             </Icon>
           </MDBox>
           <MDTypography variant="h6" fontWeight="medium">
-            {hasAccount && payoutsEnabled ? "Payout Account" : "Set Up Payouts"}
+            {hasAccount ? "Finish Payout Setup" : "Set Up Payouts"}
           </MDTypography>
         </MDBox>
 
@@ -147,7 +124,7 @@ function StripeOnboarding({ stripeStatus, loading, onSetupComplete }) {
               )}
             </MDButton>
           </MDBox>
-        ) : !isComplete || !payoutsEnabled ? (
+        ) : (
           // Account exists but not complete
           <MDBox>
             <MDTypography variant="body2" color="warning" mb={2}>
@@ -181,29 +158,6 @@ function StripeOnboarding({ stripeStatus, loading, onSetupComplete }) {
                 <>
                   <Icon sx={{ mr: 1 }}>pending_actions</Icon>
                   Complete Setup
-                </>
-              )}
-            </MDButton>
-          </MDBox>
-        ) : (
-          // Account complete and payouts enabled
-          <MDBox>
-            <MDTypography variant="body2" color="success" mb={2}>
-              Your payout account is set up and ready to receive payments.
-            </MDTypography>
-            <MDButton
-              variant="outlined"
-              color="info"
-              fullWidth
-              onClick={handleViewDashboard}
-              disabled={processing}
-            >
-              {processing ? (
-                <CircularProgress size={20} color="inherit" />
-              ) : (
-                <>
-                  <Icon sx={{ mr: 1 }}>open_in_new</Icon>
-                  View Stripe Dashboard
                 </>
               )}
             </MDButton>
