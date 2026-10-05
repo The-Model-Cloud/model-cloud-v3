@@ -18,7 +18,8 @@ function JobInfo({ formik }) {
   const [countries, setCountries] = useState([]);
   const [cities, setCities] = useState([]);
   const currentDay = (new Date().getDate()).toString(); // "1" to "31"
-  const currentMonth = new Date().toLocaleString("default", { month: "long" }); // e.g., "March"
+  // English month name from the picker's own list (toLocaleString follows the browser's language and would not match it)
+  const currentMonth = selectData.birthDate[new Date().getMonth()]; // e.g., "March"
   const currentYear = new Date().getFullYear();
   const futureYears = Array.from({ length: 5 }, (_, i) => (currentYear + i).toString());
 
@@ -265,6 +266,7 @@ function JobInfo({ formik }) {
           <Grid item xs={12}>
             <Grid container spacing={3}>
               <Grid item xs={12} sm={4}><Autocomplete
+                disableClearable
                 value={values.dayDate || currentDay}
                 options={selectData.days}
                 onChange={(_, newValue) => setFieldValue("dayDate", newValue)}
@@ -277,6 +279,7 @@ function JobInfo({ formik }) {
               </Grid>
               <Grid item xs={12} sm={5}>
                 <Autocomplete
+                  disableClearable
                   value={values.monthDate || currentMonth}
                   options={selectData.birthDate}
                   onChange={(_, newValue) => setFieldValue("monthDate", newValue)}
@@ -291,6 +294,7 @@ function JobInfo({ formik }) {
               </Grid>
               <Grid item xs={12} sm={3}>
                 <Autocomplete
+                  disableClearable
                   value={values.yearDate || currentYear.toString()}
                   options={futureYears}
                   onChange={(_, newValue) => setFieldValue("yearDate", newValue)}

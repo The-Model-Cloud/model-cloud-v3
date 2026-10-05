@@ -89,6 +89,11 @@ Line numbers are approximate and will drift as the code changes. Search for the 
 - **Breaks:** drafts that are later published and closed jobs that are reopened never trigger match emails.
 - **Fix:** also trigger on status change to open.
 
+### 26. Job and user text is put into emails without escaping
+- **Where:** `functions/index.js`: the job-match and matching-models email templates in `onJobCreated` and `sendJobMatchEmailsManual` (job `title`, model names, cities, avatar URLs), and several older templates (welcome, password reset, new message).
+- **Breaks:** a job title or name containing HTML is sent to many recipients as HTML. Only the location, date and rate lines of the match email are escaped so far.
+- **Fix:** run every user-supplied value through `escapeHtml` (exported from `functions/email/send.js`), and validate image URLs.
+
 ## Deploy and configuration checks
 
 - Rebuild `apps/platform/build` before any FTP deploy. The local folder holds only the holding-page build (no `index.html`, no `static/`), and `ftpDeploy` wipes the remote first.

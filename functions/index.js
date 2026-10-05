@@ -1609,6 +1609,23 @@ const doesModelMatchJob = (model, job) => {
 };
 
 /**
+ * The location, date and rate lines of a job, as email HTML. A job stores its place as city / county /
+ * state / country, its date as dayDate / monthDate / yearDate and its pay as budget + currency + rateType
+ * (there is no location, dateFrom or rate field), the same fields the job cards show.
+ */
+const jobEmailDetailsHtml = (job) => {
+  const row = (label, value) =>
+    value ? `<p style="margin: 5px 0; color: #666;"><strong>${label}:</strong> ${escapeHtml(value)}</p>` : "";
+
+  const location = [job.city, job.county, job.state, job.country].filter(Boolean).join(", ") || job.location || "";
+  const date = job.dayDate && job.monthDate && job.yearDate ? `${job.dayDate} ${job.monthDate} ${job.yearDate}` : "";
+  const symbol = { GBP: "£", EUR: "€", USD: "$" }[job.currency] || job.currency || "£";
+  const rate = job.budget ? `${symbol}${job.budget}${job.rateType ? ` / ${job.rateType}` : ""}` : "";
+
+  return [row("Location", location), row("Date", date), row("Rate", rate)].filter(Boolean).join("\n              ");
+};
+
+/**
  * Firestore trigger: when a client invites a model, add the job to the model's `invitedJobs` list.
  * My Jobs builds the model's list from that field, and a browser cannot write another user's document,
  * so it has to happen here. Idempotent: an invitation already on the list is not added twice.
@@ -1758,9 +1775,7 @@ exports.onJobCreated =onDocumentCreated("jobs/{jobId}", async (event) => {
 
             <div style="background: #f8f9fa; padding: 20px; border-radius: 8px; margin: 20px 0;">
               <h3 style="margin: 0 0 10px 0; color: #333;">${jobData.title}</h3>
-              ${jobData.location ? `<p style="margin: 5px 0; color: #666;"><strong>Location:</strong> ${jobData.location}</p>` : ""}
-              ${jobData.dateFrom ? `<p style="margin: 5px 0; color: #666;"><strong>Date:</strong> ${jobData.dateFrom}${jobData.dateTo ? ` - ${jobData.dateTo}` : ""}</p>` : ""}
-              ${jobData.rate ? `<p style="margin: 5px 0; color: #666;"><strong>Rate:</strong> ${jobData.currency || "£"}${jobData.rate}</p>` : ""}
+              ${jobEmailDetailsHtml(jobData)}
             </div>
 
             <p>
@@ -1983,9 +1998,7 @@ exports.sendJobMatchEmailsManual = onCall(async (request) => {
 
             <div style="background: #f8f9fa; padding: 20px; border-radius: 8px; margin: 20px 0;">
               <h3 style="margin: 0 0 10px 0; color: #333;">${jobData.title}</h3>
-              ${jobData.location ? `<p style="margin: 5px 0; color: #666;"><strong>Location:</strong> ${jobData.location}</p>` : ""}
-              ${jobData.dateFrom ? `<p style="margin: 5px 0; color: #666;"><strong>Date:</strong> ${jobData.dateFrom}${jobData.dateTo ? ` - ${jobData.dateTo}` : ""}</p>` : ""}
-              ${jobData.rate ? `<p style="margin: 5px 0; color: #666;"><strong>Rate:</strong> ${jobData.currency || "£"}${jobData.rate}</p>` : ""}
+              ${jobEmailDetailsHtml(jobData)}
             </div>
 
             <p>

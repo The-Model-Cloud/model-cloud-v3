@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from "react";
 import { collection, getDocs, query, where } from "firebase/firestore";
 import { db } from "config/firebase";
 import { sendJobMatchEmails } from "utils/api";
+import { getJobLocation, getJobDate } from "utils/jobFormat";
 import selectData from "layouts/pages/account/settings/components/BasicInfo/data/selectData";
 
 // Layout
@@ -102,7 +103,7 @@ function NotifyModels() {
     if (locationFilter.trim()) {
       const term = locationFilter.trim().toLowerCase();
       result = result.filter((job) =>
-        job.location?.toLowerCase().includes(term) ||
+        getJobLocation(job).toLowerCase().includes(term) ||
         job.title?.toLowerCase().includes(term)
       );
     }
@@ -397,12 +398,12 @@ function NotifyModels() {
                             </TableCell>
                             <TableCell>
                               <MDTypography variant="caption" color="text">
-                                {job.location || "—"}
+                                {getJobLocation(job) || "—"}
                               </MDTypography>
                             </TableCell>
                             <TableCell>
                               <MDTypography variant="caption" color="text" sx={{ whiteSpace: "nowrap" }}>
-                                {job.dateFrom || "—"}
+                                {getJobDate(job) || "—"}
                               </MDTypography>
                             </TableCell>
                             <TableCell>

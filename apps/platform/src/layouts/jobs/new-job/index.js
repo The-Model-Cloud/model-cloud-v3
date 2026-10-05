@@ -6,6 +6,7 @@ import { useAuth } from "context/AuthContext";
 import { Formik, Form } from "formik";
 import * as Yup from "yup";
 import { sendJobInvitation } from "utils/invitations";
+import selectData from "layouts/pages/account/settings/components/BasicInfo/data/selectData";
 
 import Grid from "@mui/material/Grid";
 import Stepper from "@mui/material/Stepper";
@@ -157,6 +158,10 @@ function NewJob() {
     currency: [],
     rateType: [],
     media: [],
+    // The date pickers show today's date; save it too, otherwise a job posted without touching them has no date
+    dayDate: new Date().getDate().toString(),
+    monthDate: selectData.birthDate[new Date().getMonth()],
+    yearDate: new Date().getFullYear().toString(),
   };
 
   const validationSchema = Yup.object({
