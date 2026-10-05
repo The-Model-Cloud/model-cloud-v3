@@ -6,6 +6,7 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { signUp } from "@/lib/firebase/auth";
+import { PLATFORM_URLS } from "@/lib/urls";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -82,9 +83,8 @@ export default function SignUpContent() {
       );
       toast.success("Account created successfully!");
 
-      // Redirect to main app for onboarding
-      const appUrl = process.env.NEXT_PUBLIC_APP_URL || "https://app.themodel.cloud";
-      window.location.href = `${appUrl}/onboarding`;
+      // Hand over to the platform: the user is signed out there, so they sign in and land on Edit Profile
+      window.location.href = PLATFORM_URLS.completeProfile;
     } catch (error: unknown) {
       console.error("Sign up error:", error);
       const firebaseError = error as { code?: string };

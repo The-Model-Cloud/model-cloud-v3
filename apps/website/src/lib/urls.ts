@@ -20,5 +20,7 @@ export const PLATFORM_URLS = {
   signUpModel: platformUrl("/sign-up?type=model"),
   signUpClient: "/client/sign-up", // Client sign-up is on the website
   dashboard: platformUrl("/dashboard"),
-  onboarding: platformUrl("/onboarding"),
+  // The website and platform are on different origins, so a new user arrives signed out.
+  // Sign-in sends them on to the profile page (the platform has no /onboarding route).
+  completeProfile: platformUrl(`/sign-in?redirect=${encodeURIComponent("/edit-profile")}`),
 } as const;

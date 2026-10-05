@@ -4,6 +4,7 @@ import { useState, useEffect, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { signUpClient } from "@/lib/firebase/auth";
+import { PLATFORM_URLS } from "@/lib/urls";
 import { initializeFreeTier, createSubscriptionCheckoutSession } from "@/lib/firebase/functions";
 import { toast } from "sonner";
 import { Card, CardContent } from "@/components/ui/card";
@@ -79,9 +80,8 @@ function ClientSignUpForm() {
 
       toast.success("Account created successfully!");
 
-      // Redirect to platform onboarding
-      const appUrl = process.env.NEXT_PUBLIC_APP_URL || "https://app.themodel.cloud";
-      window.location.href = `${appUrl}/onboarding`;
+      // Hand over to the platform: the user is signed out there, so they sign in and land on Edit Profile
+      window.location.href = PLATFORM_URLS.completeProfile;
     } catch (err: unknown) {
       console.error("Sign up error:", err);
       const firebaseError = err as { code?: string };

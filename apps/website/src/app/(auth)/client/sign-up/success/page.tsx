@@ -4,6 +4,7 @@ import { useEffect, useState, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { useSubscription } from "@/lib/hooks/useSubscription";
+import { PLATFORM_URLS } from "@/lib/urls";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -79,7 +80,7 @@ function ClientSignUpSuccessContent() {
 
             <div className="space-y-3">
               <Button className="w-full" asChild>
-                <Link href={`${appUrl}/onboarding`}>
+                <Link href={PLATFORM_URLS.completeProfile}>
                   Complete Your Profile
                   <ArrowRight className="ml-2 h-4 w-4" />
                 </Link>
