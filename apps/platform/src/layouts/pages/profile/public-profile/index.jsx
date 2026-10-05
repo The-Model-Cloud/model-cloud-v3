@@ -148,11 +148,11 @@ function PublicProfile() {
     const modelName = `${profile.firstName || ""} ${profile.lastName || ""}`.trim() || "Model";
     if (profile.email) {
       if (newValue) {
-        sendVerificationEmail(profile.email, modelName).catch((err) =>
+        sendVerificationEmail(profile.uid).catch((err) =>
           console.warn("Failed to send verification email:", err)
         );
       } else {
-        sendUnverificationEmail(profile.email, modelName).catch((err) =>
+        sendUnverificationEmail(profile.uid).catch((err) =>
           console.warn("Failed to send unverification email:", err)
         );
       }

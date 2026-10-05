@@ -408,16 +408,15 @@ export const adminUpdateUserEmail = async (userUid, newEmail) => {
 };
 
 /**
- * Send verification email to a model when their account is verified
- * @param {string} to - Model's email address
- * @param {string} modelName - Model's full name
+ * Email a model or client when an admin verifies their account (admin only).
+ * The server sends to the user's own address, with wording for their role.
+ * @param {string} userId - The verified user's UID
  * @returns {Promise<{success: boolean}>}
  */
-export const sendVerificationEmail = async (to, modelName) => {
+export const sendVerificationEmail = async (userId) => {
   try {
     const result = await callCloudFunction("sendVerificationEmail", {
-      to,
-      modelName,
+      userId,
     });
 
     if (result.skipped) {
@@ -432,16 +431,14 @@ export const sendVerificationEmail = async (to, modelName) => {
 };
 
 /**
- * Send unverification email to a model when their account is unverified
- * @param {string} to - Model's email address
- * @param {string} modelName - Model's full name
+ * Email a model or client when an admin marks their account as needing updates (admin only)
+ * @param {string} userId - The user's UID
  * @returns {Promise<{success: boolean}>}
  */
-export const sendUnverificationEmail = async (to, modelName) => {
+export const sendUnverificationEmail = async (userId) => {
   try {
     const result = await callCloudFunction("sendUnverificationEmail", {
-      to,
-      modelName,
+      userId,
     });
 
     if (result.skipped) {

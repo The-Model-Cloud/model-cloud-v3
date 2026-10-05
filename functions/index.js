@@ -180,7 +180,7 @@ if (sendgridApiKey) {
 
 
 // Consent-aware sender (bounce/spam suppression, tracking args, system toggle)
-const { sendToUser } = require("./email/send");
+const { sendToUser, escapeHtml, APP_URL } = require("./email/send");
 
 // ============================================================================
 // SYSTEM SETTINGS HELPERS
@@ -1288,127 +1288,120 @@ exports.sendJobInvitationEmail = onCall(async (request) => {
 });
 
 
-// HTTP endpoint for sending account verification email to model
-exports.sendVerificationEmail = onCall(async (request) => {
+// Account verification emails (admin only). The caller names a user; the recipient is always that
+// user's own account address, never an address supplied by the browser.
+const requireAdminCaller = async (request) => {
   if (!request.auth) {
     throw new HttpsError("unauthenticated", "User must be logged in");
   }
-
-  if (!sendgridApiKey) {
-    console.warn("SendGrid not configured");
-    return { success: false, skipped: true };
+  const callerDoc = await db.collection("users").doc(request.auth.uid).get();
+  const callerRole = callerDoc.exists ? callerDoc.data().role : null;
+  if (callerRole !== "admin" && callerRole !== "super admin") {
+    throw new HttpsError("permission-denied", "Only admins can send account status emails");
   }
+};
 
-  // Check if emails are enabled in system settings
-  const emailEnabled = await isEmailEnabled();
-  if (!emailEnabled) {
-    console.log("📧 Email disabled by system settings");
-    return { success: false, skipped: true, reason: "disabled" };
-  }
+const buttonHtml = (href, colour, label) => `
+        <p style="margin: 30px 0;">
+          <a href="${href}" style="background-color: ${colour}; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; font-weight: bold;">${label}</a>
+        </p>`;
 
-  const { to, modelName } = request.data;
+const accountStatusEmail = (kind, role, rawName) => {
+  const name = escapeHtml(rawName);
+  const isClient = role !== "model";
+  const dashboardUrl = `${APP_URL}/dashboard`;
+  const profileUrl = `${APP_URL}/edit-profile`;
 
-  if (!to || !modelName) {
-    throw new HttpsError("invalid-argument", "Missing required fields");
-  }
-
-  const msg = {
-    to,
-    from: sendgridFromEmail,
-    subject: "Your Account Has Been Verified - The Model Cloud",
-    text: `Hi ${modelName},\n\nGreat news! Your account on The Model Cloud has been verified.\n\nYou can now:\n- Apply for jobs\n- Create your own Z-Card\n- Appear in search listings\n- Be matched to relevant jobs\n\nLog in now to explore opportunities: https://themodel.cloud/dashboard\n\nWelcome to The Model Cloud!\n\nThe Model Cloud Team`,
-    html: `
+  if (kind === "verified") {
+    const abilities = isClient
+      ? ["Post jobs and invite models", "Browse and search models", "Message models and manage bookings", "Manage payments and invoices"]
+      : ["Apply for jobs", "Create your own Z-Card", "Appear in search listings", "Be matched to relevant jobs"];
+    return {
+      subject: "Your Account Has Been Verified - The Model Cloud",
+      text: `Hi ${rawName},\n\nGreat news! Your account on The Model Cloud has been verified.\n\nYou can now:\n${abilities.map((a) => `- ${a}`).join("\n")}\n\nLog in now: ${dashboardUrl}\n\nWelcome to The Model Cloud!\n\nThe Model Cloud Team`,
+      html: `
       <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
         <h2 style="color: #2e7d32;">Your Account Has Been Verified!</h2>
-        <p>Hi ${modelName},</p>
+        <p>Hi ${name},</p>
         <p>Great news! Your account on <strong>The Model Cloud</strong> has been verified.</p>
         <div style="background-color: #e8f5e9; padding: 20px; border-radius: 8px; margin: 20px 0; border-left: 4px solid #2e7d32;">
           <h3 style="margin: 0 0 15px 0; color: #2e7d32;">You can now:</h3>
           <ul style="margin: 0; padding-left: 20px; color: #333;">
-            <li style="margin-bottom: 8px;">Apply for jobs</li>
-            <li style="margin-bottom: 8px;">Create your own Z-Card</li>
-            <li style="margin-bottom: 8px;">Appear in search listings</li>
-            <li style="margin-bottom: 8px;">Be matched to relevant jobs</li>
+            ${abilities.map((a) => `<li style="margin-bottom: 8px;">${a}</li>`).join("\n            ")}
           </ul>
-        </div>
-        <p style="margin: 30px 0;">
-          <a href="https://themodel.cloud/dashboard" style="background-color: #2e7d32; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; font-weight: bold;">Go to Dashboard</a>
-        </p>
+        </div>${buttonHtml(dashboardUrl, "#2e7d32", "Go to Dashboard")}
         <p style="color: #666; font-size: 14px;">Welcome to The Model Cloud!</p>
         <p style="color: #666; font-size: 14px;">The Model Cloud Team</p>
       </div>
-    `
-  };
-
-  await sgMail.send(msg);
-
-  return { success: true };
-});
-
-
-// HTTP endpoint for sending account unverification email to model
-exports.sendUnverificationEmail = onCall(async (request) => {
-  if (!request.auth) {
-    throw new HttpsError("unauthenticated", "User must be logged in");
+    `,
+    };
   }
 
-  if (!sendgridApiKey) {
-    console.warn("SendGrid not configured");
-    return { success: false, skipped: true };
-  }
-
-  // Check if emails are enabled in system settings
-  const emailEnabled = await isEmailEnabled();
-  if (!emailEnabled) {
-    console.log("📧 Email disabled by system settings");
-    return { success: false, skipped: true, reason: "disabled" };
-  }
-
-  const { to, modelName } = request.data;
-
-  if (!to || !modelName) {
-    throw new HttpsError("invalid-argument", "Missing required fields");
-  }
-
-  const msg = {
-    to,
-    from: sendgridFromEmail,
+  const effects = isClient
+    ? ["You can't post jobs or contact models until your account is verified", "You can still log in and update your profile"]
+    : ["Your profile won't appear in search results for clients", "You won't be matched to new jobs", "You can still access your account and update your profile"];
+  return {
     subject: "Account Update Required - The Model Cloud",
-    text: `Hi ${modelName},\n\nYour account on The Model Cloud has been marked as requiring updates.\n\nWhat this means:\n- Your profile won't appear in search results for clients\n- You won't be matched to new jobs\n- You can still access your account and update your profile\n\nTo restore full access, please log in and update the content on your account. Once your profile is complete, an admin will review and verify your account.\n\nUpdate your profile here: https://themodel.cloud/edit-profile\n\nIf you have any questions, please contact our support team.\n\nThe Model Cloud Team`,
+    text: `Hi ${rawName},\n\nYour account on The Model Cloud has been marked as requiring updates.\n\nWhat this means:\n${effects.map((e) => `- ${e}`).join("\n")}\n\nTo restore full access, please log in and update the content on your account. Once your profile is complete, an admin will review and verify your account.\n\nUpdate your profile here: ${profileUrl}\n\nIf you have any questions, please contact our support team.\n\nThe Model Cloud Team`,
     html: `
       <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
         <h2 style="color: #ed6c02;">Account Update Required</h2>
-        <p>Hi ${modelName},</p>
+        <p>Hi ${name},</p>
         <p>Your account on <strong>The Model Cloud</strong> has been marked as requiring updates.</p>
         <div style="background-color: #fff3e0; padding: 20px; border-radius: 8px; margin: 20px 0; border-left: 4px solid #ed6c02;">
           <h3 style="margin: 0 0 15px 0; color: #ed6c02;">What this means:</h3>
           <ul style="margin: 0; padding-left: 20px; color: #333;">
-            <li style="margin-bottom: 8px;">Your profile won't appear in search results for clients</li>
-            <li style="margin-bottom: 8px;">You won't be matched to new jobs</li>
-            <li style="margin-bottom: 8px;">You can still access your account and update your profile</li>
+            ${effects.map((e) => `<li style="margin-bottom: 8px;">${e}</li>`).join("\n            ")}
           </ul>
         </div>
-        <p>To restore full access, please log in and update the content on your account. Once your profile is complete, an admin will review and verify your account.</p>
-        <p style="margin: 30px 0;">
-          <a href="https://themodel.cloud/edit-profile" style="background-color: #ed6c02; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; font-weight: bold;">Update Your Profile</a>
-        </p>
+        <p>To restore full access, please log in and update the content on your account. Once your profile is complete, an admin will review and verify your account.</p>${buttonHtml(profileUrl, "#ed6c02", "Update Your Profile")}
         <p style="color: #666; font-size: 14px;">If you have any questions, please contact our support team.</p>
         <p style="color: #666; font-size: 14px;">The Model Cloud Team</p>
       </div>
-    `
+    `,
   };
+};
 
-  await sgMail.send(msg);
+const sendAccountStatusEmail = async (request, kind) => {
+  await requireAdminCaller(request);
 
-  return { success: true };
-});
+  const { userId } = request.data || {};
+  if (!userId) {
+    throw new HttpsError("invalid-argument", "userId is required");
+  }
+
+  const userDoc = await db.collection("users").doc(userId).get();
+  if (!userDoc.exists) {
+    throw new HttpsError("not-found", "User not found");
+  }
+  const userData = userDoc.data();
+  const { subject, html, text } = accountStatusEmail(kind, userData.role, userData.firstName || userData.name || "there");
+
+  const result = await sendToUser(db, {
+    uid: userId,
+    userData,
+    subject,
+    html,
+    text,
+    categories: [kind === "verified" ? "account-verified" : "account-update-required"],
+  });
+  if (!result.sent) {
+    console.log(`Account ${kind} email not sent to ${userId}: ${result.reason}`);
+  }
+  return { success: result.sent, skipped: !result.sent, reason: result.reason };
+};
+
+// Sent when an admin verifies a model or client
+exports.sendVerificationEmail = onCall((request) => sendAccountStatusEmail(request, "verified"));
+
+// Sent when an admin marks a model or client as needing updates
+exports.sendUnverificationEmail = onCall((request) => sendAccountStatusEmail(request, "unverified"));
 
 
 // HTTP endpoint for sending welcome email to new users created by admin
 exports.sendWelcomeEmail = onCall(async (request) => {
-  if (!request.auth) {
-    throw new HttpsError("unauthenticated", "User must be logged in");
-  }
+  // Carries a plain-text password: admins only
+  await requireAdminCaller(request);
 
   if (!sendgridApiKey) {
     console.warn("SendGrid not configured");
@@ -1434,7 +1427,7 @@ exports.sendWelcomeEmail = onCall(async (request) => {
     .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
     .join(" ");
 
-  const loginUrl = "https://themodel.cloud/sign-in";
+  const loginUrl = `${APP_URL}/sign-in`;
   const supportEmail = "support@themodel.cloud";
 
   const msg = {
@@ -1568,7 +1561,7 @@ exports.onUserCreated = onDocumentCreated("users/{userId}", async (event) => {
           </tr>
         </table>
         <p style="margin-top: 20px;">
-          <a href="https://themodel.cloud/admin/users" style="background-color: #007bff; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px;">View in Admin</a>
+          <a href="${APP_URL}/admin/users" style="background-color: #007bff; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px;">View in Admin</a>
         </p>
       `
     };
@@ -1743,7 +1736,7 @@ exports.onJobCreated = onDocumentCreated("jobs/{jobId}", async (event) => {
       // Build model list HTML (limit to first 10 for email)
       const displayModels = matchingModels.slice(0, 10);
       const modelListHtml = displayModels.map(model => {
-        const modelUrl = `https://themodel.cloud/models/${model.publicSlug || model.uid}`;
+        const modelUrl = `${APP_URL}/${model.publicSlug || model.uid}`;
         const modelName = `${model.firstName || ""} ${model.lastName || ""}`.trim() || "Model";
         const avatarUrl = model.profileAvatar || "https://themodel.cloud/default-avatar.png";
 
@@ -2313,7 +2306,7 @@ exports.onMessageCreated = onDocumentCreated(
             ${safePreview}${messageData.body && messageData.body.length > 500 ? "..." : ""}
           </div>
           <p>
-            <a href="https://themodel.cloud/messages/${threadId}"
+            <a href="${APP_URL}/messages/${threadId}"
                style="background-color: #007bff; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px; display: inline-block;">
               View Conversation
             </a>
@@ -2843,7 +2836,7 @@ exports.adminResetUserPassword = onCall(async (request) => {
           <p>Your new password is: <strong>${newPassword}</strong></p>
           <p>Please log in and change your password as soon as possible.</p>
           <p>
-            <a href="https://themodel.cloud/sign-in"
+            <a href="${APP_URL}/sign-in"
                style="background-color: #1976d2; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; display: inline-block;">
               Log In Now
             </a>

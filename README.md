@@ -342,7 +342,7 @@ The platform sends automated email notifications based on user preferences. User
 | Job Application | Clients | When a model applies to their job |
 | Application Confirmation | Models | When they apply to a job |
 | Job Invitation | Models | When invited to apply for a job |
-| Account Verification | Models | When admin verifies their account |
+| Account Verification | Models and clients | When an admin verifies their account (and an "update required" email when an admin unverifies it). Admin-only callables that take a user id; wording differs for clients |
 | Welcome Email | All users | After registration |
 | Voucher Applied | Clients | When an admin applies a voucher (tier and the date it is free until) |
 | No-Charge Ending | Clients | 30 days before free access ends, and when it has ended |

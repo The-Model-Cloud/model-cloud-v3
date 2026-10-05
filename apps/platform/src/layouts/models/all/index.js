@@ -122,7 +122,7 @@ function AllModels() {
       const modelsToEmail = rawModels.filter((m) => selectedUnverified.includes(m.uid));
       modelsToEmail.forEach((model) => {
         if (model.email) {
-          sendVerificationEmail(model.email, model.name || "Model").catch((err) =>
+          sendVerificationEmail(model.uid).catch((err) =>
             console.warn("Failed to send verification email:", err)
           );
         }
@@ -163,7 +163,7 @@ function AllModels() {
       const modelsToEmail = rawModels.filter((m) => selectedVerified.includes(m.uid));
       modelsToEmail.forEach((model) => {
         if (model.email) {
-          sendUnverificationEmail(model.email, model.name || "Model").catch((err) =>
+          sendUnverificationEmail(model.uid).catch((err) =>
             console.warn("Failed to send unverification email:", err)
           );
         }
@@ -203,7 +203,7 @@ function AllModels() {
       // Send verification emails to all models
       unverifiedModels.forEach((model) => {
         if (model.email) {
-          sendVerificationEmail(model.email, model.name || "Model").catch((err) =>
+          sendVerificationEmail(model.uid).catch((err) =>
             console.warn("Failed to send verification email:", err)
           );
         }
@@ -233,11 +233,11 @@ function AllModels() {
       // Send appropriate email
       if (model.email) {
         if (newVerified) {
-          sendVerificationEmail(model.email, model.name || "Model").catch((err) =>
+          sendVerificationEmail(model.uid).catch((err) =>
             console.warn("Failed to send verification email:", err)
           );
         } else {
-          sendUnverificationEmail(model.email, model.name || "Model").catch((err) =>
+          sendUnverificationEmail(model.uid).catch((err) =>
             console.warn("Failed to send unverification email:", err)
           );
         }

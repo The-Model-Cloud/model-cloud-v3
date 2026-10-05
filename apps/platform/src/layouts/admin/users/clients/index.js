@@ -32,7 +32,7 @@ import {
 } from "components/AdminUserDialogs";
 
 // API functions
-import { adminResetUserPassword, adminUpdateUserEmail } from "utils/api";
+import { adminResetUserPassword, adminUpdateUserEmail, sendVerificationEmail, sendUnverificationEmail } from "utils/api";
 import { logAdminAction, ADMIN_ACTIONS } from "utils/adminLogs";
 import { useAuth } from "context/AuthContext";
 
@@ -68,6 +68,12 @@ function AllClients() {
     try {
       const db = getFirestore();
       await updateDoc(doc(db, "users", user.uid), { verified: newVerified });
+
+      // Tell the client (a failed email never undoes the verification)
+      (newVerified ? sendVerificationEmail(user.uid) : sendUnverificationEmail(user.uid)).catch((err) =>
+        console.warn("Failed to send account status email:", err)
+      );
+
       setRawClients((prev) =>
         prev.map((u) => (u.uid === user.uid ? { ...u, verified: newVerified } : u))
       );
