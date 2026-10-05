@@ -179,6 +179,9 @@ if (sendgridApiKey) {
 }
 
 
+// Consent-aware sender (bounce/spam suppression, tracking args, system toggle)
+const { sendToUser } = require("./email/send");
+
 // ============================================================================
 // SYSTEM SETTINGS HELPERS
 // ============================================================================
@@ -1233,17 +1236,21 @@ exports.sendJobInvitationEmail = onCall(async (request) => {
     return { success: false, skipped: true, reason: "disabled" };
   }
 
-  const { to, modelName, clientName, companyName, jobTitle, jobReference } = request.data;
+  const { modelId, modelName, clientName, companyName, jobTitle, jobReference } = request.data;
 
-  if (!to || !modelName || !jobTitle || !jobReference) {
+  if (!modelId || !modelName || !jobTitle || !jobReference) {
     throw new HttpsError("invalid-argument", "Missing required fields");
+  }
+
+  // The recipient is always the model's own account address, never an address the caller supplies
+  const modelDoc = await db.collection("users").doc(modelId).get();
+  if (!modelDoc.exists) {
+    throw new HttpsError("not-found", "Model not found");
   }
 
   const senderName = companyName || clientName || "A client";
 
   const msg = {
-    to,
-    from: sendgridFromEmail,
     subject: `You've Been Invited to Apply – ${jobTitle}`,
     text: `Hi ${modelName},\n\n${senderName} has invited you to apply for the job "${jobTitle}".\n\nView the job and apply here: https://app.themodel.cloud/jobs/${jobReference}\n\nGood luck!\n\nThe Model Cloud Team`,
     html: `
@@ -1265,9 +1272,19 @@ exports.sendJobInvitationEmail = onCall(async (request) => {
     `
   };
 
-  await sgMail.send(msg);
+  const result = await sendToUser(db, {
+    uid: modelId,
+    userData: modelDoc.data(),
+    subject: msg.subject,
+    html: msg.html,
+    text: msg.text,
+    categories: ["job-invitation"],
+  });
+  if (!result.sent) {
+    console.log(`Invitation email not sent to model ${modelId}: ${result.reason}`);
+  }
 
-  return { success: true };
+  return { success: result.sent, skipped: !result.sent, reason: result.reason };
 });
 
 
@@ -1637,7 +1654,7 @@ exports.onJobCreated = onDocumentCreated("jobs/{jobId}", async (event) => {
     // 2. Find all verified models
     const modelsSnapshot = await db.collection("users")
       .where("role", "==", "model")
-      .where("isVerified", "==", true)
+      .where("verified", "==", true)
       .get();
 
     console.log(`Found ${modelsSnapshot.size} verified models to check for matching`);
@@ -1679,8 +1696,6 @@ exports.onJobCreated = onDocumentCreated("jobs/{jobId}", async (event) => {
       const jobUrl = `https://app.themodel.cloud/jobs/${jobData.reference || jobId}`;
 
       const msg = {
-        to: model.email,
-        from: sendgridFromEmail,
         subject: `New Job Match: ${jobData.title}`,
         html: `
           <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
@@ -1704,19 +1719,19 @@ exports.onJobCreated = onDocumentCreated("jobs/{jobId}", async (event) => {
 
             <p style="color: #999; font-size: 12px; margin-top: 32px; border-top: 1px solid #eee; padding-top: 16px;">
               You received this email because a job matching your profile was posted on The Model Cloud.
-              <br>
-              <a href="https://themodel.cloud/profile/settings" style="color: #667eea;">Manage your notification preferences</a>
             </p>
           </div>
         `
       };
 
-      try {
-        await sgMail.send(msg);
+      const result = await sendToUser(db, {
+        uid: model.uid, userData: model, subject: msg.subject, html: msg.html, categories: ["job-match"],
+      });
+      if (result.sent) {
         modelEmailsSent++;
         console.log(`✅ Job match email sent to model: ${model.email}`);
-      } catch (error) {
-        console.error(`Failed to send job match email to ${model.email}:`, error.message);
+      } else {
+        console.log(`Job match email not sent to model ${model.uid}: ${result.reason}`);
       }
     }
 
@@ -1751,8 +1766,6 @@ exports.onJobCreated = onDocumentCreated("jobs/{jobId}", async (event) => {
       }).join("");
 
       const msg = {
-        to: clientData.email,
-        from: sendgridFromEmail,
         subject: `${matchingModels.length} Models Match Your Job: ${jobData.title}`,
         html: `
           <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
@@ -1779,19 +1792,19 @@ exports.onJobCreated = onDocumentCreated("jobs/{jobId}", async (event) => {
 
             <p style="color: #999; font-size: 12px; margin-top: 32px; border-top: 1px solid #eee; padding-top: 16px;">
               You received this email because you posted a job on The Model Cloud.
-              <br>
-              <a href="https://themodel.cloud/profile/settings" style="color: #667eea;">Manage your notification preferences</a>
             </p>
           </div>
         `
       };
 
-      try {
-        await sgMail.send(msg);
-        clientEmailSent = true;
+      const result = await sendToUser(db, {
+        uid: jobData.userId, userData: clientData, subject: msg.subject, html: msg.html, categories: ["model-match"],
+      });
+      clientEmailSent = result.sent;
+      if (result.sent) {
         console.log(`✅ Model match summary email sent to client: ${clientData.email}`);
-      } catch (error) {
-        console.error(`Failed to send model match email to client ${clientData.email}:`, error.message);
+      } else {
+        console.log(`Model match summary not sent to client ${jobData.userId}: ${result.reason}`);
       }
     }
 
@@ -1863,7 +1876,7 @@ exports.sendJobMatchEmailsManual = onCall({ region: "europe-west1" }, async (req
     // Find all verified models
     const modelsSnapshot = await db.collection("users")
       .where("role", "==", "model")
-      .where("isVerified", "==", true)
+      .where("verified", "==", true)
       .get();
 
     console.log(`[Manual] Found ${modelsSnapshot.size} verified models to check`);
@@ -1896,8 +1909,6 @@ exports.sendJobMatchEmailsManual = onCall({ region: "europe-west1" }, async (req
       const jobUrl = `https://app.themodel.cloud/jobs/${jobData.reference || jobId}`;
 
       const msg = {
-        to: model.email,
-        from: sendgridFromEmail,
         subject: `New Job Match: ${jobData.title}`,
         html: `
           <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
@@ -1921,19 +1932,19 @@ exports.sendJobMatchEmailsManual = onCall({ region: "europe-west1" }, async (req
 
             <p style="color: #999; font-size: 12px; margin-top: 32px; border-top: 1px solid #eee; padding-top: 16px;">
               You received this email because a job matching your profile was posted on The Model Cloud.
-              <br>
-              <a href="https://app.themodel.cloud/pages/account/settings" style="color: #667eea;">Manage your notification preferences</a>
             </p>
           </div>
         `
       };
 
-      try {
-        await sgMail.send(msg);
+      const result = await sendToUser(db, {
+        uid: model.uid, userData: model, subject: msg.subject, html: msg.html, categories: ["job-match"],
+      });
+      if (result.sent) {
         modelEmailsSent++;
         console.log(`[Manual] ✅ Job match email sent to: ${model.email}`);
-      } catch (err) {
-        console.error(`[Manual] Failed to send to ${model.email}:`, err.message);
+      } else {
+        console.log(`[Manual] Job match email not sent to ${model.uid}: ${result.reason}`);
       }
     }
 
@@ -1966,8 +1977,6 @@ exports.sendJobMatchEmailsManual = onCall({ region: "europe-west1" }, async (req
       }).join("");
 
       const msg = {
-        to: clientData.email,
-        from: sendgridFromEmail,
         subject: `${matchingModels.length} Models Match Your Job: ${jobData.title}`,
         html: `
           <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
@@ -1994,19 +2003,19 @@ exports.sendJobMatchEmailsManual = onCall({ region: "europe-west1" }, async (req
 
             <p style="color: #999; font-size: 12px; margin-top: 32px; border-top: 1px solid #eee; padding-top: 16px;">
               You received this email because you posted a job on The Model Cloud.
-              <br>
-              <a href="https://app.themodel.cloud/pages/account/settings" style="color: #667eea;">Manage your notification preferences</a>
             </p>
           </div>
         `
       };
 
-      try {
-        await sgMail.send(msg);
-        clientEmailSent = true;
+      const result = await sendToUser(db, {
+        uid: jobData.userId, userData: clientData, subject: msg.subject, html: msg.html, categories: ["model-match"],
+      });
+      clientEmailSent = result.sent;
+      if (result.sent) {
         console.log(`[Manual] ✅ Client match summary sent to: ${clientData.email}`);
-      } catch (err) {
-        console.error(`[Manual] Failed to send client email to ${clientData.email}:`, err.message);
+      } else {
+        console.log(`[Manual] Client match summary not sent to ${jobData.userId}: ${result.reason}`);
       }
     }
 

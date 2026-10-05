@@ -37,11 +37,14 @@ Work in progress in the working copy, not yet committed.
 
 ### Fixed
 
+- Models were never emailed about matching jobs: the job-created trigger (`onJobCreated`) and the manual `sendJobMatchEmailsManual` looked for models with `isVerified == true`, but admin verification writes `verified: true`, so no models were ever found (and clients never got their matching-models summary). Both now query `verified`
 - A subscription invoice that reached us before the subscription was linked to the client was ignored. The webhook now also finds the client by Stripe customer id
 - `?tab=delete-account` on the settings page opened the wrong tab for clients
 
 ### Changed
 
+- Job match emails (to models and the matching-models summary to clients, both automatic and the manual super-admin send) and job invitation emails now go through the shared consent-aware sender (`sendToUser`). They respect the system email toggle, skip addresses that bounced or reported spam, carry the user id in SendGrid so the webhook can flag bounces and spam reports, and appear in Email Delivery under the `job-match`, `model-match` and `job-invitation` categories. They are service emails: no unsubscribe link, but every one carries a Manage email preferences link
+- `sendJobInvitationEmail` now takes the model's user id (`modelId`) and looks up their address itself instead of accepting any `to` address from the browser
 - Voucher and no-charge end dates have no upper limit (31 Dec 2030 and beyond are accepted). Dates in the past are still refused
 - The Premium subscription tier is now shown as "Professional" to clients (website plan card, emails), matching the pricing page. The tier id `premium` and the Stripe price are unchanged
 - Settings tabs (`/edit-profile?tab=...`) now find the tab by name for the user's role, so `?tab=delete-account` and `?tab=notifications` work for clients (clients have fewer tabs than models)

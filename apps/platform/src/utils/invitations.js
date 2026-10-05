@@ -64,7 +64,7 @@ export const sendJobInvitation = async (job, model, client) => {
 
     // Step 4: Send invitation email
     await sendInvitationEmail(
-      model.email,
+      model.uid,
       `${model.firstName} ${model.lastName || ""}`.trim(),
       `${client.firstName} ${client.lastName || ""}`.trim(),
       client.companyName || "",
@@ -157,7 +157,7 @@ export const createJobInvitationNotification = async (modelId, client, job) => {
 
 /**
  * Send job invitation email via Cloud Function
- * @param {string} to - Model's email address
+ * @param {string} modelId - Model's user ID (the server looks up their email address)
  * @param {string} modelName - Model's full name
  * @param {string} clientName - Client's full name
  * @param {string} companyName - Client's company name (if any)
@@ -165,10 +165,10 @@ export const createJobInvitationNotification = async (modelId, client, job) => {
  * @param {string} jobReference - Job reference number
  * @returns {Promise<any>} - The response data
  */
-export const sendInvitationEmail = async (to, modelName, clientName, companyName, jobTitle, jobReference) => {
+export const sendInvitationEmail = async (modelId, modelName, clientName, companyName, jobTitle, jobReference) => {
   try {
     const result = await callCloudFunction("sendJobInvitationEmail", {
-      to,
+      modelId,
       modelName,
       clientName,
       companyName,
