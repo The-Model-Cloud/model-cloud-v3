@@ -47,11 +47,6 @@ Line numbers are approximate and will drift as the code changes. Search for the 
 - **Breaks:** they query every `role == "model"` user with no `verified` check, but unverified models are locked to Dashboard and Edit Profile, so an invited model gets an email and message for a job they cannot act on.
 - **Fix:** filter `m.verified === true` (and paused accounts, if that matters).
 
-### 15. `sendJobMatchEmailsManual` is in the wrong region
-- **Where:** `functions/index.js` (~1834) declares `region: "europe-west1"`; `apps/platform/src/utils/api.js` calls us-central1.
-- **Breaks:** every manual super-admin job-match send fails silently (`callCloudFunction` swallows the error).
-- **Fix:** remove the region option, or use a region-specific `getFunctions` instance.
-
 ### 16. Withdrawal fee is never collected, and withdrawals can race
 - **Where:** `requestWithdrawal` in `functions/index.js` (~6055-6160).
 - **Breaks:** it pays out `netAmount` from the model's connected account, so the 1.5% fee stays in their Stripe balance (they can withdraw it from the Express dashboard). The balance check and the later `increment(-amount)` are not in one transaction, so two concurrent requests can both pass and push the balance negative.

@@ -1884,7 +1884,7 @@ exports.onJobCreated =onDocumentCreated("jobs/{jobId}", async (event) => {
  * Manually trigger job match emails for a specific job (Super Admin only)
  * Reuses the same matching logic and email templates as onJobCreated
  */
-exports.sendJobMatchEmailsManual = onCall({ region: "europe-west1" }, async (request) => {
+exports.sendJobMatchEmailsManual = onCall(async (request) => {
   if (!request.auth) {
     throw new HttpsError("unauthenticated", "User must be logged in");
   }
